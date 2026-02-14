@@ -675,13 +675,19 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         uint32_t edgeOffset = useEdgeTable ? rectEdgeOffset[idx] : 0u;
 
         bool gradientVertical = false;
+        bool gradientHorizontal = false;
         float gradSign = 1.0f;
+        float gradSignX = 1.0f;
         if (hasGradient) {
           constexpr float GradEpsilon = 1e-4f;
           if (std::abs(gradDir.x) <= GradEpsilon &&
               std::abs(std::abs(gradDir.y) - 1.0f) <= GradEpsilon) {
             gradientVertical = true;
             gradSign = gradDir.y >= 0.0f ? 1.0f : -1.0f;
+          } else if (std::abs(gradDir.y) <= GradEpsilon &&
+                     std::abs(std::abs(gradDir.x) - 1.0f) <= GradEpsilon) {
+            gradientHorizontal = true;
+            gradSignX = gradDir.x >= 0.0f ? 1.0f : -1.0f;
           }
         }
 
@@ -740,6 +746,34 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(rowR) * alphaCov + 127u) / 255u);
                 uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(rowG) * alphaCov + 127u) / 255u);
                 uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(rowB) * alphaCov + 127u) / 255u);
+                blend_px(row, pmR, pmG, pmB, alphaCov);
+              }
+            }
+          } else if (hasGradient && gradientHorizontal) {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              float dotBase = gradSignX * (static_cast<float>(x0f) + 0.5f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                float t = clamp01((dotBase - gradMin) * gradInvRange);
+                dotBase += gradSignX;
+                uint8_t r = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+                uint8_t g = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+                uint8_t b = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+                uint8_t a = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
+                uint8_t alpha = apply_opacity(a, opacity);
+                if (alpha == 0) continue;
+                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
+                local = rotate_point(local, cosA, -sinA);
+                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
+                if (dist > 1.0f) continue;
+                uint8_t cov = coverage_from_dist(dist);
+                if (cov == 0) continue;
+                uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
+                if (alphaCov == 0) continue;
+                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(r) * alphaCov + 127u) / 255u);
+                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(g) * alphaCov + 127u) / 255u);
+                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(b) * alphaCov + 127u) / 255u);
                 blend_px(row, pmR, pmG, pmB, alphaCov);
               }
             }
@@ -850,6 +884,50 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                     row[0] = rowR;
                     row[1] = rowG;
                     row[2] = rowB;
+                    row[3] = 255u;
+                  }
+                }
+              }
+            }
+            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
+            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
+            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
+            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
+            continue;
+          }
+        }
+        if (!batch.disableOpaqueRectFastPath && hasGradient && gradientHorizontal && !smoothBlend &&
+            rotation == 0.0f && radius > 0.0f && opacity == 255u && cA == 255u && gA == 255u) {
+          float inset = radius + 0.5f;
+          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
+          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
+          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
+          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
+          if (coreX1 > coreX0 && coreY1 > coreY0) {
+            for (int32_t x = coreX0; x < coreX1; ++x) {
+              float dotBase = gradSignX * (static_cast<float>(x) + 0.5f);
+              float t = clamp01((dotBase - gradMin) * gradInvRange);
+              uint8_t colR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+              uint8_t colG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+              uint8_t colB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+              if (frontToBack) {
+                for (int32_t y = coreY0; y < coreY1; ++y) {
+                  uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x);
+                  write_px(row, colR, colG, colB);
+                }
+              } else {
+                uint32_t packed = static_cast<uint32_t>(colR) |
+                                  (static_cast<uint32_t>(colG) << 8) |
+                                  (static_cast<uint32_t>(colB) << 16) |
+                                  (255u << 24);
+                for (int32_t y = coreY0; y < coreY1; ++y) {
+                  uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x);
+                  if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
+                    *reinterpret_cast<uint32_t*>(row) = packed;
+                  } else {
+                    row[0] = colR;
+                    row[1] = colG;
+                    row[2] = colB;
                     row[3] = 255u;
                   }
                 }
