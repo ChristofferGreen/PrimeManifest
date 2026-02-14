@@ -31,3 +31,16 @@ PM_TEST(font_registry, to_string_helpers) {
   PM_CHECK(ToString(FontFallbackPolicy::BundleThenOS) == std::string_view("bundle_then_os"),
            "fallback bundle_then_os string");
 }
+
+PM_TEST(font_registry, layout_text_handles_fonts_disabled) {
+  Typography typography;
+  typography.size = 14.0f;
+
+  auto run = LayoutText("Hello", typography, 1.0f, false);
+
+#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
+  (void)run;
+#else
+  PM_CHECK(!run, "LayoutText returns null when fonts disabled");
+#endif
+}

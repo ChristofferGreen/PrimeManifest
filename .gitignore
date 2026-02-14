@@ -1,3 +1,5 @@
 /build-*/
 /build/
 .DS_Store
+/text_render_demo.png
+/text_render_demo.ppm

@@ -40,6 +40,131 @@ PM_TEST(text, draws_basic_glyph) {
   PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "text glyph draws pixel");
 }
 
+PM_TEST(text, opaque_glyph_fast_path) {
+  RenderBatch batch;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+
+  GlyphStore::GlyphBitmap bitmap;
+  bitmap.width = 1;
+  bitmap.height = 1;
+  bitmap.bearingX = 0;
+  bitmap.bearingY = 0;
+  bitmap.advance = 1;
+  bitmap.stride = 1;
+  bitmap.pixels = {255};
+  batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(1);
+
+  batch.glyphs.glyphXQ8_8.push_back(0);
+  batch.glyphs.glyphYQ8_8.push_back(0);
+  batch.glyphs.bitmapIndex.push_back(0);
+
+  batch.runs.glyphStart.push_back(0);
+  batch.runs.glyphCount.push_back(1);
+  batch.runs.baselineQ8_8.push_back(0);
+  batch.runs.scaleQ8_8.push_back(256);
+
+  add_text(batch, 1, 1, 1, 1, PackRGBA8(Color{200, 100, 50, 255}), 0);
+
+  uint32_t width = 3;
+  uint32_t height = 3;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  render_batch(target, batch);
+
+  uint32_t expected = PackRGBA8(Color{200, 100, 50, 255});
+  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "opaque glyph fast path draws");
+}
+
+PM_TEST(text, partial_coverage_blends) {
+  RenderBatch batch;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+
+  GlyphStore::GlyphBitmap bitmap;
+  bitmap.width = 1;
+  bitmap.height = 1;
+  bitmap.bearingX = 0;
+  bitmap.bearingY = 0;
+  bitmap.advance = 1;
+  bitmap.stride = 1;
+  bitmap.pixels = {128};
+  batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
+
+  batch.glyphs.glyphXQ8_8.push_back(0);
+  batch.glyphs.glyphYQ8_8.push_back(0);
+  batch.glyphs.bitmapIndex.push_back(0);
+
+  batch.runs.glyphStart.push_back(0);
+  batch.runs.glyphCount.push_back(1);
+  batch.runs.baselineQ8_8.push_back(0);
+  batch.runs.scaleQ8_8.push_back(256);
+
+  add_text(batch, 1, 1, 1, 1, PackRGBA8(Color{255, 255, 255, 255}), 0);
+
+  uint32_t width = 3;
+  uint32_t height = 3;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  render_batch(target, batch);
+
+  uint32_t expected = PackRGBA8(Color{128, 128, 128, 255});
+  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "partial coverage blends to mid-gray");
+}
+
+PM_TEST(text, opacity_scales_coverage) {
+  RenderBatch batch;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+
+  GlyphStore::GlyphBitmap bitmap;
+  bitmap.width = 1;
+  bitmap.height = 1;
+  bitmap.bearingX = 0;
+  bitmap.bearingY = 0;
+  bitmap.advance = 1;
+  bitmap.stride = 1;
+  bitmap.pixels = {128};
+  batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
+
+  batch.glyphs.glyphXQ8_8.push_back(0);
+  batch.glyphs.glyphYQ8_8.push_back(0);
+  batch.glyphs.bitmapIndex.push_back(0);
+
+  batch.runs.glyphStart.push_back(0);
+  batch.runs.glyphCount.push_back(1);
+  batch.runs.baselineQ8_8.push_back(0);
+  batch.runs.scaleQ8_8.push_back(256);
+
+  uint32_t idx = static_cast<uint32_t>(batch.text.x.size());
+  batch.text.x.push_back(1);
+  batch.text.y.push_back(1);
+  batch.text.width.push_back(1);
+  batch.text.height.push_back(1);
+  batch.text.zQ8_8.push_back(0);
+  batch.text.opacity.push_back(128);
+  batch.text.colorIndex.push_back(palette_index(batch, PackRGBA8(Color{255, 255, 255, 255})));
+  batch.text.flags.push_back(0);
+  batch.text.runIndex.push_back(0);
+  batch.text.clipX0.push_back(0);
+  batch.text.clipY0.push_back(0);
+  batch.text.clipX1.push_back(0);
+  batch.text.clipY1.push_back(0);
+  batch.commands.push_back(RenderCommand{CommandType::Text, idx});
+
+  uint32_t width = 3;
+  uint32_t height = 3;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  render_batch(target, batch);
+
+  uint32_t expected = PackRGBA8(Color{64, 64, 64, 255});
+  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "opacity scales coverage");
+}
+
 PM_TEST(text, clip_respected) {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
