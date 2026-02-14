@@ -65,6 +65,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_debug_tiles.cpp
     tests/unit/test_font_registry.cpp
     tests/unit/test_front_to_back.cpp
+    tests/unit/test_layout.cpp
     tests/unit/test_main.cpp
     tests/unit/test_misc.cpp
     tests/unit/test_optimizer.cpp
