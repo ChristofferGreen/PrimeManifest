@@ -80,6 +80,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_text.cpp
     tests/unit/test_text_bake.cpp
     tests/unit/test_text_bake_edge.cpp
+    tests/unit/test_text_store_defaults.cpp
     tests/unit/test_tiles.cpp
     tests/unit/test_store_defaults.cpp
     tests/unit/test_target_guard.cpp
