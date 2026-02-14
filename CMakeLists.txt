@@ -69,6 +69,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_misc.cpp
     tests/unit/test_optimizer.cpp
     tests/unit/test_ordering.cpp
+    tests/unit/test_profiles.cpp
     tests/unit/test_rect.cpp
     tests/unit/test_renderer.cpp
     tests/unit/test_text.cpp
