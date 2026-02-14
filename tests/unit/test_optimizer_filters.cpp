@@ -148,3 +148,26 @@ PM_TEST(optimizer_filters, text_opacity_zero_skips_draw) {
 
   PM_CHECK(!optimized.valid, "text opacity zero yields no work");
 }
+
+PM_TEST(optimizer_filters, clear_pattern_offset_out_of_bounds_ignored) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.tileSize = 8;
+
+  uint32_t idx = static_cast<uint32_t>(batch.clearPattern.width.size());
+  batch.clearPattern.width.push_back(4);
+  batch.clearPattern.height.push_back(4);
+  batch.clearPattern.dataOffset.push_back(16);
+  batch.clearPattern.data.assign(16, 255);
+  batch.commands.push_back(RenderCommand{CommandType::ClearPattern, idx});
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(!optimized.valid, "clear pattern offset out of bounds ignored");
+}
