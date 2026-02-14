@@ -830,17 +830,30 @@ int main(int argc, char** argv) {
     profile.clear();
     batch.profile = &profile;
     if (cfg.useOptimized) {
-      OptimizeRenderBatch(target, batch, optimized);
+      if (!optimized.valid) {
+        OptimizeRenderBatch(target, batch, optimized);
+      }
       RenderOptimized(target, batch, optimized);
     } else {
       OptimizeRenderBatch(target, batch, optimized);
       RenderOptimized(target, batch, optimized);
     }
     batch.profile = nullptr;
-    double renderMs = static_cast<double>(profile.renderNs) / 1.0e6;
-    double buildMs = static_cast<double>(profile.buildNs) / 1.0e6;
-    double premergeMs = static_cast<double>(profile.premergeNs) / 1.0e6;
-    double workMs = static_cast<double>(profile.tileWorkNs) / 1.0e6;
+    auto ns_to_ms = [](uint64_t ns) -> double { return static_cast<double>(ns) / 1.0e6; };
+    double renderMs = ns_to_ms(profile.renderNs);
+    double buildMs = ns_to_ms(profile.buildNs);
+    double premergeMs = ns_to_ms(profile.premergeNs);
+    double workMs = ns_to_ms(profile.tileWorkNs);
+    double optScanMs = ns_to_ms(profile.optScanNs);
+    double optTileGridMs = ns_to_ms(profile.optTileGridNs);
+    double optTileStreamMs = ns_to_ms(profile.optTileStreamNs);
+    double optTileBinningMs = ns_to_ms(profile.optTileBinningNs);
+    double optRenderTilesMs = ns_to_ms(profile.optRenderTilesNs);
+    double optRectCacheMs = ns_to_ms(profile.optRectCacheNs);
+    double optTextCacheMs = ns_to_ms(profile.optTextCacheNs);
+    double renderClearMs = ns_to_ms(profile.renderClearNs);
+    double renderTilesMs = ns_to_ms(profile.renderTilesNs);
+    double renderDebugMs = ns_to_ms(profile.renderDebugNs);
     double coreEquiv = profile.renderNs > 0
                          ? static_cast<double>(profile.tileWorkNs) / static_cast<double>(profile.renderNs)
                          : 0.0;
@@ -848,9 +861,19 @@ int main(int argc, char** argv) {
     double utilPct = workerCount > 0 ? (coreEquiv / static_cast<double>(workerCount)) * 100.0 : 0.0;
 
     std::cout << "Profile: Render " << renderMs << "ms"
-              << " Build " << buildMs << "ms"
-              << " Premerge " << premergeMs << "ms"
+              << " Clear " << renderClearMs << "ms"
+              << " Tiles " << renderTilesMs << "ms"
+              << " Debug " << renderDebugMs << "ms"
               << " TileWork " << workMs << "ms\n";
+    std::cout << "Profile: Optimize " << buildMs << "ms"
+              << " Scan " << optScanMs << "ms"
+              << " TileGrid " << optTileGridMs << "ms"
+              << " TileStream " << optTileStreamMs << "ms"
+              << " Premerge " << premergeMs << "ms"
+              << " Binning " << optTileBinningMs << "ms"
+              << " RenderTiles " << optRenderTilesMs << "ms\n";
+    std::cout << "Profile: OptRectCache " << optRectCacheMs << "ms"
+              << " OptTextCache " << optTextCacheMs << "ms\n";
     std::cout << "Profile: Tiles " << profile.activeTileCount << "/" << profile.tileCount
               << " Commands " << profile.commandCount << "\n";
     std::cout << "Profile: WorkerCount " << workerCount
@@ -859,6 +882,11 @@ int main(int argc, char** argv) {
     std::cout << "Profile: RenderedTiles " << profile.renderedTileCount
               << " RenderedCommands " << profile.renderedCommandCount
               << " RenderedPixels " << profile.renderedPixelCount << "\n";
+    std::cout << "Profile: RenderedRects " << profile.renderedRectCount
+              << " RenderedTexts " << profile.renderedTextCount
+              << " RectPixels " << profile.renderedRectPixels
+              << " TextPixels " << profile.renderedTextPixels
+              << " TileBufferPixels " << profile.renderedTileBufferPixels << "\n";
     for (size_t i = 0; i < workerCount; ++i) {
       double workerMs = static_cast<double>(profile.workerNs[i]) / 1.0e6;
       std::cout << "Profile: Worker " << i

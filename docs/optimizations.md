@@ -126,6 +126,14 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy `--tile 32` (render-only) | 14.99 | `--optimized`, 1280x720, 40000 rects, 2000 texts. |
 | 2026-02-14 | Heavy `--tile 64` (render-only) | 12.84 | `--optimized`, 1280x720, 40000 rects, 2000 texts. |
 
+## Profiling Breakdown (phase timings)
+| Date | Scenario | FPS | Render ms | Tiles ms | TileWork ms | Optimize ms | Binning ms | RectCache ms | TextCache ms | Util % | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-14 | Default (combined) | 130.42 | 6.181 | 6.112 | 61.320 | 0.833 | 0.079 | 0.696 | 0.043 | 82.67 | 1280x720, 4000 rects, 200 texts, tile 32. |
+| 2026-02-14 | Default (render-only) | 154.03 | 7.020 | 6.954 | 72.375 | 0.000 | 0.000 | 0.000 | 0.000 | 85.92 | `--optimized`, 1280x720, 4000 rects, 200 texts, tile 32. |
+| 2026-02-14 | Heavy (combined) | 13.17 | 61.434 | 61.371 | 719.545 | 8.625 | 1.156 | 6.967 | 0.424 | 97.60 | 1280x720, 40000 rects, 2000 texts, tile 32. |
+| 2026-02-14 | Heavy (render-only) | 15.60 | 62.147 | 62.083 | 723.710 | 0.000 | 0.000 | 0.000 | 0.000 | 97.04 | `--optimized`, 1280x720, 40000 rects, 2000 texts, tile 32. |
+
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
 2. For each new optimization, capture a 20x600 release measurement and append a row.

@@ -259,6 +259,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
   RendererProfile* profile = batch.profile;
   RenderTimeScope renderScope(profile);
+  auto to_ns = [](auto start, auto end) -> uint64_t {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
+  };
   auto fetch_color = [&](auto const& indices, uint32_t idx, uint32_t fallback) -> uint32_t {
     if (idx >= indices.size()) return fallback;
     uint8_t paletteIndex = indices[idx];
@@ -328,6 +331,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   auto const& rectGradInvRange = prepared.rectGradInvRange;
   constexpr uint32_t InvalidOffset = 0xFFFFFFFFu;
 
+  auto clearStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (hasClear && !useTileBuffer) {
     uint32_t packed = clearColor;
     uint8_t* base = target.data.data();
@@ -357,12 +361,27 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       }
     }
   }
+  if (profile) {
+    profile->renderClearNs = to_ns(clearStart, std::chrono::steady_clock::now());
+  }
+
+  if (profile) {
+    profile->tileCount = tileCount;
+    profile->activeTileCount = static_cast<uint32_t>(renderTiles.size());
+    profile->commandCount = useTileStream ? static_cast<uint32_t>(tileStream->commands.size())
+                                          : static_cast<uint32_t>(batch.commands.size());
+  }
 
   if (renderTiles.empty() && !debugTiles) return;
 
   std::atomic<uint64_t> renderedTiles{0};
   std::atomic<uint64_t> renderedCommands{0};
   std::atomic<uint64_t> renderedPixels{0};
+  std::atomic<uint64_t> renderedRects{0};
+  std::atomic<uint64_t> renderedTexts{0};
+  std::atomic<uint64_t> renderedRectPixels{0};
+  std::atomic<uint64_t> renderedTextPixels{0};
+  std::atomic<uint64_t> renderedTileBufferPixels{0};
 
   auto render_tile = [&](uint32_t tileIndex) {
     uint32_t tx = tileIndex % tilesX;
@@ -377,6 +396,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     uint32_t opaqueCount = 0;
     uint64_t tileCommands = 0;
     uint64_t tilePixels = static_cast<uint64_t>(tx1 - tx0) * static_cast<uint64_t>(ty1 - ty0);
+    uint64_t tileRects = 0;
+    uint64_t tileTexts = 0;
+    uint64_t tileRectPixels = 0;
+    uint64_t tileTextPixels = 0;
+    uint64_t tileTileBufferPixels = 0;
     uint8_t* surfaceBase = target.data.data();
     uint32_t surfaceStride = target.strideBytes;
     int32_t surfaceY0 = 0;
@@ -506,6 +530,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
         int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
         if (rx1 <= rx0 || ry1 <= ry0) continue;
+        if (profile) {
+          ++tileRects;
+          tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
+        }
 
         uint16_t radiusQ = idx < batch.rects.radiusQ8_8.size() ? batch.rects.radiusQ8_8[idx] : 0;
         float radius = static_cast<float>(radiusQ) / 256.0f;
@@ -774,6 +802,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           baseAlpha = apply_opacity(cA, opacity);
         }
         if (baseAlpha == 0) continue;
+        if (profile) {
+          ++tileTexts;
+        }
         bool opaqueText = (baseAlpha == 255);
         const uint8_t* textPmR = nullptr;
         const uint8_t* textPmG = nullptr;
@@ -843,6 +874,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           }
 
           if (cx1 <= cx0 || cy1 <= cy0) continue;
+          if (profile) {
+            tileTextPixels += static_cast<uint64_t>(cx1 - cx0) * static_cast<uint64_t>(cy1 - cy0);
+          }
 
           if (opaqueText) {
             bool glyphOpaque = false;
@@ -922,12 +956,6 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       }
     }
 
-    if (profile) {
-      renderedTiles.fetch_add(1, std::memory_order_relaxed);
-      renderedCommands.fetch_add(tileCommands, std::memory_order_relaxed);
-      renderedPixels.fetch_add(tilePixels, std::memory_order_relaxed);
-    }
-
     if (useTileBuffer && hasClear && opaqueCount < tileArea) {
       uint8_t clearR = static_cast<uint8_t>(clearColor & 0xFFu);
       uint8_t clearG = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
@@ -956,9 +984,24 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                                            0xFFu);
         }
       }
+      if (profile) {
+        tileTileBufferPixels += static_cast<uint64_t>(tileArea);
+      }
+    }
+
+    if (profile) {
+      renderedTiles.fetch_add(1, std::memory_order_relaxed);
+      renderedCommands.fetch_add(tileCommands, std::memory_order_relaxed);
+      renderedPixels.fetch_add(tilePixels, std::memory_order_relaxed);
+      renderedRects.fetch_add(tileRects, std::memory_order_relaxed);
+      renderedTexts.fetch_add(tileTexts, std::memory_order_relaxed);
+      renderedRectPixels.fetch_add(tileRectPixels, std::memory_order_relaxed);
+      renderedTextPixels.fetch_add(tileTextPixels, std::memory_order_relaxed);
+      renderedTileBufferPixels.fetch_add(tileTileBufferPixels, std::memory_order_relaxed);
     }
   };
 
+  auto tilesStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (!renderTiles.empty()) {
     if (renderTiles.size() <= 2) {
       if (profile) {
@@ -1004,6 +1047,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     }
   }
 
+  if (profile && !renderTiles.empty()) {
+    profile->renderTilesNs = to_ns(tilesStart, std::chrono::steady_clock::now());
+  }
+
+  auto debugStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (debugTiles) {
     uint8_t dR = static_cast<uint8_t>(debugColor & 0xFFu);
     uint8_t dG = static_cast<uint8_t>((debugColor >> 8) & 0xFFu);
@@ -1067,9 +1115,17 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   }
 
   if (profile) {
+    if (debugTiles) {
+      profile->renderDebugNs = to_ns(debugStart, std::chrono::steady_clock::now());
+    }
     profile->renderedTileCount = renderedTiles.load(std::memory_order_relaxed);
     profile->renderedCommandCount = renderedCommands.load(std::memory_order_relaxed);
     profile->renderedPixelCount = renderedPixels.load(std::memory_order_relaxed);
+    profile->renderedRectCount = renderedRects.load(std::memory_order_relaxed);
+    profile->renderedTextCount = renderedTexts.load(std::memory_order_relaxed);
+    profile->renderedRectPixels = renderedRectPixels.load(std::memory_order_relaxed);
+    profile->renderedTextPixels = renderedTextPixels.load(std::memory_order_relaxed);
+    profile->renderedTileBufferPixels = renderedTileBufferPixels.load(std::memory_order_relaxed);
   }
 }
 

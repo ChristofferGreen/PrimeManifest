@@ -362,6 +362,9 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
     profile->clear();
   }
   auto buildStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+  auto to_ns = [](auto start, auto end) -> uint64_t {
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
+  };
   auto fetch_color = [&](auto const& indices, uint32_t idx, uint32_t fallback) -> uint32_t {
     if (idx >= indices.size()) return fallback;
     uint8_t paletteIndex = indices[idx];
@@ -369,6 +372,7 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
     return batch.palette.colorRGBA8[paletteIndex];
   };
 
+  auto scanStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   uint32_t clearColor = 0;
   bool hasClear = false;
   for (auto const& cmd : batch.commands) {
@@ -396,7 +400,11 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
       }
     }
   }
+  if (profile) {
+    profile->optScanNs = to_ns(scanStart, std::chrono::steady_clock::now());
+  }
 
+  auto gridStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   TileGrid grid = make_tile_grid(target.width, target.height, batch.tileSize);
   uint32_t tileCount = grid.tilesX * grid.tilesY;
   if (tileCount == 0) return false;
@@ -407,7 +415,11 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
       ++tileShift;
     }
   }
+  if (profile) {
+    profile->optTileGridNs = to_ns(gridStart, std::chrono::steady_clock::now());
+  }
 
+  auto tileStreamStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   bool useTileStream = batch.tileStream.enabled;
   TileStream const* tileStream = &batch.tileStream;
   if (useTileStream) {
@@ -434,6 +446,9 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
     }
   }
   bool useTileBuffer = useTileStream;
+  if (profile) {
+    profile->optTileStreamNs = to_ns(tileStreamStart, std::chrono::steady_clock::now());
+  }
 
   bool hasDraw = false;
   if (useTileStream) {
@@ -566,6 +581,7 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
       textClipY1.assign(textCount, 0);
     }
     if (useTileStream) {
+      auto renderTilesStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       renderTiles.reserve(tileCount);
       if (hasClear) {
         for (uint32_t i = 0; i < tileCount; ++i) {
@@ -581,6 +597,9 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
         for (uint32_t i = 0; i < tileCount; ++i) {
           if (tileMask[i]) renderTiles.push_back(i);
         }
+      }
+      if (profile) {
+        profile->optRenderTilesNs += to_ns(renderTilesStart, std::chrono::steady_clock::now());
       }
 
       auto mark_active = [&](auto const& cmdList) {
@@ -598,6 +617,7 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
       };
       mark_active(tileStream->commands);
     } else {
+      auto binStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       tileCounts.assign(tileCount, 0);
       cmdTiles.assign(batch.commands.size(), OptimizedBatch::CmdTileInfo{});
       cmdActive.assign(batch.commands.size(), 0);
@@ -745,6 +765,11 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
         }
       }
 
+      if (profile) {
+        profile->optTileBinningNs = to_ns(binStart, std::chrono::steady_clock::now());
+      }
+
+      auto renderTilesStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       renderTiles.clear();
       renderTiles.reserve(tileCount);
       for (uint32_t i = 0; i < tileCount; ++i) {
@@ -752,8 +777,12 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
           renderTiles.push_back(i);
         }
       }
+      if (profile) {
+        profile->optRenderTilesNs += to_ns(renderTilesStart, std::chrono::steady_clock::now());
+      }
     }
 
+    auto rectCacheStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (!rectActive.empty()) {
       for (uint32_t i = 0; i < rectActive.size(); ++i) {
         if (rectActive[i] == 0) continue;
@@ -836,7 +865,11 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
         }
       }
     }
+    if (profile) {
+      profile->optRectCacheNs = to_ns(rectCacheStart, std::chrono::steady_clock::now());
+    }
 
+    auto textCacheStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (!textActive.empty()) {
       for (uint32_t i = 0; i < textActive.size(); ++i) {
         if (textActive[i] == 0) continue;
@@ -878,6 +911,9 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
             static_cast<uint8_t>((static_cast<uint16_t>(cB) * cov + 127u) / 255u);
         }
       }
+    }
+    if (profile) {
+      profile->optTextCacheNs = to_ns(textCacheStart, std::chrono::steady_clock::now());
     }
   }
 
