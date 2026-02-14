@@ -9,11 +9,11 @@ Date: 2026-02-14
 - Report: mean FPS plus dispersion (median, min, max, stdev).
 
 ## Current Aggregate
-- Mean: 368.89 FPS
-- Median: 372.51 FPS
-- Min: 322.04 FPS
-- Max: 386.42 FPS
-- Stdev: 15.66 FPS
+- Mean: 362.76 FPS
+- Median: 365.04 FPS
+- Min: 332.64 FPS
+- Max: 384.53 FPS
+- Stdev: 15.27 FPS
 - Build: Release
 - Runs: 20
 - Frames: 600
@@ -22,7 +22,8 @@ Date: 2026-02-14
 ## Measurements
 | Date | Build | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-02-14 | Release | 20 | 600 | 368.89 | 372.51 | 322.04 | 386.42 | 15.66 | Working tree | Current aggregate (RGBA8 baseline with palette support). |
+| 2026-02-14 | Release | 20 | 600 | 362.76 | 365.04 | 332.64 | 384.53 | 15.27 | Working tree | Current aggregate (palette-only command colors, int16 geometry, tileSize=32). |
+| 2026-02-14 | Release | 20 | 600 | 368.89 | 372.51 | 322.04 | 386.42 | 15.66 | Working tree | Prior aggregate (palette optional, tileSize=32). |
 | 2026-02-14 | Release | 20 | 600 | 384.39 | 391.63 | 351.49 | 399.05 | 14.76 | Working tree | Indexed palette colors (rainbow + grayscale). |
 | 2026-02-14 | Release | 20 | 600 | 407.58 | 416.08 | 378.38 | 420.48 | 14.73 | Working tree | Previous aggregate (pre-palette experiment). |
 | 2026-02-14 | Release | 20 | 600 | 160.46 | 158.62 | 125.85 | 203.87 | 16.02 | Working tree | 2x renderer threads vs cores (regression). |
@@ -65,7 +66,8 @@ Date: 2026-02-14
 | Renderer worker count = base-1 | Rejected | Release mean 395.39 FPS (regression). |
 | Renderer worker count = base+1 | Rejected | Release mean 328.01 FPS (regression). |
 | Renderer worker count = 1.5x hardware concurrency | Rejected | Release mean 205.84 FPS (regression). |
-| Palette-indexed colors (256) | Candidate | Release mean 384.39 FPS vs RGBA8 368.89 FPS (~4.2% win). |
+| Palette-indexed colors (256) | Kept | Release mean 384.39 FPS vs RGBA8 368.89 FPS (~4.2% win). |
+| 16-bit command geometry (positions/clips, text sizes) | Candidate | Release mean 362.76 FPS (post-change baseline). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
