@@ -73,6 +73,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_optimizer.cpp
     tests/unit/test_optimizer_filters.cpp
     tests/unit/test_optimizer_text_cache.cpp
+    tests/unit/test_optimizer_rect_cache.cpp
     tests/unit/test_ordering.cpp
     tests/unit/test_palette.cpp
     tests/unit/test_palette_store.cpp
