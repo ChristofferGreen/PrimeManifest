@@ -188,7 +188,7 @@ struct TileGrid {
 
 auto make_tile_grid(uint32_t width, uint32_t height, uint32_t tileSize) -> TileGrid {
   TileGrid grid;
-  grid.tileSize = tileSize == 0 ? 64u : tileSize;
+  grid.tileSize = tileSize == 0 ? 32u : tileSize;
   grid.tilesX = (width + grid.tileSize - 1) / grid.tileSize;
   grid.tilesY = (height + grid.tileSize - 1) / grid.tileSize;
   return grid;
@@ -212,12 +212,25 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
   if (target.strideBytes == 0) return;
   if (target.data.size() < static_cast<size_t>(target.strideBytes) * target.height) return;
 
+  bool usePalette = batch.palette.enabled;
+  auto color_count = [&](auto const& indices, auto const& colors) -> size_t {
+    return usePalette ? indices.size() : colors.size();
+  };
+  auto fetch_color = [&](auto const& indices, auto const& colors, uint32_t idx, uint32_t fallback) -> uint32_t {
+    if (usePalette) {
+      if (idx >= indices.size()) return fallback;
+      return batch.palette.colorRGBA8[indices[idx]];
+    }
+    if (idx >= colors.size()) return fallback;
+    return colors[idx];
+  };
+
   uint32_t clearColor = 0;
   bool hasClear = false;
   for (auto const& cmd : batch.commands) {
     if (cmd.type != CommandType::Clear) continue;
-    if (cmd.index < batch.clear.colorRGBA8.size()) {
-      clearColor = batch.clear.colorRGBA8[cmd.index];
+    if (cmd.index < color_count(batch.clear.colorIndex, batch.clear.colorRGBA8)) {
+      clearColor = fetch_color(batch.clear.colorIndex, batch.clear.colorRGBA8, cmd.index, clearColor);
       hasClear = true;
     }
   }
@@ -228,8 +241,8 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
   bool debugTiles = false;
   for (auto const& cmd : batch.commands) {
     if (cmd.type != CommandType::DebugTiles) continue;
-    if (cmd.index < batch.debugTiles.colorRGBA8.size()) {
-      debugColor = batch.debugTiles.colorRGBA8[cmd.index];
+    if (cmd.index < color_count(batch.debugTiles.colorIndex, batch.debugTiles.colorRGBA8)) {
+      debugColor = fetch_color(batch.debugTiles.colorIndex, batch.debugTiles.colorRGBA8, cmd.index, debugColor);
       debugTiles = true;
       if (cmd.index < batch.debugTiles.lineWidth.size()) {
         debugLineWidth = std::max<uint8_t>(1, batch.debugTiles.lineWidth[cmd.index]);
@@ -357,7 +370,8 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     rectEdgePmGStore.clear();
     rectEdgePmBStore.clear();
 
-    size_t rectCount = std::min(batch.rects.colorRGBA8.size(), batch.rects.opacity.size());
+    size_t rectCount = std::min(color_count(batch.rects.colorIndex, batch.rects.colorRGBA8),
+                                batch.rects.opacity.size());
     if (rectCount > 0) {
       rectBaseAlpha.assign(rectCount, 0);
       rectActive.assign(rectCount, 0);
@@ -381,7 +395,8 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
       rectGradMin.assign(rectCount, 0.0f);
       rectGradInvRange.assign(rectCount, 1.0f);
     }
-    size_t textCount = std::min(batch.text.colorRGBA8.size(), batch.text.opacity.size());
+    size_t textCount = std::min(color_count(batch.text.colorIndex, batch.text.colorRGBA8),
+                                batch.text.opacity.size());
     if (textCount > 0) {
       textBaseAlpha.assign(textCount, 0);
       textActive.assign(textCount, 0);
@@ -411,12 +426,12 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             cmd.index >= batch.rects.y0.size() ||
             cmd.index >= batch.rects.x1.size() ||
             cmd.index >= batch.rects.y1.size() ||
-            cmd.index >= batch.rects.colorRGBA8.size()) {
+            cmd.index >= color_count(batch.rects.colorIndex, batch.rects.colorRGBA8)) {
           continue;
         }
         uint8_t opacity = cmd.index < batch.rects.opacity.size() ? batch.rects.opacity[cmd.index] : 255u;
         if (opacity == 0) continue;
-        uint32_t color = batch.rects.colorRGBA8[cmd.index];
+        uint32_t color = fetch_color(batch.rects.colorIndex, batch.rects.colorRGBA8, cmd.index, 0u);
         uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
         uint8_t flags = cmd.index < batch.rects.flags.size() ? batch.rects.flags[cmd.index] : 0u;
         if (opacity != 255u) {
@@ -427,8 +442,9 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
         if (!hasGradient) {
           if (cA == 0) continue;
         } else {
-          if (cmd.index >= batch.rects.gradientColor1RGBA8.size()) continue;
-          uint32_t g1 = batch.rects.gradientColor1RGBA8[cmd.index];
+          if (cmd.index >= color_count(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8)) continue;
+          uint32_t g1 =
+              fetch_color(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8, cmd.index, 0u);
           uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
           if (cA == 0 && gA == 0) continue;
         }
@@ -452,13 +468,13 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             cmd.index >= batch.text.y.size() ||
             cmd.index >= batch.text.width.size() ||
             cmd.index >= batch.text.height.size() ||
-            cmd.index >= batch.text.colorRGBA8.size() ||
+            cmd.index >= color_count(batch.text.colorIndex, batch.text.colorRGBA8) ||
             cmd.index >= batch.text.opacity.size()) {
           continue;
         }
         uint8_t opacity = batch.text.opacity[cmd.index];
         if (opacity == 0) continue;
-        uint32_t color = batch.text.colorRGBA8[cmd.index];
+        uint32_t color = fetch_color(batch.text.colorIndex, batch.text.colorRGBA8, cmd.index, 0u);
         uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
         if (opacity != 255u) {
           uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
@@ -546,7 +562,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     if (!rectActive.empty()) {
       for (uint32_t i = 0; i < rectActive.size(); ++i) {
         if (rectActive[i] == 0) continue;
-        uint32_t color = batch.rects.colorRGBA8[i];
+        uint32_t color = fetch_color(batch.rects.colorIndex, batch.rects.colorRGBA8, i, 0u);
         uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
         uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
         uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
@@ -572,7 +588,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
         }
         bool hasGradient = (flags & RectFlagGradient) != 0u;
         if (hasGradient) {
-          if (i >= batch.rects.gradientColor1RGBA8.size() ||
+          if (i >= color_count(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8) ||
               i >= batch.rects.gradientDirX.size() ||
               i >= batch.rects.gradientDirY.size()) {
             hasGradient = false;
@@ -600,7 +616,8 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           gradDir = normalize_or_default(gradDir, Vec2f{0.0f, 1.0f});
           rectGradDirX[i] = gradDir.x;
           rectGradDirY[i] = gradDir.y;
-          uint32_t g1 = batch.rects.gradientColor1RGBA8[i];
+          uint32_t g1 =
+              fetch_color(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8, i, 0u);
           rectGradColorR[i] = static_cast<uint8_t>(g1 & 0xFFu);
           rectGradColorG[i] = static_cast<uint8_t>((g1 >> 8) & 0xFFu);
           rectGradColorB[i] = static_cast<uint8_t>((g1 >> 16) & 0xFFu);
@@ -635,7 +652,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     if (!textActive.empty()) {
       for (uint32_t i = 0; i < textActive.size(); ++i) {
         if (textActive[i] == 0) continue;
-        uint32_t color = batch.text.colorRGBA8[i];
+        uint32_t color = fetch_color(batch.text.colorIndex, batch.text.colorRGBA8, i, 0u);
         uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
         uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
         uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
@@ -708,7 +725,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             idx >= batch.rects.y0.size() ||
             idx >= batch.rects.x1.size() ||
             idx >= batch.rects.y1.size() ||
-            idx >= batch.rects.colorRGBA8.size()) {
+            idx >= color_count(batch.rects.colorIndex, batch.rects.colorRGBA8)) {
           continue;
         }
 
@@ -730,7 +747,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
         uint8_t opacity = idx < batch.rects.opacity.size() ? batch.rects.opacity[idx] : 255u;
         uint8_t flags = idx < batch.rects.flags.size() ? batch.rects.flags[idx] : 0u;
 
-        uint32_t color = batch.rects.colorRGBA8[idx];
+        uint32_t color = fetch_color(batch.rects.colorIndex, batch.rects.colorRGBA8, idx, 0u);
         uint8_t cR = 0;
         uint8_t cG = 0;
         uint8_t cB = 0;
@@ -762,7 +779,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           gradMin = rectGradMin[idx];
           gradInvRange = rectGradInvRange[idx];
         } else if ((flags & RectFlagGradient) != 0u &&
-                   idx < batch.rects.gradientColor1RGBA8.size() &&
+                   idx < color_count(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8) &&
                    idx < batch.rects.gradientDirX.size() &&
                    idx < batch.rects.gradientDirY.size()) {
           hasGradient = true;
@@ -789,8 +806,9 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             gG = rectGradColorG[idx];
             gB = rectGradColorB[idx];
             gA = rectGradColorA[idx];
-          } else if (idx < batch.rects.gradientColor1RGBA8.size()) {
-            uint32_t g1 = batch.rects.gradientColor1RGBA8[idx];
+          } else if (idx < color_count(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8)) {
+            uint32_t g1 =
+                fetch_color(batch.rects.gradientColor1Index, batch.rects.gradientColor1RGBA8, idx, 0u);
             gR = static_cast<uint8_t>(g1 & 0xFFu);
             gG = static_cast<uint8_t>((g1 >> 8) & 0xFFu);
             gB = static_cast<uint8_t>((g1 >> 16) & 0xFFu);
@@ -1262,7 +1280,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             idx >= batch.text.y.size() ||
             idx >= batch.text.width.size() ||
             idx >= batch.text.height.size() ||
-            idx >= batch.text.colorRGBA8.size() ||
+            idx >= color_count(batch.text.colorIndex, batch.text.colorRGBA8) ||
             idx >= batch.text.opacity.size() ||
             idx >= batch.text.runIndex.size()) {
           continue;
@@ -1304,7 +1322,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           if (clip.x1 <= x0 || clip.x0 >= x1 || clip.y1 <= y0 || clip.y0 >= y1) continue;
         }
 
-        uint32_t color = batch.text.colorRGBA8[idx];
+        uint32_t color = fetch_color(batch.text.colorIndex, batch.text.colorRGBA8, idx, 0u);
         uint8_t cR = 0;
         uint8_t cG = 0;
         uint8_t cB = 0;

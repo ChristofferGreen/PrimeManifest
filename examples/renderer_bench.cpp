@@ -1,6 +1,8 @@
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -18,10 +20,11 @@ struct BenchConfig {
   uint32_t rectCount = 4000;
   uint32_t textCount = 200;
   uint32_t frames = 300;
-  uint16_t tileSize = 64;
+  uint16_t tileSize = 32;
   uint16_t rectRadius = 4;
   bool enableText = true;
   bool enableDebugTiles = false;
+  bool usePalette = true;
   uint32_t seed = 1337;
 };
 
@@ -59,6 +62,10 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.enableText = false;
     } else if (arg == "--debug-tiles") {
       cfg.enableDebugTiles = true;
+    } else if (arg == "--no-palette") {
+      cfg.usePalette = false;
+    } else if (arg == "--palette") {
+      cfg.usePalette = true;
     } else if (arg == "--seed") {
       cfg.seed = next(cfg.seed);
     }
@@ -66,9 +73,63 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
   return cfg;
 }
 
-void add_clear(RenderBatch& batch, uint32_t color) {
-  uint32_t idx = static_cast<uint32_t>(batch.clear.colorRGBA8.size());
-  batch.clear.colorRGBA8.push_back(color);
+auto hsv_to_rgb(float h, float s, float v) -> Color {
+  float c = v * s;
+  float hPrime = std::fmod(h / 60.0f, 6.0f);
+  float x = c * (1.0f - std::abs(std::fmod(hPrime, 2.0f) - 1.0f));
+  float r = 0.0f;
+  float g = 0.0f;
+  float b = 0.0f;
+  if (hPrime < 1.0f) {
+    r = c;
+    g = x;
+  } else if (hPrime < 2.0f) {
+    r = x;
+    g = c;
+  } else if (hPrime < 3.0f) {
+    g = c;
+    b = x;
+  } else if (hPrime < 4.0f) {
+    g = x;
+    b = c;
+  } else if (hPrime < 5.0f) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  float m = v - c;
+  return Color{static_cast<uint8_t>((r + m) * 255.0f),
+               static_cast<uint8_t>((g + m) * 255.0f),
+               static_cast<uint8_t>((b + m) * 255.0f),
+               255};
+}
+
+auto build_palette() -> std::array<uint32_t, 256> {
+  std::array<uint32_t, 256> palette{};
+  constexpr uint32_t rainbowCount = 192;
+  constexpr uint32_t grayCount = 64;
+  for (uint32_t i = 0; i < rainbowCount; ++i) {
+    float h = (360.0f * static_cast<float>(i)) / static_cast<float>(rainbowCount);
+    Color c = hsv_to_rgb(h, 1.0f, 1.0f);
+    palette[i] = PackRGBA8(c);
+  }
+  for (uint32_t i = 0; i < grayCount; ++i) {
+    uint8_t v = static_cast<uint8_t>((i * 255u) / (grayCount - 1));
+    palette[rainbowCount + i] = PackRGBA8(Color{v, v, v, 255});
+  }
+  return palette;
+}
+
+void add_clear(RenderBatch& batch, uint32_t color, uint8_t colorIndex, bool usePalette) {
+  uint32_t idx = usePalette ? static_cast<uint32_t>(batch.clear.colorIndex.size())
+                            : static_cast<uint32_t>(batch.clear.colorRGBA8.size());
+  if (usePalette) {
+    batch.clear.colorIndex.push_back(colorIndex);
+  } else {
+    batch.clear.colorRGBA8.push_back(color);
+  }
   batch.commands.push_back(RenderCommand{CommandType::Clear, idx});
 }
 
@@ -79,14 +140,21 @@ void add_rect(RenderBatch& batch,
               int32_t y1,
               uint32_t color,
               uint32_t gradientColor,
+              uint8_t colorIndex,
+              uint8_t gradientIndex,
               bool gradient,
-              uint16_t radiusQ8_8) {
+              uint16_t radiusQ8_8,
+              bool usePalette) {
   uint32_t idx = static_cast<uint32_t>(batch.rects.x0.size());
   batch.rects.x0.push_back(x0);
   batch.rects.y0.push_back(y0);
   batch.rects.x1.push_back(x1);
   batch.rects.y1.push_back(y1);
-  batch.rects.colorRGBA8.push_back(color);
+  if (usePalette) {
+    batch.rects.colorIndex.push_back(colorIndex);
+  } else {
+    batch.rects.colorRGBA8.push_back(color);
+  }
   batch.rects.radiusQ8_8.push_back(radiusQ8_8);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
@@ -94,11 +162,19 @@ void add_rect(RenderBatch& batch,
   uint8_t flags = 0;
   if (gradient) {
     flags |= RectFlagGradient;
-    batch.rects.gradientColor1RGBA8.push_back(gradientColor);
+    if (usePalette) {
+      batch.rects.gradientColor1Index.push_back(gradientIndex);
+    } else {
+      batch.rects.gradientColor1RGBA8.push_back(gradientColor);
+    }
     batch.rects.gradientDirX.push_back(static_cast<int16_t>(0));
     batch.rects.gradientDirY.push_back(static_cast<int16_t>(256));
   } else {
-    batch.rects.gradientColor1RGBA8.push_back(color);
+    if (usePalette) {
+      batch.rects.gradientColor1Index.push_back(colorIndex);
+    } else {
+      batch.rects.gradientColor1RGBA8.push_back(color);
+    }
     batch.rects.gradientDirX.push_back(0);
     batch.rects.gradientDirY.push_back(0);
   }
@@ -116,7 +192,9 @@ void add_text(RenderBatch& batch,
               int32_t width,
               int32_t height,
               uint32_t color,
-              uint32_t runIndex) {
+              uint8_t colorIndex,
+              uint32_t runIndex,
+              bool usePalette) {
   uint32_t idx = static_cast<uint32_t>(batch.text.x.size());
   batch.text.x.push_back(x);
   batch.text.y.push_back(y);
@@ -124,7 +202,11 @@ void add_text(RenderBatch& batch,
   batch.text.height.push_back(height);
   batch.text.zQ8_8.push_back(0);
   batch.text.opacity.push_back(255);
-  batch.text.colorRGBA8.push_back(color);
+  if (usePalette) {
+    batch.text.colorIndex.push_back(colorIndex);
+  } else {
+    batch.text.colorRGBA8.push_back(color);
+  }
   batch.text.flags.push_back(0);
   batch.text.runIndex.push_back(runIndex);
   batch.text.clipX0.push_back(0);
@@ -134,9 +216,14 @@ void add_text(RenderBatch& batch,
   batch.commands.push_back(RenderCommand{CommandType::Text, idx});
 }
 
-void add_debug_tiles(RenderBatch& batch, uint32_t color) {
-  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
-  batch.debugTiles.colorRGBA8.push_back(color);
+void add_debug_tiles(RenderBatch& batch, uint32_t color, uint8_t colorIndex, bool usePalette) {
+  uint32_t idx = usePalette ? static_cast<uint32_t>(batch.debugTiles.colorIndex.size())
+                            : static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
+  if (usePalette) {
+    batch.debugTiles.colorIndex.push_back(colorIndex);
+  } else {
+    batch.debugTiles.colorRGBA8.push_back(color);
+  }
   batch.debugTiles.lineWidth.push_back(1);
   batch.debugTiles.flags.push_back(DebugTilesFlagDirtyOnly);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
@@ -176,6 +263,11 @@ int main(int argc, char** argv) {
 
   RenderBatch batch;
   batch.tileSize = cfg.tileSize;
+  if (cfg.usePalette) {
+    batch.palette.enabled = true;
+    batch.palette.colorRGBA8 = build_palette();
+    batch.palette.size = 256;
+  }
 
   build_glyph_store(batch);
   build_text_run(batch, 12);
@@ -186,8 +278,10 @@ int main(int argc, char** argv) {
   std::uniform_int_distribution<int32_t> wDist(10, 80);
   std::uniform_int_distribution<int32_t> hDist(10, 80);
   std::uniform_int_distribution<uint32_t> cDist(0, 255);
+  std::uniform_int_distribution<uint32_t> idxDist(0, 255);
 
-  add_clear(batch, PackRGBA8(Color{12, 12, 16, 255}));
+  uint8_t clearIndex = cfg.usePalette ? 192 : 0;
+  add_clear(batch, PackRGBA8(Color{12, 12, 16, 255}), clearIndex, cfg.usePalette);
 
   for (uint32_t i = 0; i < cfg.rectCount; ++i) {
     int32_t w = wDist(rng);
@@ -204,9 +298,11 @@ int main(int argc, char** argv) {
                                   static_cast<uint8_t>(cDist(rng)),
                                   static_cast<uint8_t>(cDist(rng)),
                                   255});
+    uint8_t colorIndex = static_cast<uint8_t>(idxDist(rng));
+    uint8_t gradientIndex = static_cast<uint8_t>(idxDist(rng));
     bool gradient = (i % 4 == 0);
     uint16_t radiusQ8_8 = static_cast<uint16_t>(cfg.rectRadius * 256);
-    add_rect(batch, x0, y0, x1, y1, color, g1, gradient, radiusQ8_8);
+    add_rect(batch, x0, y0, x1, y1, color, g1, colorIndex, gradientIndex, gradient, radiusQ8_8, cfg.usePalette);
   }
 
   if (cfg.enableText) {
@@ -214,12 +310,15 @@ int main(int argc, char** argv) {
     for (uint32_t i = 0; i < cfg.textCount; ++i) {
       int32_t x = xDist(rng);
       int32_t y = yDist(rng);
-      add_text(batch, x, y, 120, 24, PackRGBA8(Color{230, 230, 230, 255}), runIndex);
+      uint8_t textIndex = cfg.usePalette ? 255 : 0;
+      add_text(batch, x, y, 120, 24, PackRGBA8(Color{230, 230, 230, 255}), textIndex, runIndex,
+               cfg.usePalette);
     }
   }
 
   if (cfg.enableDebugTiles) {
-    add_debug_tiles(batch, PackRGBA8(Color{255, 0, 0, 255}));
+    uint8_t debugIndex = 0;
+    add_debug_tiles(batch, PackRGBA8(Color{255, 0, 0, 255}), debugIndex, cfg.usePalette);
   }
 
   std::vector<uint8_t> buffer(static_cast<size_t>(cfg.width) * cfg.height * 4, 0u);
@@ -238,6 +337,7 @@ int main(int argc, char** argv) {
   std::cout << "Rects: " << cfg.rectCount << " Texts: " << (cfg.enableText ? cfg.textCount : 0)
             << " Frames: " << cfg.frames << "\n";
   std::cout << "TileSize: " << cfg.tileSize << "\n";
+  std::cout << "Palette: " << (cfg.usePalette ? "Indexed" : "RGBA8") << "\n";
   std::cout << "Elapsed: " << elapsed.count() << "s\n";
   std::cout << "FPS: " << fps << "\n";
 

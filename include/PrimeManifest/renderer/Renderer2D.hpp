@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -77,9 +78,11 @@ struct RenderTarget {
 
 struct ClearStore {
   std::vector<uint32_t> colorRGBA8;
+  std::vector<uint8_t> colorIndex;
 
   void clear() {
     colorRGBA8.clear();
+    colorIndex.clear();
   }
   size_t size() const {
     return colorRGBA8.size();
@@ -92,12 +95,14 @@ struct RectStore {
   std::vector<int32_t> x1;
   std::vector<int32_t> y1;
   std::vector<uint32_t> colorRGBA8;
+  std::vector<uint8_t> colorIndex;
   std::vector<uint16_t> radiusQ8_8;
   std::vector<int16_t> rotationQ8_8;
   std::vector<int16_t> zQ8_8;
   std::vector<uint8_t> opacity;
   std::vector<uint8_t> flags;
   std::vector<uint32_t> gradientColor1RGBA8;
+  std::vector<uint8_t> gradientColor1Index;
   std::vector<int16_t> gradientDirX;
   std::vector<int16_t> gradientDirY;
   std::vector<int32_t> clipX0;
@@ -111,12 +116,14 @@ struct RectStore {
     x1.clear();
     y1.clear();
     colorRGBA8.clear();
+    colorIndex.clear();
     radiusQ8_8.clear();
     rotationQ8_8.clear();
     zQ8_8.clear();
     opacity.clear();
     flags.clear();
     gradientColor1RGBA8.clear();
+    gradientColor1Index.clear();
     gradientDirX.clear();
     gradientDirY.clear();
     clipX0.clear();
@@ -137,6 +144,7 @@ struct TextStore {
   std::vector<int16_t> zQ8_8;
   std::vector<uint8_t> opacity;
   std::vector<uint32_t> colorRGBA8;
+  std::vector<uint8_t> colorIndex;
   std::vector<uint8_t> flags;
   std::vector<uint32_t> runIndex;
   std::vector<int32_t> clipX0;
@@ -152,6 +160,7 @@ struct TextStore {
     zQ8_8.clear();
     opacity.clear();
     colorRGBA8.clear();
+    colorIndex.clear();
     flags.clear();
     runIndex.clear();
     clipX0.clear();
@@ -224,16 +233,29 @@ struct GlyphStore {
 
 struct DebugTilesStore {
   std::vector<uint32_t> colorRGBA8;
+  std::vector<uint8_t> colorIndex;
   std::vector<uint8_t> lineWidth;
   std::vector<uint8_t> flags;
 
   void clear() {
     colorRGBA8.clear();
+    colorIndex.clear();
     lineWidth.clear();
     flags.clear();
   }
   size_t size() const {
     return colorRGBA8.size();
+  }
+};
+
+struct PaletteStore {
+  std::array<uint32_t, 256> colorRGBA8{};
+  bool enabled = false;
+  uint16_t size = 0;
+
+  void clear() {
+    enabled = false;
+    size = 0;
   }
 };
 
@@ -245,7 +267,8 @@ struct RenderBatch {
   TextRunStore runs;
   GlyphStore glyphs;
   DebugTilesStore debugTiles;
-  uint16_t tileSize = 64;
+  PaletteStore palette;
+  uint16_t tileSize = 32;
 
   void clearAll() {
     commands.clear();
@@ -255,6 +278,7 @@ struct RenderBatch {
     runs.clear();
     glyphs.clear();
     debugTiles.clear();
+    palette.clear();
   }
 };
 

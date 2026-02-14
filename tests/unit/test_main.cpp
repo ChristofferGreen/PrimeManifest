@@ -20,6 +20,40 @@ void check(bool cond, char const* msg) {
   }
 }
 
+auto palette_index(RenderBatch& batch, uint32_t color) -> uint8_t {
+  if (!batch.palette.enabled) {
+    batch.palette.enabled = true;
+    batch.palette.size = 0;
+    batch.palette.colorRGBA8.fill(0u);
+  }
+  for (uint16_t i = 0; i < batch.palette.size; ++i) {
+    if (batch.palette.colorRGBA8[i] == color) {
+      return static_cast<uint8_t>(i);
+    }
+  }
+  if (batch.palette.size >= batch.palette.colorRGBA8.size()) {
+    check(false, "palette overflow");
+    return 0;
+  }
+  uint8_t idx = static_cast<uint8_t>(batch.palette.size++);
+  batch.palette.colorRGBA8[idx] = color;
+  return idx;
+}
+
+auto build_test_colors() -> std::array<uint32_t, 64> {
+  std::array<uint32_t, 64> colors{};
+  uint8_t levels[4] = {0, 85, 170, 255};
+  size_t idx = 0;
+  for (uint8_t r : levels) {
+    for (uint8_t g : levels) {
+      for (uint8_t b : levels) {
+        colors[idx++] = PackRGBA8(Color{r, g, b, 255});
+      }
+    }
+  }
+  return colors;
+}
+
 auto pixel_at(std::vector<uint8_t> const& buffer, uint32_t width, uint32_t x, uint32_t y) -> uint32_t {
   size_t idx = static_cast<size_t>(y) * width * 4 + static_cast<size_t>(x) * 4;
   uint32_t r = buffer[idx + 0];
@@ -43,8 +77,8 @@ auto buffers_equal(std::vector<uint8_t> const& a, std::vector<uint8_t> const& b)
 }
 
 void add_clear(RenderBatch& batch, uint32_t color) {
-  uint32_t idx = static_cast<uint32_t>(batch.clear.colorRGBA8.size());
-  batch.clear.colorRGBA8.push_back(color);
+  uint32_t idx = static_cast<uint32_t>(batch.clear.colorIndex.size());
+  batch.clear.colorIndex.push_back(palette_index(batch, color));
   batch.commands.push_back(RenderCommand{CommandType::Clear, idx});
 }
 
@@ -59,13 +93,14 @@ void add_rect(RenderBatch& batch,
   batch.rects.y0.push_back(y0);
   batch.rects.x1.push_back(x1);
   batch.rects.y1.push_back(y1);
-  batch.rects.colorRGBA8.push_back(color);
+  uint8_t colorIndex = palette_index(batch, color);
+  batch.rects.colorIndex.push_back(colorIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(0);
-  batch.rects.gradientColor1RGBA8.push_back(color);
+  batch.rects.gradientColor1Index.push_back(colorIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(0);
@@ -87,13 +122,13 @@ void add_gradient_rect(RenderBatch& batch,
   batch.rects.y0.push_back(y0);
   batch.rects.x1.push_back(x1);
   batch.rects.y1.push_back(y1);
-  batch.rects.colorRGBA8.push_back(color0);
+  batch.rects.colorIndex.push_back(palette_index(batch, color0));
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(RectFlagGradient);
-  batch.rects.gradientColor1RGBA8.push_back(color1);
+  batch.rects.gradientColor1Index.push_back(palette_index(batch, color1));
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(256);
   batch.rects.clipX0.push_back(0);
@@ -117,13 +152,13 @@ void add_gradient_rect_dir(RenderBatch& batch,
   batch.rects.y0.push_back(y0);
   batch.rects.x1.push_back(x1);
   batch.rects.y1.push_back(y1);
-  batch.rects.colorRGBA8.push_back(color0);
+  batch.rects.colorIndex.push_back(palette_index(batch, color0));
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(RectFlagGradient);
-  batch.rects.gradientColor1RGBA8.push_back(color1);
+  batch.rects.gradientColor1Index.push_back(palette_index(batch, color1));
   batch.rects.gradientDirX.push_back(dirX);
   batch.rects.gradientDirY.push_back(dirY);
   batch.rects.clipX0.push_back(0);
@@ -147,7 +182,7 @@ void add_text(RenderBatch& batch,
   batch.text.height.push_back(height);
   batch.text.zQ8_8.push_back(0);
   batch.text.opacity.push_back(255);
-  batch.text.colorRGBA8.push_back(color);
+  batch.text.colorIndex.push_back(palette_index(batch, color));
   batch.text.flags.push_back(0);
   batch.text.runIndex.push_back(runIndex);
   batch.text.clipX0.push_back(0);
@@ -338,8 +373,8 @@ void test_debug_tiles() {
   add_clear(batch, PackRGBA8(Color{10, 10, 10, 255}));
 
   uint32_t debugColor = PackRGBA8(Color{255, 0, 0, 255});
-  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
-  batch.debugTiles.colorRGBA8.push_back(debugColor);
+  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorIndex.size());
+  batch.debugTiles.colorIndex.push_back(palette_index(batch, debugColor));
   batch.debugTiles.lineWidth.push_back(1);
   batch.debugTiles.flags.push_back(DebugTilesFlagDirtyOnly);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
@@ -361,8 +396,8 @@ void test_debug_tiles_dirty_only() {
   add_rect(batch, 0, 0, 4, 4, PackRGBA8(Color{0, 0, 255, 255}));
 
   uint32_t debugColor = PackRGBA8(Color{255, 0, 0, 255});
-  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
-  batch.debugTiles.colorRGBA8.push_back(debugColor);
+  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorIndex.size());
+  batch.debugTiles.colorIndex.push_back(palette_index(batch, debugColor));
   batch.debugTiles.lineWidth.push_back(1);
   batch.debugTiles.flags.push_back(DebugTilesFlagDirtyOnly);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
@@ -383,8 +418,8 @@ void test_debug_tiles_all() {
   batch.tileSize = 8;
 
   uint32_t debugColor = PackRGBA8(Color{255, 0, 0, 255});
-  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
-  batch.debugTiles.colorRGBA8.push_back(debugColor);
+  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorIndex.size());
+  batch.debugTiles.colorIndex.push_back(palette_index(batch, debugColor));
   batch.debugTiles.lineWidth.push_back(1);
   batch.debugTiles.flags.push_back(0);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
@@ -408,13 +443,14 @@ void test_rect_clip() {
   batch.rects.y0.push_back(1);
   batch.rects.x1.push_back(7);
   batch.rects.y1.push_back(7);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{255, 0, 0, 255}));
+  uint8_t redIndex = palette_index(batch, PackRGBA8(Color{255, 0, 0, 255}));
+  batch.rects.colorIndex.push_back(redIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(RectFlagClip);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{255, 0, 0, 255}));
+  batch.rects.gradientColor1Index.push_back(redIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(3);
@@ -445,13 +481,14 @@ void test_rect_clip_outside() {
   batch.rects.y0.push_back(1);
   batch.rects.x1.push_back(5);
   batch.rects.y1.push_back(5);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{255, 0, 0, 255}));
+  uint8_t redIndex = palette_index(batch, PackRGBA8(Color{255, 0, 0, 255}));
+  batch.rects.colorIndex.push_back(redIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(RectFlagClip);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{255, 0, 0, 255}));
+  batch.rects.gradientColor1Index.push_back(redIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(10);
@@ -506,7 +543,7 @@ void test_text_clip() {
   batch.text.height.push_back(3);
   batch.text.zQ8_8.push_back(0);
   batch.text.opacity.push_back(255);
-  batch.text.colorRGBA8.push_back(PackRGBA8(Color{0, 255, 0, 255}));
+  batch.text.colorIndex.push_back(palette_index(batch, PackRGBA8(Color{0, 255, 0, 255})));
   batch.text.flags.push_back(TextFlagClip);
   batch.text.runIndex.push_back(0);
   batch.text.clipX0.push_back(2);
@@ -565,7 +602,7 @@ void test_text_missing_run() {
   batch.text.height.push_back(2);
   batch.text.zQ8_8.push_back(0);
   batch.text.opacity.push_back(255);
-  batch.text.colorRGBA8.push_back(PackRGBA8(Color{0, 255, 0, 255}));
+  batch.text.colorIndex.push_back(palette_index(batch, PackRGBA8(Color{0, 255, 0, 255})));
   batch.text.flags.push_back(0);
   batch.text.runIndex.push_back(5); // invalid
   batch.text.clipX0.push_back(0);
@@ -594,13 +631,14 @@ void test_rect_opacity_zero() {
   batch.rects.y0.push_back(1);
   batch.rects.x1.push_back(5);
   batch.rects.y1.push_back(5);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{200, 200, 0, 255}));
+  uint8_t yellowIndex = palette_index(batch, PackRGBA8(Color{200, 200, 0, 255}));
+  batch.rects.colorIndex.push_back(yellowIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(0);
   batch.rects.flags.push_back(0);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{200, 200, 0, 255}));
+  batch.rects.gradientColor1Index.push_back(yellowIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(0);
@@ -629,13 +667,14 @@ void test_rect_opacity_half() {
   batch.rects.y0.push_back(1);
   batch.rects.x1.push_back(5);
   batch.rects.y1.push_back(5);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{100, 0, 0, 255}));
+  uint8_t redIndex = palette_index(batch, PackRGBA8(Color{100, 0, 0, 255}));
+  batch.rects.colorIndex.push_back(redIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(128);
   batch.rects.flags.push_back(0);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{100, 0, 0, 255}));
+  batch.rects.gradientColor1Index.push_back(redIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(0);
@@ -686,7 +725,7 @@ void test_text_opacity_zero() {
   batch.text.height.push_back(2);
   batch.text.zQ8_8.push_back(0);
   batch.text.opacity.push_back(0);
-  batch.text.colorRGBA8.push_back(PackRGBA8(Color{0, 255, 0, 255}));
+  batch.text.colorIndex.push_back(palette_index(batch, PackRGBA8(Color{0, 255, 0, 255})));
   batch.text.flags.push_back(0);
   batch.text.runIndex.push_back(0);
   batch.text.clipX0.push_back(0);
@@ -785,13 +824,14 @@ void test_rect_rotation_draws() {
   batch.rects.y0.push_back(2);
   batch.rects.x1.push_back(6);
   batch.rects.y1.push_back(6);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{0, 0, 255, 255}));
+  uint8_t blueIndex = palette_index(batch, PackRGBA8(Color{0, 0, 255, 255}));
+  batch.rects.colorIndex.push_back(blueIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(static_cast<int16_t>(static_cast<int>(3.14159f * 0.5f * 256)));
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(0);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{0, 0, 255, 255}));
+  batch.rects.gradientColor1Index.push_back(blueIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(0);
@@ -886,8 +926,8 @@ void test_debug_tiles_line_width() {
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
   uint32_t debugColor = PackRGBA8(Color{255, 0, 0, 255});
-  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
-  batch.debugTiles.colorRGBA8.push_back(debugColor);
+  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorIndex.size());
+  batch.debugTiles.colorIndex.push_back(palette_index(batch, debugColor));
   batch.debugTiles.lineWidth.push_back(2);
   batch.debugTiles.flags.push_back(DebugTilesFlagDirtyOnly);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
@@ -909,8 +949,8 @@ void test_debug_tiles_line_width_zero() {
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
   uint32_t debugColor = PackRGBA8(Color{255, 0, 0, 255});
-  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorRGBA8.size());
-  batch.debugTiles.colorRGBA8.push_back(debugColor);
+  uint32_t idx = static_cast<uint32_t>(batch.debugTiles.colorIndex.size());
+  batch.debugTiles.colorIndex.push_back(palette_index(batch, debugColor));
   batch.debugTiles.lineWidth.push_back(0);
   batch.debugTiles.flags.push_back(DebugTilesFlagDirtyOnly);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
@@ -934,13 +974,15 @@ void test_gradient_clip() {
   batch.rects.y0.push_back(0);
   batch.rects.x1.push_back(10);
   batch.rects.y1.push_back(10);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{0, 0, 0, 255}));
+  uint8_t blackIndex = palette_index(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  uint8_t whiteIndex = palette_index(batch, PackRGBA8(Color{255, 255, 255, 255}));
+  batch.rects.colorIndex.push_back(blackIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(RectFlagGradient | RectFlagClip);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{255, 255, 255, 255}));
+  batch.rects.gradientColor1Index.push_back(whiteIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(256);
   batch.rects.clipX0.push_back(0);
@@ -1162,7 +1204,9 @@ void test_random_fuzz_determinism() {
   std::mt19937 rng(42);
   std::uniform_int_distribution<int32_t> posDist(0, 120);
   std::uniform_int_distribution<int32_t> sizeDist(4, 24);
-  std::uniform_int_distribution<uint32_t> colorDist(0, 255);
+  auto colors = build_test_colors();
+  std::uniform_int_distribution<size_t> colorIndexDist(0, colors.size() - 1);
+  std::uniform_int_distribution<uint32_t> dirDist(0, 255);
   std::uniform_int_distribution<int> flagDist(0, 1);
 
   for (uint32_t i = 0; i < 200; ++i) {
@@ -1170,20 +1214,12 @@ void test_random_fuzz_determinism() {
     int32_t y0 = posDist(rng);
     int32_t x1 = x0 + sizeDist(rng);
     int32_t y1 = y0 + sizeDist(rng);
-    uint32_t c0 = PackRGBA8(Color{
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        255});
-    uint32_t c1 = PackRGBA8(Color{
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        255});
+    uint32_t c0 = colors[colorIndexDist(rng)];
+    uint32_t c1 = colors[colorIndexDist(rng)];
 
     if (flagDist(rng)) {
       add_gradient_rect_dir(batch, x0, y0, x1, y1, c0, c1,
-                            static_cast<int16_t>(colorDist(rng)), static_cast<int16_t>(colorDist(rng)));
+                            static_cast<int16_t>(dirDist(rng)), static_cast<int16_t>(dirDist(rng)));
     } else {
       add_rect(batch, x0, y0, x1, y1, c0);
     }
@@ -1349,6 +1385,8 @@ void test_random_clip_rotation_mix() {
   std::mt19937 rng(99);
   std::uniform_int_distribution<int32_t> posDist(0, 120);
   std::uniform_int_distribution<int32_t> sizeDist(8, 30);
+  auto colors = build_test_colors();
+  std::uniform_int_distribution<size_t> colorIndexDist(0, colors.size() - 1);
   std::uniform_int_distribution<uint32_t> colorDist(0, 255);
   std::uniform_int_distribution<int> flagDist(0, 1);
   std::uniform_int_distribution<int16_t> rotDist(-256, 256);
@@ -1358,23 +1396,15 @@ void test_random_clip_rotation_mix() {
     int32_t y0 = posDist(rng);
     int32_t x1 = x0 + sizeDist(rng);
     int32_t y1 = y0 + sizeDist(rng);
-    uint32_t c0 = PackRGBA8(Color{
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        255});
-    uint32_t c1 = PackRGBA8(Color{
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        255});
+    uint32_t c0 = colors[colorIndexDist(rng)];
+    uint32_t c1 = colors[colorIndexDist(rng)];
 
     uint32_t idx = static_cast<uint32_t>(batch.rects.x0.size());
     batch.rects.x0.push_back(x0);
     batch.rects.y0.push_back(y0);
     batch.rects.x1.push_back(x1);
     batch.rects.y1.push_back(y1);
-    batch.rects.colorRGBA8.push_back(c0);
+    batch.rects.colorIndex.push_back(palette_index(batch, c0));
     batch.rects.radiusQ8_8.push_back(static_cast<uint16_t>(sizeDist(rng)));
     batch.rects.rotationQ8_8.push_back(rotDist(rng));
     batch.rects.zQ8_8.push_back(0);
@@ -1383,7 +1413,7 @@ void test_random_clip_rotation_mix() {
     if (flagDist(rng)) flags |= RectFlagGradient;
     if (flagDist(rng)) flags |= RectFlagClip;
     batch.rects.flags.push_back(flags);
-    batch.rects.gradientColor1RGBA8.push_back(c1);
+    batch.rects.gradientColor1Index.push_back(palette_index(batch, c1));
     batch.rects.gradientDirX.push_back(static_cast<int16_t>(colorDist(rng)));
     batch.rects.gradientDirY.push_back(static_cast<int16_t>(colorDist(rng)));
     int32_t cx0 = x0 + 2;
@@ -1420,18 +1450,15 @@ void test_perf_smoke() {
   std::mt19937 rng(123);
   std::uniform_int_distribution<int32_t> posDist(0, 400);
   std::uniform_int_distribution<int32_t> sizeDist(6, 20);
-  std::uniform_int_distribution<uint32_t> colorDist(0, 255);
+  auto colors = build_test_colors();
+  std::uniform_int_distribution<size_t> colorIndexDist(0, colors.size() - 1);
 
   for (uint32_t i = 0; i < 2000; ++i) {
     int32_t x0 = posDist(rng);
     int32_t y0 = posDist(rng);
     int32_t x1 = x0 + sizeDist(rng);
     int32_t y1 = y0 + sizeDist(rng);
-    uint32_t c0 = PackRGBA8(Color{
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        static_cast<uint8_t>(colorDist(rng)),
-        255});
+    uint32_t c0 = colors[colorIndexDist(rng)];
     add_rect(batch, x0, y0, x1, y1, c0);
   }
 
@@ -1519,13 +1546,14 @@ void test_rect_negative_clip_ignored() {
   batch.rects.y0.push_back(1);
   batch.rects.x1.push_back(5);
   batch.rects.y1.push_back(5);
-  batch.rects.colorRGBA8.push_back(PackRGBA8(Color{255, 0, 0, 255}));
+  uint8_t redIndex = palette_index(batch, PackRGBA8(Color{255, 0, 0, 255}));
+  batch.rects.colorIndex.push_back(redIndex);
   batch.rects.radiusQ8_8.push_back(0);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
   batch.rects.flags.push_back(RectFlagClip);
-  batch.rects.gradientColor1RGBA8.push_back(PackRGBA8(Color{255, 0, 0, 255}));
+  batch.rects.gradientColor1Index.push_back(redIndex);
   batch.rects.gradientDirX.push_back(0);
   batch.rects.gradientDirY.push_back(0);
   batch.rects.clipX0.push_back(-10);
