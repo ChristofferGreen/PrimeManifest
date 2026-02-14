@@ -76,6 +76,32 @@ struct RenderTarget {
   uint32_t strideBytes = 0;
 };
 
+struct OptimizedBatch;
+
+struct RendererProfile {
+  uint64_t renderNs = 0;
+  uint64_t buildNs = 0;
+  uint64_t premergeNs = 0;
+  uint64_t tileWorkNs = 0;
+  uint32_t tileCount = 0;
+  uint32_t activeTileCount = 0;
+  uint32_t commandCount = 0;
+  std::vector<uint64_t> workerNs;
+  std::vector<uint32_t> workerTiles;
+
+  void clear() {
+    renderNs = 0;
+    buildNs = 0;
+    premergeNs = 0;
+    tileWorkNs = 0;
+    tileCount = 0;
+    activeTileCount = 0;
+    commandCount = 0;
+    workerNs.clear();
+    workerTiles.clear();
+  }
+};
+
 struct ClearStore {
   std::vector<uint8_t> colorIndex;
 
@@ -290,6 +316,7 @@ struct RenderBatch {
   TileStream tileStream;
   PaletteStore palette;
   uint16_t tileSize = 32;
+  RendererProfile* profile = nullptr;
 
   void clearAll() {
     commands.clear();
@@ -304,7 +331,6 @@ struct RenderBatch {
   }
 };
 
-void Render(RenderTarget target, RenderBatch const& batch);
-void Render(RenderTarget target, RenderBatch&& batch);
+void RenderOptimized(RenderTarget target, RenderBatch const& batch, OptimizedBatch const& prepared);
 
 } // namespace PrimeManifest

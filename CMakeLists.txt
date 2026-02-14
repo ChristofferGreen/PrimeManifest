@@ -18,6 +18,7 @@ function(pm_require_cxx23 target)
 endfunction()
 
 set(PRIMEMANIFEST_SOURCES
+  src/renderer/Optimizer2D.cpp
   src/renderer/Renderer2D.cpp
 )
 

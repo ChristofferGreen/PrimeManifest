@@ -1,3 +1,4 @@
+#include "PrimeManifest/renderer/Optimizer2D.hpp"
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
 #include <cstdlib>
@@ -12,6 +13,12 @@ using namespace PrimeManifest;
 namespace {
 
 int failures = 0;
+
+void render_batch(RenderTarget target, RenderBatch const& batch) {
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  RenderOptimized(target, batch, optimized);
+}
 
 void check(bool cond, char const* msg) {
   if (!cond) {
@@ -201,7 +208,7 @@ void test_clear() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{10, 20, 30, 255});
   check(pixel_at(buffer, width, 0, 0) == expected, "clear sets pixel 0,0");
@@ -217,7 +224,7 @@ void test_clear_alpha() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(channel_at(buffer, width, 0, 0, 3) == 128, "clear preserves alpha");
 }
@@ -232,7 +239,7 @@ void test_clear_last_wins() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{40, 50, 60, 255});
   check(pixel_at(buffer, width, 0, 0) == expected, "last clear wins");
@@ -248,7 +255,7 @@ void test_rect() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{200, 0, 0, 255});
   check(pixel_at(buffer, width, 3, 3) == expected, "rect fills interior pixel");
@@ -285,7 +292,7 @@ void test_text() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{0, 200, 0, 255});
   check(pixel_at(buffer, width, 1, 1) == expected, "text glyph draws pixel");
@@ -301,7 +308,7 @@ void test_gradient_rect() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint8_t top = channel_at(buffer, width, 5, 2, 0);
   uint8_t bottom = channel_at(buffer, width, 5, 8, 0);
@@ -320,7 +327,7 @@ void test_gradient_same_colors() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{50, 60, 70, 255});
   check(pixel_at(buffer, width, 2, 2) == expected, "gradient with same colors is uniform");
@@ -340,7 +347,7 @@ void test_gradient_dir_normalized() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint8_t top = channel_at(buffer, width, 5, 2, 0);
   uint8_t bottom = channel_at(buffer, width, 5, 8, 0);
@@ -360,7 +367,7 @@ void test_gradient_horizontal() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint8_t left = channel_at(buffer, width, 2, 5, 0);
   uint8_t right = channel_at(buffer, width, 8, 5, 0);
@@ -384,7 +391,7 @@ void test_debug_tiles() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 0, 0) == debugColor, "debug tiles draw outline pixel");
   check(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{10, 10, 10, 255}), "debug tiles leave interior");
@@ -407,7 +414,7 @@ void test_debug_tiles_dirty_only() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 0, 0) == debugColor, "dirty-only tiles outline touched tile");
   check(pixel_at(buffer, width, 12, 0) == 0, "dirty-only tiles skip untouched tile");
@@ -429,7 +436,7 @@ void test_debug_tiles_all() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 0, 0) == debugColor, "debug tiles outline even without dirty");
 }
@@ -464,7 +471,7 @@ void test_rect_clip() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
@@ -502,7 +509,7 @@ void test_rect_clip_outside() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 2, 2) == black, "clip outside prevents draw");
@@ -557,7 +564,7 @@ void test_text_clip() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t green = PackRGBA8(Color{0, 255, 0, 255});
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
@@ -585,7 +592,7 @@ void test_text_missing_bitmap() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 1, 1) == black, "missing bitmap skips draw");
@@ -616,7 +623,7 @@ void test_text_missing_run() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 1, 1) == black, "missing run skips draw");
@@ -652,7 +659,7 @@ void test_rect_opacity_zero() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 2, 2) == black, "opacity zero skips rect");
@@ -688,7 +695,7 @@ void test_rect_opacity_half() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint8_t red = channel_at(buffer, width, 2, 2, 0);
   check(red >= 49 && red <= 51, "opacity half blends to ~50");
@@ -739,7 +746,7 @@ void test_text_opacity_zero() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 1, 1) == black, "text opacity zero skips draw");
@@ -755,7 +762,7 @@ void test_rect_offscreen() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 0, 0) == black, "offscreen rect skipped");
@@ -792,7 +799,7 @@ void test_text_offscreen() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 0, 0) == black, "offscreen text skipped");
@@ -809,7 +816,7 @@ void test_command_order() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
   check(pixel_at(buffer, width, 2, 2) == red, "later command draws on top");
@@ -845,7 +852,7 @@ void test_rect_rotation_draws() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t blue = PackRGBA8(Color{0, 0, 255, 255});
   check(pixel_at(buffer, width, 4, 4) == blue, "rotated rect draws center");
@@ -862,7 +869,7 @@ void test_tile_size_zero_default() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{100, 100, 255, 255});
   check(pixel_at(buffer, width, 2, 2) == expected, "tile size zero falls back to default");
@@ -879,7 +886,7 @@ void test_tile_size_large() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{120, 120, 255, 255});
   check(pixel_at(buffer, width, 2, 2) == expected, "large tile size still renders");
@@ -896,7 +903,7 @@ void test_tile_size_non_power_of_two() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{10, 200, 10, 255});
   check(pixel_at(buffer, width, 7, 7) == expected, "non power-of-two tile size works");
@@ -913,7 +920,7 @@ void test_multi_tile_rect() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{255, 0, 255, 255});
   check(pixel_at(buffer, width, 6, 6) == expected, "rect draws in first tile");
@@ -937,7 +944,7 @@ void test_debug_tiles_line_width() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 0, 0) == debugColor, "debug line width draws outer border");
   check(pixel_at(buffer, width, 1, 1) == debugColor, "debug line width draws inner border");
@@ -960,7 +967,7 @@ void test_debug_tiles_line_width_zero() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 0, 0) == debugColor, "debug line width 0 defaults to 1");
 }
@@ -996,7 +1003,7 @@ void test_gradient_clip() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 7, 7) == black, "gradient clip prevents outside draw");
@@ -1033,8 +1040,8 @@ void test_determinism() {
   RenderTarget targetA{std::span<uint8_t>(bufferA), width, height, width * 4};
   RenderTarget targetB{std::span<uint8_t>(bufferB), width, height, width * 4};
 
-  Render(targetA, batch);
-  Render(targetB, batch);
+  render_batch(targetA, batch);
+  render_batch(targetB, batch);
 
   check(buffers_equal(bufferA, bufferB), "deterministic output for same batch");
 }
@@ -1080,7 +1087,7 @@ void test_text_atlas() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{0, 200, 200, 255});
   check(pixel_at(buffer, width, 2, 2) == expected, "text atlas pixel draws");
@@ -1127,7 +1134,7 @@ void test_text_atlas_offset() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{200, 100, 0, 255});
   check(pixel_at(buffer, width, 2, 2) == expected, "text atlas offset draws");
@@ -1143,7 +1150,7 @@ void test_stride_padding_preserved() {
   std::vector<uint8_t> buffer(static_cast<size_t>(stride) * height, 0x7F);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, stride};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   for (uint32_t y = 0; y < height; ++y) {
     size_t padStart = static_cast<size_t>(y) * stride + static_cast<size_t>(width) * 4;
@@ -1164,7 +1171,7 @@ void test_invalid_indices_ignored() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 0, 0) == expected, "invalid indices ignored");
@@ -1176,7 +1183,7 @@ void test_target_short_span() {
   std::vector<uint8_t> buffer(4, 0x7F);
   RenderTarget target{std::span<uint8_t>(buffer), 2, 2, 8};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(buffer[0] == 0x7F, "short span prevents write");
 }
@@ -1247,8 +1254,8 @@ void test_random_fuzz_determinism() {
   RenderTarget targetA{std::span<uint8_t>(bufferA), width, height, width * 4};
   RenderTarget targetB{std::span<uint8_t>(bufferB), width, height, width * 4};
 
-  Render(targetA, batch);
-  Render(targetB, batch);
+  render_batch(targetA, batch);
+  render_batch(targetB, batch);
 
   check(buffers_equal(bufferA, bufferB), "fuzz batch renders deterministically");
 }
@@ -1277,7 +1284,7 @@ void test_multithread_stress() {
 
   std::vector<uint8_t> reference;
   for (int i = 0; i < 8; ++i) {
-    Render(target, batch);
+    render_batch(target, batch);
     if (i == 0) {
       reference = buffer;
     } else {
@@ -1294,7 +1301,7 @@ void test_empty_batch_no_change() {
   std::vector<uint8_t> original = buffer;
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(buffers_equal(buffer, original), "empty batch leaves buffer unchanged");
 }
@@ -1331,7 +1338,7 @@ void test_text_over_rect_order() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t green = PackRGBA8(Color{0, 255, 0, 255});
   check(pixel_at(buffer, width, 2, 2) == green, "text draws after rect");
@@ -1370,7 +1377,7 @@ void test_large_text_across_tiles() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t yellow = PackRGBA8(Color{255, 255, 0, 255});
   check(pixel_at(buffer, width, 1, 5) == yellow, "large text draws in early tile");
@@ -1434,8 +1441,8 @@ void test_random_clip_rotation_mix() {
   RenderTarget targetA{std::span<uint8_t>(bufferA), width, height, width * 4};
   RenderTarget targetB{std::span<uint8_t>(bufferB), width, height, width * 4};
 
-  Render(targetA, batch);
-  Render(targetB, batch);
+  render_batch(targetA, batch);
+  render_batch(targetB, batch);
 
   check(buffers_equal(bufferA, bufferB), "clip+rotation mix deterministic");
 }
@@ -1469,7 +1476,7 @@ void test_perf_smoke() {
 
   auto start = std::chrono::steady_clock::now();
   for (int i = 0; i < 5; ++i) {
-    Render(target, batch);
+    render_batch(target, batch);
   }
   auto end = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration<double>(end - start).count();
@@ -1492,7 +1499,7 @@ void test_gradient_opacity() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint8_t red = channel_at(buffer, width, 5, 5, 0);
   check(red >= 49 && red <= 101, "gradient opacity applies");
@@ -1530,7 +1537,7 @@ void test_text_multiple_glyphs_spacing() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 0 draws");
   check(pixel_at(buffer, width, 5, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 1 spaced");
@@ -1567,7 +1574,7 @@ void test_rect_negative_clip_ignored() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
   check(pixel_at(buffer, width, 2, 2) == black, "negative clip prevents draw");
@@ -1604,7 +1611,7 @@ void test_text_scale() {
   std::vector<uint8_t> buffer(width * height * 4, 0);
   RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
 
-  Render(target, batch);
+  render_batch(target, batch);
 
   check(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{255, 255, 255, 255}), "scaled text draws at origin");
 }

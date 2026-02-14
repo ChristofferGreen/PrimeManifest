@@ -1,3 +1,4 @@
+#include "PrimeManifest/renderer/Optimizer2D.hpp"
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
 #include <algorithm>
@@ -7,8 +8,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <random>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -26,6 +29,10 @@ struct BenchConfig {
   bool enableText = true;
   bool enableDebugTiles = false;
   bool useTileStream = false;
+  bool dump = false;
+  std::string dumpPath;
+  bool profile = false;
+  bool useOptimized = false;
   uint32_t seed = 1337;
 };
 
@@ -65,6 +72,17 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.enableDebugTiles = true;
     } else if (arg == "--tile-stream") {
       cfg.useTileStream = true;
+    } else if (arg == "--dump") {
+      cfg.dump = true;
+      if (i + 1 < argc && argv[i + 1][0] != '-') {
+        cfg.dumpPath = argv[++i];
+      } else {
+        cfg.dumpPath = "renderer_bench.ppm";
+      }
+    } else if (arg == "--profile") {
+      cfg.profile = true;
+    } else if (arg == "--optimized") {
+      cfg.useOptimized = true;
     } else if (arg == "--seed") {
       cfg.seed = next(cfg.seed);
     }
@@ -119,6 +137,23 @@ auto build_palette() -> std::array<uint32_t, 256> {
     palette[rainbowCount + i] = PackRGBA8(Color{v, v, v, 255});
   }
   return palette;
+}
+
+auto write_ppm(std::string const& path, RenderTarget const& target) -> bool {
+  if (path.empty() || target.width == 0 || target.height == 0 || target.strideBytes == 0) return false;
+  std::ofstream out(path, std::ios::binary);
+  if (!out) return false;
+  out << "P6\n" << target.width << " " << target.height << "\n255\n";
+  for (uint32_t y = 0; y < target.height; ++y) {
+    auto const* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+    for (uint32_t x = 0; x < target.width; ++x) {
+      size_t idx = static_cast<size_t>(x) * 4u;
+      out.put(static_cast<char>(row[idx + 0]));
+      out.put(static_cast<char>(row[idx + 1]));
+      out.put(static_cast<char>(row[idx + 2]));
+    }
+  }
+  return static_cast<bool>(out);
 }
 
 void add_clear(RenderBatch& batch, uint8_t colorIndex) {
@@ -762,10 +797,19 @@ int main(int argc, char** argv) {
 
   std::vector<uint8_t> buffer(static_cast<size_t>(cfg.width) * cfg.height * 4, 0u);
   RenderTarget target{std::span<uint8_t>(buffer), cfg.width, cfg.height, cfg.width * 4};
+  OptimizedBatch optimized;
+  if (cfg.useOptimized) {
+    OptimizeRenderBatch(target, batch, optimized);
+  }
 
   auto start = std::chrono::steady_clock::now();
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
-    Render(target, batch);
+    if (cfg.useOptimized) {
+      RenderOptimized(target, batch, optimized);
+    } else {
+      OptimizeRenderBatch(target, batch, optimized);
+      RenderOptimized(target, batch, optimized);
+    }
   }
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
@@ -778,8 +822,54 @@ int main(int argc, char** argv) {
   std::cout << "TileSize: " << cfg.tileSize << "\n";
   std::cout << "Palette: Indexed\n";
   std::cout << "TileStream: " << (cfg.useTileStream ? "Enabled" : "Disabled") << "\n";
+  std::cout << "Optimized: " << (cfg.useOptimized ? "Enabled" : "Disabled") << "\n";
   std::cout << "Elapsed: " << elapsed.count() << "s\n";
   std::cout << "FPS: " << fps << "\n";
+  if (cfg.profile) {
+    RendererProfile profile;
+    profile.clear();
+    batch.profile = &profile;
+    if (cfg.useOptimized) {
+      OptimizeRenderBatch(target, batch, optimized);
+      RenderOptimized(target, batch, optimized);
+    } else {
+      OptimizeRenderBatch(target, batch, optimized);
+      RenderOptimized(target, batch, optimized);
+    }
+    batch.profile = nullptr;
+    double renderMs = static_cast<double>(profile.renderNs) / 1.0e6;
+    double buildMs = static_cast<double>(profile.buildNs) / 1.0e6;
+    double premergeMs = static_cast<double>(profile.premergeNs) / 1.0e6;
+    double workMs = static_cast<double>(profile.tileWorkNs) / 1.0e6;
+    double coreEquiv = profile.renderNs > 0
+                         ? static_cast<double>(profile.tileWorkNs) / static_cast<double>(profile.renderNs)
+                         : 0.0;
+    size_t workerCount = profile.workerNs.size();
+    double utilPct = workerCount > 0 ? (coreEquiv / static_cast<double>(workerCount)) * 100.0 : 0.0;
+
+    std::cout << "Profile: Render " << renderMs << "ms"
+              << " Build " << buildMs << "ms"
+              << " Premerge " << premergeMs << "ms"
+              << " TileWork " << workMs << "ms\n";
+    std::cout << "Profile: Tiles " << profile.activeTileCount << "/" << profile.tileCount
+              << " Commands " << profile.commandCount << "\n";
+    std::cout << "Profile: WorkerCount " << workerCount
+              << " CoreEquiv " << coreEquiv
+              << " Util " << utilPct << "%\n";
+    for (size_t i = 0; i < workerCount; ++i) {
+      double workerMs = static_cast<double>(profile.workerNs[i]) / 1.0e6;
+      std::cout << "Profile: Worker " << i
+                << " Tiles " << profile.workerTiles[i]
+                << " Time " << workerMs << "ms\n";
+    }
+  }
+  if (cfg.dump) {
+    if (write_ppm(cfg.dumpPath, target)) {
+      std::cout << "Framebuffer: " << cfg.dumpPath << "\n";
+    } else {
+      std::cerr << "Failed to dump framebuffer to " << cfg.dumpPath << "\n";
+    }
+  }
 
   return 0;
 }
