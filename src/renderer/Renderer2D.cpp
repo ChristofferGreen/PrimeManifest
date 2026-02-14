@@ -16,6 +16,7 @@ namespace PrimeManifest {
 namespace {
 
 constexpr float DefaultAa = 1.0f;
+constexpr uint32_t MacroFactor = 2;
 
 auto clamp01(float v) -> float {
   if (v < 0.0f) return 0.0f;
@@ -64,6 +65,8 @@ auto sdf_round_rect(Vec2f p, float hx, float hy, float radius) -> float {
   return outside + inside - rx;
 }
 
+constexpr uint8_t OpaqueAlphaCutoff = 250u;
+
 auto blend_premultiplied(uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB, uint8_t srcA) -> void {
   uint8_t dstR = dst[0];
   uint8_t dstG = dst[1];
@@ -75,6 +78,20 @@ auto blend_premultiplied(uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB,
   dst[1] = static_cast<uint8_t>((static_cast<uint16_t>(srcG) + (dstG * invA + 127u) / 255u) & 0xFFu);
   dst[2] = static_cast<uint8_t>((static_cast<uint16_t>(srcB) + (dstB * invA + 127u) / 255u) & 0xFFu);
   dst[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) + (dstA * invA + 127u) / 255u) & 0xFFu);
+}
+
+auto blend_front_to_back(uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB, uint8_t srcA) -> void {
+  uint8_t dstA = dst[3];
+  if (dstA >= OpaqueAlphaCutoff) return;
+  uint16_t invA = static_cast<uint16_t>(255u - dstA);
+  dst[0] = static_cast<uint8_t>((static_cast<uint16_t>(dst[0]) + (static_cast<uint16_t>(srcR) * invA + 127u) / 255u) &
+                                0xFFu);
+  dst[1] = static_cast<uint8_t>((static_cast<uint16_t>(dst[1]) + (static_cast<uint16_t>(srcG) * invA + 127u) / 255u) &
+                                0xFFu);
+  dst[2] = static_cast<uint8_t>((static_cast<uint16_t>(dst[2]) + (static_cast<uint16_t>(srcB) * invA + 127u) / 255u) &
+                                0xFFu);
+  dst[3] = static_cast<uint8_t>((static_cast<uint16_t>(dstA) + (static_cast<uint16_t>(srcA) * invA + 127u) / 255u) &
+                                0xFFu);
 }
 
 auto apply_opacity(uint8_t a, uint8_t opacity) -> uint8_t {
@@ -203,6 +220,306 @@ auto rect_intersects_tile(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
   return true;
 }
 
+struct CommandBounds {
+  int32_t x0 = 0;
+  int32_t y0 = 0;
+  int32_t x1 = 0;
+  int32_t y1 = 0;
+  bool valid = false;
+};
+
+auto premerge_tile_stream(RenderBatch const& batch,
+                          TileGrid const& grid,
+                          uint32_t width,
+                          uint32_t height) -> TileStream {
+  TileStream merged;
+  auto const& src = batch.tileStream;
+  if (!src.enabled || src.preMerged) return merged;
+  if (grid.tileSize == 0 || grid.tileSize > 256u) return merged;
+  uint32_t tileCount = grid.tilesX * grid.tilesY;
+  if (tileCount == 0) return merged;
+  if (src.offsets.size() != static_cast<size_t>(tileCount + 1) ||
+      src.offsets.back() != src.commands.size()) {
+    return merged;
+  }
+
+  uint32_t macroTilesX = (grid.tilesX + MacroFactor - 1) / MacroFactor;
+  uint32_t macroTilesY = (grid.tilesY + MacroFactor - 1) / MacroFactor;
+  uint32_t macroCount = macroTilesX * macroTilesY;
+
+  std::vector<uint32_t> fallbackMacroOffsets;
+  auto const* macroOffsets = &src.macroOffsets;
+  if (src.macroOffsets.empty()) {
+    if (!src.macroCommands.empty()) return merged;
+    fallbackMacroOffsets.assign(macroCount + 1, 0);
+    macroOffsets = &fallbackMacroOffsets;
+  } else if (src.macroOffsets.size() != static_cast<size_t>(macroCount + 1) ||
+             src.macroOffsets.back() != src.macroCommands.size()) {
+    return merged;
+  }
+
+  std::vector<CommandBounds> rectBounds(batch.rects.x0.size());
+  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
+    CommandBounds b{};
+    b.x0 = batch.rects.x0[i];
+    b.y0 = batch.rects.y0[i];
+    b.x1 = batch.rects.x1[i];
+    b.y1 = batch.rects.y1[i];
+    if (i < batch.rects.flags.size() && (batch.rects.flags[i] & RectFlagClip) != 0u &&
+        i < batch.rects.clipX0.size() && i < batch.rects.clipY0.size() &&
+        i < batch.rects.clipX1.size() && i < batch.rects.clipY1.size()) {
+      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.rects.clipX0[i]));
+      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.rects.clipY0[i]));
+      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.rects.clipX1[i]));
+      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.rects.clipY1[i]));
+    }
+    b.x0 = std::max(b.x0, 0);
+    b.y0 = std::max(b.y0, 0);
+    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
+    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
+    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
+    rectBounds[i] = b;
+  }
+
+  std::vector<CommandBounds> textBounds(batch.text.x.size());
+  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
+    CommandBounds b{};
+    b.x0 = batch.text.x[i];
+    b.y0 = batch.text.y[i];
+    b.x1 = b.x0 + batch.text.width[i];
+    b.y1 = b.y0 + batch.text.height[i];
+    if (i < batch.text.flags.size() && (batch.text.flags[i] & TextFlagClip) != 0u &&
+        i < batch.text.clipX0.size() && i < batch.text.clipY0.size() &&
+        i < batch.text.clipX1.size() && i < batch.text.clipY1.size()) {
+      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.text.clipX0[i]));
+      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.text.clipY0[i]));
+      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.text.clipX1[i]));
+      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.text.clipY1[i]));
+    }
+    b.x0 = std::max(b.x0, 0);
+    b.y0 = std::max(b.y0, 0);
+    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
+    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
+    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
+    textBounds[i] = b;
+  }
+
+  std::vector<uint32_t> mergedCounts(tileCount, 0);
+  auto count_tile = [&](uint32_t tileIndex) {
+    uint32_t tx = tileIndex % grid.tilesX;
+    uint32_t ty = tileIndex / grid.tilesX;
+    int32_t tileX0 = static_cast<int32_t>(tx * grid.tileSize);
+    int32_t tileY0 = static_cast<int32_t>(ty * grid.tileSize);
+    int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(width));
+    int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(height));
+    size_t tileCursor = src.offsets[tileIndex];
+    size_t tileEnd = src.offsets[tileIndex + 1];
+    uint32_t macroX = tx / MacroFactor;
+    uint32_t macroY = ty / MacroFactor;
+    uint32_t macroIndex = macroY * macroTilesX + macroX;
+    size_t macroCursor = (*macroOffsets)[macroIndex];
+    size_t macroEnd = (*macroOffsets)[macroIndex + 1];
+    size_t globalCursor = 0;
+    size_t globalEnd = src.globalCommands.size();
+    int32_t macroOriginX = static_cast<int32_t>(macroX * MacroFactor * grid.tileSize);
+    int32_t macroOriginY = static_cast<int32_t>(macroY * MacroFactor * grid.tileSize);
+    while (tileCursor < tileEnd || macroCursor < macroEnd || globalCursor < globalEnd) {
+      uint32_t bestOrder = 0xFFFFFFFFu;
+      enum class Source : uint8_t { Tile, Macro, Global } srcType = Source::Tile;
+      bool hasSrc = false;
+      if (tileCursor < tileEnd) {
+        bestOrder = src.commands[tileCursor].order;
+        srcType = Source::Tile;
+        hasSrc = true;
+      }
+      if (macroCursor < macroEnd) {
+        uint32_t order = src.macroCommands[macroCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          srcType = Source::Macro;
+          hasSrc = true;
+        }
+      }
+      if (globalCursor < globalEnd) {
+        uint32_t order = src.globalCommands[globalCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          srcType = Source::Global;
+          hasSrc = true;
+        }
+      }
+      if (!hasSrc) break;
+      if (srcType == Source::Tile) {
+        ++tileCursor;
+        mergedCounts[tileIndex] += 1;
+      } else if (srcType == Source::Macro) {
+        auto const& cmd = src.macroCommands[macroCursor++];
+        int32_t drawX0 = macroOriginX + static_cast<int32_t>(cmd.x);
+        int32_t drawY0 = macroOriginY + static_cast<int32_t>(cmd.y);
+        int32_t drawX1 = drawX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+        int32_t drawY1 = drawY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+        int32_t ix0 = std::max(drawX0, tileX0);
+        int32_t iy0 = std::max(drawY0, tileY0);
+        int32_t ix1 = std::min(drawX1, tileX1);
+        int32_t iy1 = std::min(drawY1, tileY1);
+        if (ix1 > ix0 && iy1 > iy0) {
+          mergedCounts[tileIndex] += 1;
+        }
+      } else {
+        auto const& cmd = src.globalCommands[globalCursor++];
+        CommandBounds b{};
+        if (cmd.type == CommandType::Rect) {
+          if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
+          b = rectBounds[cmd.index];
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
+          b = textBounds[cmd.index];
+        } else {
+          continue;
+        }
+        int32_t ix0 = std::max(b.x0, tileX0);
+        int32_t iy0 = std::max(b.y0, tileY0);
+        int32_t ix1 = std::min(b.x1, tileX1);
+        int32_t iy1 = std::min(b.y1, tileY1);
+        if (ix1 > ix0 && iy1 > iy0) {
+          mergedCounts[tileIndex] += 1;
+        }
+      }
+    }
+  };
+
+  for (uint32_t tileIndex = 0; tileIndex < tileCount; ++tileIndex) {
+    count_tile(tileIndex);
+  }
+
+  merged.offsets.assign(tileCount + 1, 0);
+  for (uint32_t i = 0; i < tileCount; ++i) {
+    merged.offsets[i + 1] = merged.offsets[i] + mergedCounts[i];
+  }
+  merged.commands.assign(merged.offsets.back(), TileCommand{});
+  std::vector<uint32_t> mergedFill(tileCount, 0);
+
+  auto emit_tile = [&](uint32_t tileIndex) {
+    uint32_t tx = tileIndex % grid.tilesX;
+    uint32_t ty = tileIndex / grid.tilesX;
+    int32_t tileX0 = static_cast<int32_t>(tx * grid.tileSize);
+    int32_t tileY0 = static_cast<int32_t>(ty * grid.tileSize);
+    int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(width));
+    int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(height));
+    size_t tileCursor = src.offsets[tileIndex];
+    size_t tileEnd = src.offsets[tileIndex + 1];
+    uint32_t macroX = tx / MacroFactor;
+    uint32_t macroY = ty / MacroFactor;
+    uint32_t macroIndex = macroY * macroTilesX + macroX;
+    size_t macroCursor = (*macroOffsets)[macroIndex];
+    size_t macroEnd = (*macroOffsets)[macroIndex + 1];
+    size_t globalCursor = 0;
+    size_t globalEnd = src.globalCommands.size();
+    int32_t macroOriginX = static_cast<int32_t>(macroX * MacroFactor * grid.tileSize);
+    int32_t macroOriginY = static_cast<int32_t>(macroY * MacroFactor * grid.tileSize);
+    while (tileCursor < tileEnd || macroCursor < macroEnd || globalCursor < globalEnd) {
+      uint32_t bestOrder = 0xFFFFFFFFu;
+      enum class Source : uint8_t { Tile, Macro, Global } srcType = Source::Tile;
+      bool hasSrc = false;
+      if (tileCursor < tileEnd) {
+        bestOrder = src.commands[tileCursor].order;
+        srcType = Source::Tile;
+        hasSrc = true;
+      }
+      if (macroCursor < macroEnd) {
+        uint32_t order = src.macroCommands[macroCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          srcType = Source::Macro;
+          hasSrc = true;
+        }
+      }
+      if (globalCursor < globalEnd) {
+        uint32_t order = src.globalCommands[globalCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          srcType = Source::Global;
+          hasSrc = true;
+        }
+      }
+      if (!hasSrc) break;
+      if (srcType == Source::Tile) {
+        auto cmd = src.commands[tileCursor++];
+        uint32_t offset = merged.offsets[tileIndex] + mergedFill[tileIndex]++;
+        merged.commands[offset] = cmd;
+      } else if (srcType == Source::Macro) {
+        auto cmd = src.macroCommands[macroCursor++];
+        int32_t drawX0 = macroOriginX + static_cast<int32_t>(cmd.x);
+        int32_t drawY0 = macroOriginY + static_cast<int32_t>(cmd.y);
+        int32_t drawX1 = drawX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+        int32_t drawY1 = drawY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+        int32_t ix0 = std::max(drawX0, tileX0);
+        int32_t iy0 = std::max(drawY0, tileY0);
+        int32_t ix1 = std::min(drawX1, tileX1);
+        int32_t iy1 = std::min(drawY1, tileY1);
+        if (ix1 <= ix0 || iy1 <= iy0) continue;
+        int32_t localX0 = ix0 - tileX0;
+        int32_t localY0 = iy0 - tileY0;
+        int32_t localW = ix1 - ix0;
+        int32_t localH = iy1 - iy0;
+        if (localX0 < 0 || localY0 < 0 || localW <= 0 || localH <= 0) continue;
+        if (localX0 > 255 || localY0 > 255 || localW > 256 || localH > 256) continue;
+        TileCommand out{};
+        out.type = cmd.type;
+        out.index = cmd.index;
+        out.order = cmd.order;
+        out.x = static_cast<uint8_t>(localX0);
+        out.y = static_cast<uint8_t>(localY0);
+        out.wMinus1 = static_cast<uint8_t>(localW - 1);
+        out.hMinus1 = static_cast<uint8_t>(localH - 1);
+        uint32_t offset = merged.offsets[tileIndex] + mergedFill[tileIndex]++;
+        merged.commands[offset] = out;
+      } else {
+        auto cmd = src.globalCommands[globalCursor++];
+        CommandBounds b{};
+        if (cmd.type == CommandType::Rect) {
+          if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
+          b = rectBounds[cmd.index];
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
+          b = textBounds[cmd.index];
+        } else {
+          continue;
+        }
+        int32_t ix0 = std::max(b.x0, tileX0);
+        int32_t iy0 = std::max(b.y0, tileY0);
+        int32_t ix1 = std::min(b.x1, tileX1);
+        int32_t iy1 = std::min(b.y1, tileY1);
+        if (ix1 <= ix0 || iy1 <= iy0) continue;
+        int32_t localX0 = ix0 - tileX0;
+        int32_t localY0 = iy0 - tileY0;
+        int32_t localW = ix1 - ix0;
+        int32_t localH = iy1 - iy0;
+        if (localX0 < 0 || localY0 < 0 || localW <= 0 || localH <= 0) continue;
+        if (localX0 > 255 || localY0 > 255 || localW > 256 || localH > 256) continue;
+        TileCommand out{};
+        out.type = cmd.type;
+        out.index = cmd.index;
+        out.order = cmd.order;
+        out.x = static_cast<uint8_t>(localX0);
+        out.y = static_cast<uint8_t>(localY0);
+        out.wMinus1 = static_cast<uint8_t>(localW - 1);
+        out.hMinus1 = static_cast<uint8_t>(localH - 1);
+        uint32_t offset = merged.offsets[tileIndex] + mergedFill[tileIndex]++;
+        merged.commands[offset] = out;
+      }
+    }
+  };
+
+  for (uint32_t tileIndex = 0; tileIndex < tileCount; ++tileIndex) {
+    emit_tile(tileIndex);
+  }
+
+  merged.enabled = true;
+  merged.preMerged = true;
+  return merged;
+}
+
 } // namespace
 
 namespace {
@@ -248,7 +565,38 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     }
   }
 
-  if (hasClear) {
+  TileGrid grid = make_tile_grid(target.width, target.height, batch.tileSize);
+  uint32_t tileCount = grid.tilesX * grid.tilesY;
+  if (tileCount == 0) return;
+  bool tilePow2 = (grid.tileSize & (grid.tileSize - 1)) == 0;
+  uint32_t tileShift = 0;
+  if (tilePow2) {
+    while ((1u << tileShift) < grid.tileSize) {
+      ++tileShift;
+    }
+  }
+
+  bool useTileStream = batch.tileStream.enabled;
+  TileStream const* tileStream = &batch.tileStream;
+  TileStream mergedTileStream;
+  if (useTileStream) {
+    if (grid.tileSize > 256u) {
+      useTileStream = false;
+    } else if (batch.tileStream.offsets.size() != static_cast<size_t>(tileCount + 1) ||
+               batch.tileStream.offsets.back() != batch.tileStream.commands.size()) {
+      useTileStream = false;
+    } else if (!batch.tileStream.preMerged) {
+      mergedTileStream = premerge_tile_stream(batch, grid, target.width, target.height);
+      if (!mergedTileStream.enabled) {
+        useTileStream = false;
+      } else {
+        tileStream = &mergedTileStream;
+      }
+    }
+  }
+  bool useTileBuffer = useTileStream;
+
+  if (hasClear && !useTileBuffer) {
     uint32_t packed = clearColor;
     uint8_t* base = target.data.data();
     if (target.strideBytes == target.width * 4 &&
@@ -278,28 +626,9 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     }
   }
 
-  TileGrid grid = make_tile_grid(target.width, target.height, batch.tileSize);
-  uint32_t tileCount = grid.tilesX * grid.tilesY;
-  if (tileCount == 0) return;
-  bool tilePow2 = (grid.tileSize & (grid.tileSize - 1)) == 0;
-  uint32_t tileShift = 0;
-  if (tilePow2) {
-    while ((1u << tileShift) < grid.tileSize) {
-      ++tileShift;
-    }
-  }
-
-  bool useTileStream = batch.tileStream.enabled;
-  if (useTileStream) {
-    if (batch.tileStream.offsets.size() != static_cast<size_t>(tileCount + 1) ||
-        batch.tileStream.offsets.back() != batch.tileStream.commands.size()) {
-      useTileStream = false;
-    }
-  }
-
   bool hasDraw = false;
   if (useTileStream) {
-    hasDraw = !batch.tileStream.commands.empty();
+    hasDraw = !tileStream->commands.empty();
   } else {
     for (auto const& cmd : batch.commands) {
       if (cmd.type == CommandType::Rect || cmd.type == CommandType::Text) {
@@ -307,6 +636,9 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
         break;
       }
     }
+  }
+  if (useTileBuffer && hasClear) {
+    hasDraw = true;
   }
   if (!hasDraw && !debugTiles) return;
 
@@ -418,22 +750,36 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     }
     if (useTileStream) {
       renderTiles.reserve(tileCount);
-      for (uint32_t i = 0; i < tileCount; ++i) {
-        if (batch.tileStream.offsets[i] != batch.tileStream.offsets[i + 1]) {
+      if (hasClear) {
+        for (uint32_t i = 0; i < tileCount; ++i) {
           renderTiles.push_back(i);
         }
-      }
-      for (auto const& cmd : batch.tileStream.commands) {
-        if (cmd.type == CommandType::Rect) {
-          if (cmd.index < rectActive.size()) {
-            rectActive[cmd.index] = 1;
-          }
-        } else if (cmd.type == CommandType::Text) {
-          if (cmd.index < textActive.size()) {
-            textActive[cmd.index] = 1;
+      } else {
+        std::vector<uint8_t> tileMask(tileCount, 0);
+        for (uint32_t i = 0; i < tileCount; ++i) {
+          if (tileStream->offsets[i] != tileStream->offsets[i + 1]) {
+            tileMask[i] = 1;
           }
         }
+        for (uint32_t i = 0; i < tileCount; ++i) {
+          if (tileMask[i]) renderTiles.push_back(i);
+        }
       }
+
+      auto mark_active = [&](auto const& cmdList) {
+        for (auto const& cmd : cmdList) {
+          if (cmd.type == CommandType::Rect) {
+            if (cmd.index < rectActive.size()) {
+              rectActive[cmd.index] = 1;
+            }
+          } else if (cmd.type == CommandType::Text) {
+            if (cmd.index < textActive.size()) {
+              textActive[cmd.index] = 1;
+            }
+          }
+        }
+      };
+      mark_active(tileStream->commands);
     } else {
       tileCounts.assign(tileCount, 0);
       cmdTiles.assign(batch.commands.size(), CmdTileInfo{});
@@ -730,8 +1076,6 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
   }
   if (renderTiles.empty() && !debugTiles) return;
 
-  auto const& activeOffsets = useTileStream ? batch.tileStream.offsets : tileOffsets;
-
   auto render_tile = [&](uint32_t tileIndex) {
     uint32_t tx = tileIndex % grid.tilesX;
     uint32_t ty = tileIndex / grid.tilesX;
@@ -740,26 +1084,106 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     uint32_t tx1 = std::min(tx0 + grid.tileSize, target.width);
     uint32_t ty1 = std::min(ty0 + grid.tileSize, target.height);
 
-    uint32_t start = activeOffsets[tileIndex];
-    uint32_t end = activeOffsets[tileIndex + 1];
-    for (uint32_t i = start; i < end; ++i) {
+    bool frontToBack = useTileStream;
+    uint32_t tileArea = (tx1 - tx0) * (ty1 - ty0);
+    uint32_t opaqueCount = 0;
+    uint8_t* surfaceBase = target.data.data();
+    uint32_t surfaceStride = target.strideBytes;
+    int32_t surfaceY0 = 0;
+    if (useTileBuffer) {
+      for (uint32_t y = ty0; y < ty1; ++y) {
+        uint8_t* row = surfaceBase + static_cast<size_t>(y) * surfaceStride +
+                       static_cast<size_t>(4 * tx0);
+        std::memset(row, 0, static_cast<size_t>(tx1 - tx0) * 4);
+      }
+    }
+
+    auto row_ptr = [&](int32_t y) -> uint8_t* {
+      return surfaceBase + static_cast<size_t>(y - surfaceY0) * surfaceStride;
+    };
+    auto blend_px = [&](uint8_t* dst, uint8_t pmR, uint8_t pmG, uint8_t pmB, uint8_t srcA) {
+      if (frontToBack) {
+        uint8_t dstA = dst[3];
+        if (dstA >= OpaqueAlphaCutoff) return;
+        uint16_t invA = static_cast<uint16_t>(255u - dstA);
+        dst[0] = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dst[0]) + (static_cast<uint16_t>(pmR) * invA + 127u) / 255u) & 0xFFu);
+        dst[1] = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dst[1]) + (static_cast<uint16_t>(pmG) * invA + 127u) / 255u) & 0xFFu);
+        dst[2] = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dst[2]) + (static_cast<uint16_t>(pmB) * invA + 127u) / 255u) & 0xFFu);
+        uint8_t newA = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dstA) + (static_cast<uint16_t>(srcA) * invA + 127u) / 255u) & 0xFFu);
+        dst[3] = newA;
+        if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+          ++opaqueCount;
+        }
+      } else {
+        blend_premultiplied(dst, pmR, pmG, pmB, srcA);
+      }
+    };
+    auto write_px = [&](uint8_t* dst, uint8_t r, uint8_t g, uint8_t b) {
+      if (frontToBack) {
+        uint8_t dstA = dst[3];
+        if (dstA >= OpaqueAlphaCutoff) return;
+        dst[0] = r;
+        dst[1] = g;
+        dst[2] = b;
+        dst[3] = 255u;
+        ++opaqueCount;
+      } else {
+        dst[0] = r;
+        dst[1] = g;
+        dst[2] = b;
+        dst[3] = 255u;
+      }
+    };
+
+    uint32_t start = 0;
+    uint32_t end = 0;
+    size_t tileCursor = 0;
+    size_t tileEnd = 0;
+    if (useTileStream) {
+      tileCursor = tileStream->offsets[tileIndex];
+      tileEnd = tileStream->offsets[tileIndex + 1];
+    } else {
+      start = tileOffsets[tileIndex];
+      end = tileOffsets[tileIndex + 1];
+    }
+
+    auto next_tile_command = [&](CommandType& type,
+                                 uint32_t& idx,
+                                 bool& hasLocalBounds,
+                                 int32_t& localX0,
+                                 int32_t& localY0,
+                                 int32_t& localX1,
+                                 int32_t& localY1) -> bool {
+      if (tileCursor >= tileEnd) return false;
+      auto const& cmd = tileStream->commands[tileCursor++];
+      type = cmd.type;
+      idx = cmd.index;
+      hasLocalBounds = true;
+      localX0 = static_cast<int32_t>(tx0) + static_cast<int32_t>(cmd.x);
+      localY0 = static_cast<int32_t>(ty0) + static_cast<int32_t>(cmd.y);
+      localX1 = localX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+      localY1 = localY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+      if (localX1 <= localX0 || localY1 <= localY0) return false;
+      return true;
+    };
+
+    for (uint32_t i = start;; ++i) {
+      if (frontToBack && opaqueCount >= tileArea) break;
       CommandType type = CommandType::Rect;
       uint32_t idx = 0;
-      int32_t drawX0 = 0;
-      int32_t drawY0 = 0;
-      int32_t drawX1 = 0;
-      int32_t drawY1 = 0;
+      bool hasLocalBounds = false;
+      int32_t localX0 = 0;
+      int32_t localY0 = 0;
+      int32_t localX1 = 0;
+      int32_t localY1 = 0;
       if (useTileStream) {
-        if (i >= batch.tileStream.commands.size()) continue;
-        auto const& tileCmd = batch.tileStream.commands[i];
-        type = tileCmd.type;
-        idx = tileCmd.index;
-        drawX0 = static_cast<int32_t>(tx0) + static_cast<int32_t>(tileCmd.x);
-        drawY0 = static_cast<int32_t>(ty0) + static_cast<int32_t>(tileCmd.y);
-        drawX1 = drawX0 + static_cast<int32_t>(tileCmd.wMinus1) + 1;
-        drawY1 = drawY0 + static_cast<int32_t>(tileCmd.hMinus1) + 1;
-        if (drawX1 <= drawX0 || drawY1 <= drawY0) continue;
+        if (!next_tile_command(type, idx, hasLocalBounds, localX0, localY0, localX1, localY1)) break;
       } else {
+        if (i >= end) break;
         uint32_t cmdIndex = tileRefs[i];
         if (cmdIndex >= batch.commands.size()) continue;
         auto const& cmd = batch.commands[cmdIndex];
@@ -781,12 +1205,10 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
         int32_t x1 = batch.rects.x1[idx];
         int32_t y1 = batch.rects.y1[idx];
 
-        if (!useTileStream) {
-          drawX0 = x0;
-          drawY0 = y0;
-          drawX1 = x1;
-          drawY1 = y1;
-        }
+        int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+        int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+        int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+        int32_t drawY1 = hasLocalBounds ? localY1 : y1;
 
         int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
         int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
@@ -976,30 +1398,34 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
 
               if (ix1 > ix0 && iy1 > iy0) {
                 for (int32_t y = iy0; y < iy1; ++y) {
-                  uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+                  uint8_t* row = row_ptr(y);
                   if (opaqueBase) {
                     uint8_t* px = row + static_cast<size_t>(4 * ix0);
                     if ((reinterpret_cast<uintptr_t>(px) % alignof(uint32_t)) == 0) {
                       auto* row32 = reinterpret_cast<uint32_t*>(px);
-                      std::fill(row32, row32 + (ix1 - ix0), color);
+                      if (!frontToBack) {
+                        std::fill(row32, row32 + (ix1 - ix0), color);
+                      } else {
+                        for (int32_t x = ix0; x < ix1; ++x, ++row32) {
+                          uint8_t* dst = reinterpret_cast<uint8_t*>(row32);
+                          write_px(dst, cR, cG, cB);
+                        }
+                      }
                     } else {
                       for (int32_t x = ix0, offset = 4 * ix0; x < ix1; ++x, offset += 4) {
-                        row[static_cast<size_t>(offset)] = cR;
-                        row[static_cast<size_t>(offset + 1)] = cG;
-                        row[static_cast<size_t>(offset + 2)] = cB;
-                        row[static_cast<size_t>(offset + 3)] = 255u;
+                        write_px(&row[static_cast<size_t>(offset)], cR, cG, cB);
                       }
                     }
                   } else {
                     for (int32_t x = ix0, offset = 4 * ix0; x < ix1; ++x, offset += 4) {
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                   }
                 }
               }
 
               for (int32_t y = ry0; y < ry1; ++y) {
-                uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+                uint8_t* row = row_ptr(y);
                 float py = static_cast<float>(y) + 0.5f - cy;
                 float absPy = std::abs(py);
                 float dy = absPy - hy;
@@ -1011,7 +1437,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                   uint8_t coverage = coverage_from_dist(dist);
                   if (coverage == 0) continue;
                   if (opaqueBase) {
-                    blend_premultiplied(&row[static_cast<size_t>(offset)], edgePmR[coverage], edgePmG[coverage],
+                    blend_px(&row[static_cast<size_t>(offset)], edgePmR[coverage], edgePmG[coverage],
                                         edgePmB[coverage], coverage);
                   } else {
                     uint8_t edgeA = apply_coverage(baseAlpha, coverage);
@@ -1019,7 +1445,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                     uint8_t edgeR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * edgeA + 127u) / 255u);
                     uint8_t edgeG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * edgeA + 127u) / 255u);
                     uint8_t edgeB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * edgeA + 127u) / 255u);
-                    blend_premultiplied(&row[static_cast<size_t>(offset)], edgeR, edgeG, edgeB, edgeA);
+                    blend_px(&row[static_cast<size_t>(offset)], edgeR, edgeG, edgeB, edgeA);
                   }
                 }
               }
@@ -1027,7 +1453,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           } else {
             if (ix1 > ix0 && iy1 > iy0) {
               for (int32_t y = iy0; y < iy1; ++y) {
-                uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+                uint8_t* row = row_ptr(y);
                 float tRow = ((static_cast<float>(y) + 0.5f) * gradDir.y - gradMin) * gradInvRange;
                 float t = tRow + (static_cast<float>(ix0) + 0.5f) * gradStepX;
                 float tEnd = tRow + (static_cast<float>(ix1) - 0.5f) * gradStepX;
@@ -1040,10 +1466,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                     uint8_t srcR = static_cast<uint8_t>(cRf + dRf * clamped + 0.5f);
                     uint8_t srcG = static_cast<uint8_t>(cGf + dGf * clamped + 0.5f);
                     uint8_t srcB = static_cast<uint8_t>(cBf + dBf * clamped + 0.5f);
-                    row[static_cast<size_t>(offset)] = srcR;
-                    row[static_cast<size_t>(offset + 1)] = srcG;
-                    row[static_cast<size_t>(offset + 2)] = srcB;
-                    row[static_cast<size_t>(offset + 3)] = 255u;
+                    write_px(&row[static_cast<size_t>(offset)], srcR, srcG, srcB);
                     t += gradStepX;
                   }
                 } else {
@@ -1058,7 +1481,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * finalA + 127u) / 255u);
                       uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * finalA + 127u) / 255u);
                       uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * finalA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                     t += gradStepX;
                   }
@@ -1067,7 +1490,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             }
 
             for (int32_t y = ry0; y < ry1; ++y) {
-              uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+              uint8_t* row = row_ptr(y);
               float tRow = ((static_cast<float>(y) + 0.5f) * gradDir.y - gradMin) * gradInvRange;
               float t = tRow + (static_cast<float>(rx0) + 0.5f) * gradStepX;
               float tEnd = tRow + (static_cast<float>(rx1) - 0.5f) * gradStepX;
@@ -1096,7 +1519,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t edgeR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * edgeA + 127u) / 255u);
                       uint8_t edgeG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * edgeA + 127u) / 255u);
                       uint8_t edgeB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * edgeA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], edgeR, edgeG, edgeB, edgeA);
+                      blend_px(&row[static_cast<size_t>(offset)], edgeR, edgeG, edgeB, edgeA);
                     }
                   }
                 }
@@ -1130,30 +1553,34 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                 uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
                 uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
                 for (int32_t y = iy0; y < iy1; ++y) {
-                  uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+                  uint8_t* row = row_ptr(y);
                   if (opaqueBase) {
                     uint8_t* px = row + static_cast<size_t>(4 * ix0);
                     if ((reinterpret_cast<uintptr_t>(px) % alignof(uint32_t)) == 0) {
                       auto* row32 = reinterpret_cast<uint32_t*>(px);
-                      std::fill(row32, row32 + (ix1 - ix0), color);
+                      if (!frontToBack) {
+                        std::fill(row32, row32 + (ix1 - ix0), color);
+                      } else {
+                        for (int32_t x = ix0; x < ix1; ++x, ++row32) {
+                          uint8_t* dst = reinterpret_cast<uint8_t*>(row32);
+                          write_px(dst, cR, cG, cB);
+                        }
+                      }
                     } else {
                       for (int32_t x = ix0, offset = 4 * ix0; x < ix1; ++x, offset += 4) {
-                        row[static_cast<size_t>(offset)] = cR;
-                        row[static_cast<size_t>(offset + 1)] = cG;
-                        row[static_cast<size_t>(offset + 2)] = cB;
-                        row[static_cast<size_t>(offset + 3)] = 255u;
+                        write_px(&row[static_cast<size_t>(offset)], cR, cG, cB);
                       }
                     }
                   } else {
                     for (int32_t x = ix0, offset = 4 * ix0; x < ix1; ++x, offset += 4) {
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                   }
                 }
               }
             } else {
               for (int32_t y = iy0; y < iy1; ++y) {
-                uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+                uint8_t* row = row_ptr(y);
                 float tRow = ((static_cast<float>(y) + 0.5f) * gradDir.y - gradMin) * gradInvRange;
                 float t = tRow + (static_cast<float>(ix0) + 0.5f) * gradStepX;
                 float tEnd = tRow + (static_cast<float>(ix1) - 0.5f) * gradStepX;
@@ -1166,10 +1593,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                     uint8_t srcR = static_cast<uint8_t>(cRf + dRf * clamped + 0.5f);
                     uint8_t srcG = static_cast<uint8_t>(cGf + dGf * clamped + 0.5f);
                     uint8_t srcB = static_cast<uint8_t>(cBf + dBf * clamped + 0.5f);
-                    row[static_cast<size_t>(offset)] = srcR;
-                    row[static_cast<size_t>(offset + 1)] = srcG;
-                    row[static_cast<size_t>(offset + 2)] = srcB;
-                    row[static_cast<size_t>(offset + 3)] = 255u;
+                    write_px(&row[static_cast<size_t>(offset)], srcR, srcG, srcB);
                     t += gradStepX;
                   }
                 } else {
@@ -1184,7 +1608,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * finalA + 127u) / 255u);
                       uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * finalA + 127u) / 255u);
                       uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * finalA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                     t += gradStepX;
                   }
@@ -1198,7 +1622,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
 
         auto render_span = [&](int32_t y, int32_t sx0, int32_t sx1) {
           if (sx1 <= sx0) return;
-          uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes;
+          uint8_t* row = row_ptr(y);
           float tRow = 0.0f;
           float t = 0.0f;
           float tEnd = 0.0f;
@@ -1228,10 +1652,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                   uint8_t srcB = static_cast<uint8_t>(cBf + dBf * clamped + 0.5f);
                   uint8_t srcA = static_cast<uint8_t>(cAf + dAf * clamped + 0.5f);
                   if (opaqueGradient && coverage == 255) {
-                    row[static_cast<size_t>(offset)] = srcR;
-                    row[static_cast<size_t>(offset + 1)] = srcG;
-                    row[static_cast<size_t>(offset + 2)] = srcB;
-                    row[static_cast<size_t>(offset + 3)] = 255u;
+                    write_px(&row[static_cast<size_t>(offset)], srcR, srcG, srcB);
                   } else {
                     uint8_t baseA = opaqueGradient ? 255u : apply_opacity(srcA, opacity);
                     uint8_t finalA = opaqueGradient ? coverage : apply_coverage(baseA, coverage);
@@ -1239,17 +1660,14 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * finalA + 127u) / 255u);
                       uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * finalA + 127u) / 255u);
                       uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * finalA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                   }
                 } else {
                   if (opaqueBase && coverage == 255) {
-                    row[static_cast<size_t>(offset)] = cR;
-                    row[static_cast<size_t>(offset + 1)] = cG;
-                    row[static_cast<size_t>(offset + 2)] = cB;
-                    row[static_cast<size_t>(offset + 3)] = 255u;
+                    write_px(&row[static_cast<size_t>(offset)], cR, cG, cB);
                   } else if (opaqueBase) {
-                    blend_premultiplied(&row[static_cast<size_t>(offset)], edgePmR[coverage], edgePmG[coverage],
+                    blend_px(&row[static_cast<size_t>(offset)], edgePmR[coverage], edgePmG[coverage],
                                         edgePmB[coverage], coverage);
                   } else {
                     uint8_t finalA = apply_coverage(baseAlpha, coverage);
@@ -1257,7 +1675,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
                       uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
                       uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                   }
                 }
@@ -1279,10 +1697,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                   uint8_t srcB = static_cast<uint8_t>(cBf + dBf * clamped + 0.5f);
                   uint8_t srcA = static_cast<uint8_t>(cAf + dAf * clamped + 0.5f);
                   if (opaqueGradient && coverage == 255) {
-                    row[static_cast<size_t>(offset)] = srcR;
-                    row[static_cast<size_t>(offset + 1)] = srcG;
-                    row[static_cast<size_t>(offset + 2)] = srcB;
-                    row[static_cast<size_t>(offset + 3)] = 255u;
+                    write_px(&row[static_cast<size_t>(offset)], srcR, srcG, srcB);
                   } else {
                     uint8_t baseA = opaqueGradient ? 255u : apply_opacity(srcA, opacity);
                     uint8_t finalA = opaqueGradient ? coverage : apply_coverage(baseA, coverage);
@@ -1290,17 +1705,14 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * finalA + 127u) / 255u);
                       uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * finalA + 127u) / 255u);
                       uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * finalA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                   }
                 } else {
                   if (opaqueBase && coverage == 255) {
-                    row[static_cast<size_t>(offset)] = cR;
-                    row[static_cast<size_t>(offset + 1)] = cG;
-                    row[static_cast<size_t>(offset + 2)] = cB;
-                    row[static_cast<size_t>(offset + 3)] = 255u;
+                    write_px(&row[static_cast<size_t>(offset)], cR, cG, cB);
                   } else if (opaqueBase) {
-                    blend_premultiplied(&row[static_cast<size_t>(offset)], edgePmR[coverage], edgePmG[coverage],
+                    blend_px(&row[static_cast<size_t>(offset)], edgePmR[coverage], edgePmG[coverage],
                                         edgePmB[coverage], coverage);
                   } else {
                     uint8_t finalA = apply_coverage(baseAlpha, coverage);
@@ -1308,7 +1720,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                       uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
                       uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
                       uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                      blend_premultiplied(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
+                      blend_px(&row[static_cast<size_t>(offset)], pmR, pmG, pmB, finalA);
                     }
                   }
                 }
@@ -1370,12 +1782,12 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           clip.x1 = batch.text.clipX1[idx];
           clip.y1 = batch.text.clipY1[idx];
         }
+        int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+        int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+        int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+        int32_t drawY1 = hasLocalBounds ? localY1 : y1;
         if (clipEnabled) {
-          if (useTileStream) {
-            if (clip.x1 <= drawX0 || clip.x0 >= drawX1 || clip.y1 <= drawY0 || clip.y0 >= drawY1) continue;
-          } else {
-            if (clip.x1 <= x0 || clip.x0 >= x1 || clip.y1 <= y0 || clip.y0 >= y1) continue;
-          }
+          if (clip.x1 <= drawX0 || clip.x0 >= drawX1 || clip.y1 <= drawY0 || clip.y0 >= drawY1) continue;
         }
 
         uint32_t color = fetch_color(batch.text.colorIndex, idx, 0u);
@@ -1490,17 +1902,20 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
 
             if (glyphOpaque) {
               for (int32_t y = cy0; y < cy1; ++y) {
-                uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes +
-                               static_cast<size_t>(4 * cx0);
+                uint8_t* row = row_ptr(y) + static_cast<size_t>(4 * cx0);
                 if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
                   auto* row32 = reinterpret_cast<uint32_t*>(row);
-                  std::fill(row32, row32 + (cx1 - cx0), color);
+                  if (!frontToBack) {
+                    std::fill(row32, row32 + (cx1 - cx0), color);
+                  } else {
+                    for (int32_t x = cx0; x < cx1; ++x, ++row32) {
+                      uint8_t* dst = reinterpret_cast<uint8_t*>(row32);
+                      write_px(dst, cR, cG, cB);
+                    }
+                  }
                 } else {
                   for (int32_t x = cx0; x < cx1; ++x, row += 4) {
-                    row[0] = cR;
-                    row[1] = cG;
-                    row[2] = cB;
-                    row[3] = 255u;
+                    write_px(row, cR, cG, cB);
                   }
                 }
               }
@@ -1524,19 +1939,15 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
             int32_t srcRow = y - gy0;
             const uint8_t* src = srcBase + static_cast<size_t>(srcRow) * srcStride +
                                  static_cast<size_t>(cx0 - gx0);
-            uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes +
-                           static_cast<size_t>(4 * cx0);
+            uint8_t* row = row_ptr(y) + static_cast<size_t>(4 * cx0);
             for (int32_t x = cx0; x < cx1; ++x, ++src, row += 4) {
               uint8_t cov = *src;
               if (cov == 0) continue;
               if (opaqueText) {
                 if (cov == 255) {
-                  row[0] = cR;
-                  row[1] = cG;
-                  row[2] = cB;
-                  row[3] = 255u;
+                  write_px(row, cR, cG, cB);
                 } else {
-                  blend_premultiplied(row, textPmR[cov], textPmG[cov], textPmB[cov], cov);
+                  blend_px(row, textPmR[cov], textPmG[cov], textPmB[cov], cov);
                 }
               } else {
                 uint8_t finalA = apply_coverage(baseAlpha, cov);
@@ -1544,10 +1955,40 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
                 uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
                 uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
                 uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                blend_premultiplied(row, pmR, pmG, pmB, finalA);
+                blend_px(row, pmR, pmG, pmB, finalA);
               }
             }
           }
+        }
+      }
+    }
+
+    if (useTileBuffer && hasClear && opaqueCount < tileArea) {
+      uint8_t clearR = static_cast<uint8_t>(clearColor & 0xFFu);
+      uint8_t clearG = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
+      uint8_t clearB = static_cast<uint8_t>((clearColor >> 16) & 0xFFu);
+      uint8_t clearA = static_cast<uint8_t>((clearColor >> 24) & 0xFFu);
+      uint8_t clearPmR = static_cast<uint8_t>((static_cast<uint16_t>(clearR) * clearA + 127u) / 255u);
+      uint8_t clearPmG = static_cast<uint8_t>((static_cast<uint16_t>(clearG) * clearA + 127u) / 255u);
+      uint8_t clearPmB = static_cast<uint8_t>((static_cast<uint16_t>(clearB) * clearA + 127u) / 255u);
+      for (uint32_t y = ty0; y < ty1; ++y) {
+        uint8_t* dstRow = target.data.data() + static_cast<size_t>(y) * target.strideBytes +
+                          static_cast<size_t>(4 * tx0);
+        for (uint32_t x = tx0; x < tx1; ++x, dstRow += 4) {
+          uint8_t srcA = dstRow[3];
+          uint16_t invA = static_cast<uint16_t>(255u - srcA);
+          dstRow[0] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[0]) +
+                                            (static_cast<uint16_t>(clearPmR) * invA + 127u) / 255u) &
+                                           0xFFu);
+          dstRow[1] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[1]) +
+                                            (static_cast<uint16_t>(clearPmG) * invA + 127u) / 255u) &
+                                           0xFFu);
+          dstRow[2] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[2]) +
+                                            (static_cast<uint16_t>(clearPmB) * invA + 127u) / 255u) &
+                                           0xFFu);
+          dstRow[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) +
+                                            (static_cast<uint16_t>(clearA) * invA + 127u) / 255u) &
+                                           0xFFu);
         }
       }
     }

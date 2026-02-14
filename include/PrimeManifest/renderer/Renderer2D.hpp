@@ -241,6 +241,7 @@ struct DebugTilesStore {
 struct TileCommand {
   CommandType type{CommandType::Rect};
   uint32_t index = 0;
+  uint32_t order = 0;
   uint8_t x = 0;
   uint8_t y = 0;
   uint8_t wMinus1 = 0;
@@ -250,12 +251,20 @@ struct TileCommand {
 struct TileStream {
   std::vector<uint32_t> offsets;
   std::vector<TileCommand> commands;
+  std::vector<uint32_t> macroOffsets;
+  std::vector<TileCommand> macroCommands;
+  std::vector<TileCommand> globalCommands;
   bool enabled = false;
+  bool preMerged = false;
 
   void clear() {
     offsets.clear();
     commands.clear();
+    macroOffsets.clear();
+    macroCommands.clear();
+    globalCommands.clear();
     enabled = false;
+    preMerged = false;
   }
 };
 

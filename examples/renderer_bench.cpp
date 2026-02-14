@@ -208,41 +208,157 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
   uint32_t tileCount = tilesX * tilesY;
   if (tileCount == 0) return;
 
-  std::vector<uint32_t> tileCounts(tileCount, 0);
+  constexpr uint32_t MacroFactor = 2;
+  uint32_t macroTilesX = (tilesX + MacroFactor - 1) / MacroFactor;
+  uint32_t macroTilesY = (tilesY + MacroFactor - 1) / MacroFactor;
+  uint32_t macroCount = macroTilesX * macroTilesY;
+  bool allowMacroLocal = (tileSize * MacroFactor) <= 256u;
 
-  auto count_tiles = [&](int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
-    if (x1 <= 0 || y1 <= 0) return;
-    if (x0 >= static_cast<int32_t>(width) || y0 >= static_cast<int32_t>(height)) return;
-    int32_t clampedX0 = std::max(x0, 0);
-    int32_t clampedY0 = std::max(y0, 0);
-    int32_t clampedX1 = std::min(x1, static_cast<int32_t>(width));
-    int32_t clampedY1 = std::min(y1, static_cast<int32_t>(height));
-    if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return;
+  enum class Level : uint8_t { Tile, Macro, Global };
+  struct StreamCmd {
+    CommandType type = CommandType::Rect;
+    uint32_t index = 0;
+    uint32_t order = 0;
+    int32_t x0 = 0;
+    int32_t y0 = 0;
+    int32_t x1 = 0;
+    int32_t y1 = 0;
+    Level level = Level::Global;
+    uint32_t tileIndex = 0;
+    uint32_t macroIndex = 0;
+    uint8_t localX0 = 0;
+    uint8_t localY0 = 0;
+    uint8_t wMinus1 = 0;
+    uint8_t hMinus1 = 0;
+  };
+
+  std::vector<StreamCmd> streamCmds;
+  streamCmds.reserve(batch.commands.size());
+
+  auto clamp_bounds = [&](int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                          int32_t& ox0, int32_t& oy0, int32_t& ox1, int32_t& oy1) -> bool {
+    if (x1 <= 0 || y1 <= 0) return false;
+    if (x0 >= static_cast<int32_t>(width) || y0 >= static_cast<int32_t>(height)) return false;
+    ox0 = std::max(x0, 0);
+    oy0 = std::max(y0, 0);
+    ox1 = std::min(x1, static_cast<int32_t>(width));
+    oy1 = std::min(y1, static_cast<int32_t>(height));
+    return (ox1 > ox0 && oy1 > oy0);
+  };
+
+  for (uint32_t cmdIndex = 0; cmdIndex < batch.commands.size(); ++cmdIndex) {
+    auto const& cmd = batch.commands[cmdIndex];
+    int32_t x0 = 0;
+    int32_t y0 = 0;
+    int32_t x1 = 0;
+    int32_t y1 = 0;
+    if (cmd.type == CommandType::Rect) {
+      if (cmd.index >= batch.rects.x0.size() ||
+          cmd.index >= batch.rects.y0.size() ||
+          cmd.index >= batch.rects.x1.size() ||
+          cmd.index >= batch.rects.y1.size()) {
+        continue;
+      }
+      x0 = batch.rects.x0[cmd.index];
+      y0 = batch.rects.y0[cmd.index];
+      x1 = batch.rects.x1[cmd.index];
+      y1 = batch.rects.y1[cmd.index];
+    } else if (cmd.type == CommandType::Text) {
+      if (cmd.index >= batch.text.x.size() ||
+          cmd.index >= batch.text.y.size() ||
+          cmd.index >= batch.text.width.size() ||
+          cmd.index >= batch.text.height.size()) {
+        continue;
+      }
+      x0 = batch.text.x[cmd.index];
+      y0 = batch.text.y[cmd.index];
+      x1 = x0 + batch.text.width[cmd.index];
+      y1 = y0 + batch.text.height[cmd.index];
+    } else {
+      continue;
+    }
+
+    int32_t clampedX0 = 0;
+    int32_t clampedY0 = 0;
+    int32_t clampedX1 = 0;
+    int32_t clampedY1 = 0;
+    if (!clamp_bounds(x0, y0, x1, y1, clampedX0, clampedY0, clampedX1, clampedY1)) continue;
+
     uint32_t tx0 = static_cast<uint32_t>(clampedX0) / tileSize;
     uint32_t ty0 = static_cast<uint32_t>(clampedY0) / tileSize;
     uint32_t tx1 = static_cast<uint32_t>(clampedX1 - 1) / tileSize;
     uint32_t ty1 = static_cast<uint32_t>(clampedY1 - 1) / tileSize;
-    for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-      for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-        tileCounts[ty * tilesX + tx] += 1;
+
+    StreamCmd out;
+    out.type = cmd.type;
+    out.index = cmd.index;
+    out.order = cmdIndex;
+    out.x0 = clampedX0;
+    out.y0 = clampedY0;
+    out.x1 = clampedX1;
+    out.y1 = clampedY1;
+
+    if (tx0 == tx1 && ty0 == ty1) {
+      uint32_t tileIdx = ty0 * tilesX + tx0;
+      int32_t tileX0 = static_cast<int32_t>(tx0 * tileSize);
+      int32_t tileY0 = static_cast<int32_t>(ty0 * tileSize);
+      int32_t localX0 = clampedX0 - tileX0;
+      int32_t localY0 = clampedY0 - tileY0;
+      int32_t localW = clampedX1 - clampedX0;
+      int32_t localH = clampedY1 - clampedY0;
+      if (localX0 >= 0 && localY0 >= 0 && localW > 0 && localH > 0 &&
+          localX0 <= 255 && localY0 <= 255 && localW <= 256 && localH <= 256) {
+        out.level = Level::Tile;
+        out.tileIndex = tileIdx;
+        out.localX0 = static_cast<uint8_t>(localX0);
+        out.localY0 = static_cast<uint8_t>(localY0);
+        out.wMinus1 = static_cast<uint8_t>(localW - 1);
+        out.hMinus1 = static_cast<uint8_t>(localH - 1);
+        streamCmds.push_back(out);
+        continue;
       }
     }
-  };
 
-  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
-    int32_t x0 = batch.rects.x0[i];
-    int32_t y0 = batch.rects.y0[i];
-    int32_t x1 = batch.rects.x1[i];
-    int32_t y1 = batch.rects.y1[i];
-    count_tiles(x0, y0, x1, y1);
+    uint32_t macroX0 = tx0 / MacroFactor;
+    uint32_t macroY0 = ty0 / MacroFactor;
+    uint32_t macroX1 = tx1 / MacroFactor;
+    uint32_t macroY1 = ty1 / MacroFactor;
+    if (allowMacroLocal && macroX0 == macroX1 && macroY0 == macroY1) {
+      uint32_t macroIdx = macroY0 * macroTilesX + macroX0;
+      int32_t macroTileX0 = static_cast<int32_t>(macroX0 * MacroFactor * tileSize);
+      int32_t macroTileY0 = static_cast<int32_t>(macroY0 * MacroFactor * tileSize);
+      int32_t localX0 = clampedX0 - macroTileX0;
+      int32_t localY0 = clampedY0 - macroTileY0;
+      int32_t localW = clampedX1 - clampedX0;
+      int32_t localH = clampedY1 - clampedY0;
+      if (localX0 >= 0 && localY0 >= 0 && localW > 0 && localH > 0 &&
+          localX0 <= 255 && localY0 <= 255 && localW <= 256 && localH <= 256) {
+        out.level = Level::Macro;
+        out.macroIndex = macroIdx;
+        out.localX0 = static_cast<uint8_t>(localX0);
+        out.localY0 = static_cast<uint8_t>(localY0);
+        out.wMinus1 = static_cast<uint8_t>(localW - 1);
+        out.hMinus1 = static_cast<uint8_t>(localH - 1);
+        streamCmds.push_back(out);
+        continue;
+      }
+    }
+
+    out.level = Level::Global;
+    streamCmds.push_back(out);
   }
 
-  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
-    int32_t x0 = batch.text.x[i];
-    int32_t y0 = batch.text.y[i];
-    int32_t x1 = x0 + batch.text.width[i];
-    int32_t y1 = y0 + batch.text.height[i];
-    count_tiles(x0, y0, x1, y1);
+  std::vector<uint32_t> tileCounts(tileCount, 0);
+  std::vector<uint32_t> macroCounts(macroCount, 0);
+  uint32_t globalCount = 0;
+  for (auto const& cmd : streamCmds) {
+    if (cmd.level == Level::Tile) {
+      tileCounts[cmd.tileIndex] += 1;
+    } else if (cmd.level == Level::Macro) {
+      macroCounts[cmd.macroIndex] += 1;
+    } else {
+      globalCount += 1;
+    }
   }
 
   batch.tileStream.offsets.assign(tileCount + 1, 0);
@@ -252,67 +368,311 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
   batch.tileStream.commands.assign(batch.tileStream.offsets.back(), TileCommand{});
   std::vector<uint32_t> tileFill(tileCount, 0);
 
-  auto emit_tiles = [&](CommandType type, uint32_t index, int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
-    if (x1 <= 0 || y1 <= 0) return;
-    if (x0 >= static_cast<int32_t>(width) || y0 >= static_cast<int32_t>(height)) return;
-    int32_t clampedX0 = std::max(x0, 0);
-    int32_t clampedY0 = std::max(y0, 0);
-    int32_t clampedX1 = std::min(x1, static_cast<int32_t>(width));
-    int32_t clampedY1 = std::min(y1, static_cast<int32_t>(height));
-    if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return;
-    uint32_t tx0 = static_cast<uint32_t>(clampedX0) / tileSize;
-    uint32_t ty0 = static_cast<uint32_t>(clampedY0) / tileSize;
-    uint32_t tx1 = static_cast<uint32_t>(clampedX1 - 1) / tileSize;
-    uint32_t ty1 = static_cast<uint32_t>(clampedY1 - 1) / tileSize;
-    for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-      for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-        int32_t tileX0 = static_cast<int32_t>(tx * tileSize);
-        int32_t tileY0 = static_cast<int32_t>(ty * tileSize);
-        int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(width));
-        int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(height));
-        int32_t ix0 = std::max(x0, tileX0);
-        int32_t iy0 = std::max(y0, tileY0);
-        int32_t ix1 = std::min(x1, tileX1);
-        int32_t iy1 = std::min(y1, tileY1);
+  batch.tileStream.macroOffsets.assign(macroCount + 1, 0);
+  for (uint32_t i = 0; i < macroCount; ++i) {
+    batch.tileStream.macroOffsets[i + 1] = batch.tileStream.macroOffsets[i] + macroCounts[i];
+  }
+  batch.tileStream.macroCommands.assign(batch.tileStream.macroOffsets.back(), TileCommand{});
+  std::vector<uint32_t> macroFill(macroCount, 0);
+
+  batch.tileStream.globalCommands.clear();
+  batch.tileStream.globalCommands.reserve(globalCount);
+
+  for (auto const& cmd : streamCmds) {
+    TileCommand out;
+    out.type = cmd.type;
+    out.index = cmd.index;
+    out.order = cmd.order;
+    out.x = cmd.localX0;
+    out.y = cmd.localY0;
+    out.wMinus1 = cmd.wMinus1;
+    out.hMinus1 = cmd.hMinus1;
+    if (cmd.level == Level::Tile) {
+      uint32_t offset = batch.tileStream.offsets[cmd.tileIndex] + tileFill[cmd.tileIndex]++;
+      batch.tileStream.commands[offset] = out;
+    } else if (cmd.level == Level::Macro) {
+      uint32_t offset = batch.tileStream.macroOffsets[cmd.macroIndex] + macroFill[cmd.macroIndex]++;
+      batch.tileStream.macroCommands[offset] = out;
+    } else {
+      batch.tileStream.globalCommands.push_back(out);
+    }
+  }
+
+  // Pre-merge per-tile lists so the renderer can stay dumb.
+  struct Bounds {
+    int32_t x0 = 0;
+    int32_t y0 = 0;
+    int32_t x1 = 0;
+    int32_t y1 = 0;
+    bool valid = false;
+  };
+  std::vector<Bounds> rectBounds(batch.rects.x0.size());
+  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
+    Bounds b{};
+    b.x0 = batch.rects.x0[i];
+    b.y0 = batch.rects.y0[i];
+    b.x1 = batch.rects.x1[i];
+    b.y1 = batch.rects.y1[i];
+    if (i < batch.rects.flags.size() && (batch.rects.flags[i] & RectFlagClip) != 0u &&
+        i < batch.rects.clipX0.size() && i < batch.rects.clipY0.size() &&
+        i < batch.rects.clipX1.size() && i < batch.rects.clipY1.size()) {
+      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.rects.clipX0[i]));
+      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.rects.clipY0[i]));
+      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.rects.clipX1[i]));
+      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.rects.clipY1[i]));
+    }
+    b.x0 = std::max(b.x0, 0);
+    b.y0 = std::max(b.y0, 0);
+    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
+    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
+    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
+    rectBounds[i] = b;
+  }
+  std::vector<Bounds> textBounds(batch.text.x.size());
+  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
+    Bounds b{};
+    b.x0 = batch.text.x[i];
+    b.y0 = batch.text.y[i];
+    b.x1 = b.x0 + batch.text.width[i];
+    b.y1 = b.y0 + batch.text.height[i];
+    if (i < batch.text.flags.size() && (batch.text.flags[i] & TextFlagClip) != 0u &&
+        i < batch.text.clipX0.size() && i < batch.text.clipY0.size() &&
+        i < batch.text.clipX1.size() && i < batch.text.clipY1.size()) {
+      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.text.clipX0[i]));
+      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.text.clipY0[i]));
+      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.text.clipX1[i]));
+      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.text.clipY1[i]));
+    }
+    b.x0 = std::max(b.x0, 0);
+    b.y0 = std::max(b.y0, 0);
+    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
+    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
+    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
+    textBounds[i] = b;
+  }
+
+  auto const tileOffsets = batch.tileStream.offsets;
+  auto const tileCommands = batch.tileStream.commands;
+  auto const macroOffsets = batch.tileStream.macroOffsets;
+  auto const macroCommands = batch.tileStream.macroCommands;
+  auto const globalCommands = batch.tileStream.globalCommands;
+
+  std::vector<uint32_t> mergedCounts(tileCount, 0);
+  auto count_tile = [&](uint32_t tileIndex) {
+    uint32_t tx = tileIndex % tilesX;
+    uint32_t ty = tileIndex / tilesX;
+    int32_t tileX0 = static_cast<int32_t>(tx * tileSize);
+    int32_t tileY0 = static_cast<int32_t>(ty * tileSize);
+    int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(width));
+    int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(height));
+    size_t tileCursor = tileOffsets[tileIndex];
+    size_t tileEnd = tileOffsets[tileIndex + 1];
+    uint32_t macroX = tx / MacroFactor;
+    uint32_t macroY = ty / MacroFactor;
+    uint32_t macroIndex = macroY * macroTilesX + macroX;
+    size_t macroCursor = macroOffsets[macroIndex];
+    size_t macroEnd = macroOffsets[macroIndex + 1];
+    size_t globalCursor = 0;
+    size_t globalEndLocal = globalCommands.size();
+    int32_t macroOriginX = static_cast<int32_t>(macroX * MacroFactor * tileSize);
+    int32_t macroOriginY = static_cast<int32_t>(macroY * MacroFactor * tileSize);
+    while (tileCursor < tileEnd || macroCursor < macroEnd || globalCursor < globalEndLocal) {
+      uint32_t bestOrder = 0xFFFFFFFFu;
+      enum class Source : uint8_t { Tile, Macro, Global } src = Source::Tile;
+      bool hasSrc = false;
+      if (tileCursor < tileEnd) {
+        bestOrder = tileCommands[tileCursor].order;
+        src = Source::Tile;
+        hasSrc = true;
+      }
+      if (macroCursor < macroEnd) {
+        uint32_t order = macroCommands[macroCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          src = Source::Macro;
+          hasSrc = true;
+        }
+      }
+      if (globalCursor < globalEndLocal) {
+        uint32_t order = globalCommands[globalCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          src = Source::Global;
+          hasSrc = true;
+        }
+      }
+      if (!hasSrc) break;
+      if (src == Source::Tile) {
+        ++tileCursor;
+        mergedCounts[tileIndex] += 1;
+      } else if (src == Source::Macro) {
+        auto const& cmd = macroCommands[macroCursor++];
+        int32_t drawX0 = macroOriginX + static_cast<int32_t>(cmd.x);
+        int32_t drawY0 = macroOriginY + static_cast<int32_t>(cmd.y);
+        int32_t drawX1 = drawX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+        int32_t drawY1 = drawY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+        int32_t ix0 = std::max(drawX0, tileX0);
+        int32_t iy0 = std::max(drawY0, tileY0);
+        int32_t ix1 = std::min(drawX1, tileX1);
+        int32_t iy1 = std::min(drawY1, tileY1);
+        if (ix1 > ix0 && iy1 > iy0) {
+          mergedCounts[tileIndex] += 1;
+        }
+      } else {
+        auto const& cmd = globalCommands[globalCursor++];
+        Bounds b{};
+        if (cmd.type == CommandType::Rect) {
+          if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
+          b = rectBounds[cmd.index];
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
+          b = textBounds[cmd.index];
+        } else {
+          continue;
+        }
+        int32_t ix0 = std::max(b.x0, tileX0);
+        int32_t iy0 = std::max(b.y0, tileY0);
+        int32_t ix1 = std::min(b.x1, tileX1);
+        int32_t iy1 = std::min(b.y1, tileY1);
+        if (ix1 > ix0 && iy1 > iy0) {
+          mergedCounts[tileIndex] += 1;
+        }
+      }
+    }
+  };
+
+  for (uint32_t tileIndex = 0; tileIndex < tileCount; ++tileIndex) {
+    count_tile(tileIndex);
+  }
+
+  std::vector<uint32_t> mergedOffsets(tileCount + 1, 0);
+  for (uint32_t i = 0; i < tileCount; ++i) {
+    mergedOffsets[i + 1] = mergedOffsets[i] + mergedCounts[i];
+  }
+  std::vector<TileCommand> mergedCommands;
+  mergedCommands.assign(mergedOffsets.back(), TileCommand{});
+  std::vector<uint32_t> mergedFill(tileCount, 0);
+
+  auto emit_tile = [&](uint32_t tileIndex) {
+    uint32_t tx = tileIndex % tilesX;
+    uint32_t ty = tileIndex / tilesX;
+    int32_t tileX0 = static_cast<int32_t>(tx * tileSize);
+    int32_t tileY0 = static_cast<int32_t>(ty * tileSize);
+    int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(width));
+    int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(height));
+    size_t tileCursor = tileOffsets[tileIndex];
+    size_t tileEnd = tileOffsets[tileIndex + 1];
+    uint32_t macroX = tx / MacroFactor;
+    uint32_t macroY = ty / MacroFactor;
+    uint32_t macroIndex = macroY * macroTilesX + macroX;
+    size_t macroCursor = macroOffsets[macroIndex];
+    size_t macroEnd = macroOffsets[macroIndex + 1];
+    size_t globalCursor = 0;
+    size_t globalEndLocal = globalCommands.size();
+    int32_t macroOriginX = static_cast<int32_t>(macroX * MacroFactor * tileSize);
+    int32_t macroOriginY = static_cast<int32_t>(macroY * MacroFactor * tileSize);
+    while (tileCursor < tileEnd || macroCursor < macroEnd || globalCursor < globalEndLocal) {
+      uint32_t bestOrder = 0xFFFFFFFFu;
+      enum class Source : uint8_t { Tile, Macro, Global } src = Source::Tile;
+      bool hasSrc = false;
+      if (tileCursor < tileEnd) {
+        bestOrder = tileCommands[tileCursor].order;
+        src = Source::Tile;
+        hasSrc = true;
+      }
+      if (macroCursor < macroEnd) {
+        uint32_t order = macroCommands[macroCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          src = Source::Macro;
+          hasSrc = true;
+        }
+      }
+      if (globalCursor < globalEndLocal) {
+        uint32_t order = globalCommands[globalCursor].order;
+        if (!hasSrc || order < bestOrder) {
+          bestOrder = order;
+          src = Source::Global;
+          hasSrc = true;
+        }
+      }
+      if (!hasSrc) break;
+      if (src == Source::Tile) {
+        auto cmd = tileCommands[tileCursor++];
+        uint32_t offset = mergedOffsets[tileIndex] + mergedFill[tileIndex]++;
+        mergedCommands[offset] = cmd;
+      } else if (src == Source::Macro) {
+        auto cmd = macroCommands[macroCursor++];
+        int32_t drawX0 = macroOriginX + static_cast<int32_t>(cmd.x);
+        int32_t drawY0 = macroOriginY + static_cast<int32_t>(cmd.y);
+        int32_t drawX1 = drawX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+        int32_t drawY1 = drawY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+        int32_t ix0 = std::max(drawX0, tileX0);
+        int32_t iy0 = std::max(drawY0, tileY0);
+        int32_t ix1 = std::min(drawX1, tileX1);
+        int32_t iy1 = std::min(drawY1, tileY1);
         if (ix1 <= ix0 || iy1 <= iy0) continue;
         int32_t localX0 = ix0 - tileX0;
         int32_t localY0 = iy0 - tileY0;
         int32_t localW = ix1 - ix0;
         int32_t localH = iy1 - iy0;
-        if (localX0 < 0 || localY0 < 0) continue;
-        if (localW <= 0 || localH <= 0) continue;
-        if (localX0 > 255 || localY0 > 255) continue;
-        if (localW > 256 || localH > 256) continue;
-        uint32_t tileIdx = ty * tilesX + tx;
-        uint32_t offset = batch.tileStream.offsets[tileIdx] + tileFill[tileIdx]++;
-        TileCommand cmd;
-        cmd.type = type;
-        cmd.index = index;
-        cmd.x = static_cast<uint8_t>(localX0);
-        cmd.y = static_cast<uint8_t>(localY0);
-        cmd.wMinus1 = static_cast<uint8_t>(localW - 1);
-        cmd.hMinus1 = static_cast<uint8_t>(localH - 1);
-        batch.tileStream.commands[offset] = cmd;
+        if (localX0 < 0 || localY0 < 0 || localW <= 0 || localH <= 0) continue;
+        TileCommand out{};
+        out.type = cmd.type;
+        out.index = cmd.index;
+        out.order = cmd.order;
+        out.x = static_cast<uint8_t>(localX0);
+        out.y = static_cast<uint8_t>(localY0);
+        out.wMinus1 = static_cast<uint8_t>(localW - 1);
+        out.hMinus1 = static_cast<uint8_t>(localH - 1);
+        uint32_t offset = mergedOffsets[tileIndex] + mergedFill[tileIndex]++;
+        mergedCommands[offset] = out;
+      } else {
+        auto cmd = globalCommands[globalCursor++];
+        Bounds b{};
+        if (cmd.type == CommandType::Rect) {
+          if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
+          b = rectBounds[cmd.index];
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
+          b = textBounds[cmd.index];
+        } else {
+          continue;
+        }
+        int32_t ix0 = std::max(b.x0, tileX0);
+        int32_t iy0 = std::max(b.y0, tileY0);
+        int32_t ix1 = std::min(b.x1, tileX1);
+        int32_t iy1 = std::min(b.y1, tileY1);
+        if (ix1 <= ix0 || iy1 <= iy0) continue;
+        int32_t localX0 = ix0 - tileX0;
+        int32_t localY0 = iy0 - tileY0;
+        int32_t localW = ix1 - ix0;
+        int32_t localH = iy1 - iy0;
+        if (localX0 < 0 || localY0 < 0 || localW <= 0 || localH <= 0) continue;
+        TileCommand out{};
+        out.type = cmd.type;
+        out.index = cmd.index;
+        out.order = cmd.order;
+        out.x = static_cast<uint8_t>(localX0);
+        out.y = static_cast<uint8_t>(localY0);
+        out.wMinus1 = static_cast<uint8_t>(localW - 1);
+        out.hMinus1 = static_cast<uint8_t>(localH - 1);
+        uint32_t offset = mergedOffsets[tileIndex] + mergedFill[tileIndex]++;
+        mergedCommands[offset] = out;
       }
     }
   };
 
-  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
-    int32_t x0 = batch.rects.x0[i];
-    int32_t y0 = batch.rects.y0[i];
-    int32_t x1 = batch.rects.x1[i];
-    int32_t y1 = batch.rects.y1[i];
-    emit_tiles(CommandType::Rect, i, x0, y0, x1, y1);
+  for (uint32_t tileIndex = 0; tileIndex < tileCount; ++tileIndex) {
+    emit_tile(tileIndex);
   }
 
-  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
-    int32_t x0 = batch.text.x[i];
-    int32_t y0 = batch.text.y[i];
-    int32_t x1 = x0 + batch.text.width[i];
-    int32_t y1 = y0 + batch.text.height[i];
-    emit_tiles(CommandType::Text, i, x0, y0, x1, y1);
-  }
-
+  batch.tileStream.offsets = std::move(mergedOffsets);
+  batch.tileStream.commands = std::move(mergedCommands);
+  batch.tileStream.macroOffsets.clear();
+  batch.tileStream.macroCommands.clear();
+  batch.tileStream.globalCommands.clear();
+  batch.tileStream.preMerged = true;
   batch.tileStream.enabled = true;
 }
 
