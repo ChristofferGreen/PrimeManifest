@@ -80,6 +80,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_palette_store.cpp
     tests/unit/test_profiles.cpp
     tests/unit/test_rect.cpp
+    tests/unit/test_rect_cache_edges.cpp
     tests/unit/test_renderer.cpp
     tests/unit/test_text.cpp
     tests/unit/test_text_bake.cpp
