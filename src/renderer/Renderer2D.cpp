@@ -817,6 +817,51 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             continue;
           }
         }
+        if (!batch.disableOpaqueRectFastPath && hasGradient && gradientVertical && !smoothBlend &&
+            rotation == 0.0f && radius > 0.0f && opacity == 255u && cA == 255u && gA == 255u) {
+          float inset = radius + 0.5f;
+          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
+          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
+          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
+          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
+          if (coreX1 > coreX0 && coreY1 > coreY0) {
+            for (int32_t y = coreY0; y < coreY1; ++y) {
+              float dotBase = gradSign * (static_cast<float>(y) + 0.5f);
+              float t = clamp01((dotBase - gradMin) * gradInvRange);
+              uint8_t rowR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+              uint8_t rowG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+              uint8_t rowB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+              if (frontToBack) {
+                uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * coreX0);
+                for (int32_t x = coreX0; x < coreX1; ++x, row += 4) {
+                  write_px(row, rowR, rowG, rowB);
+                }
+              } else {
+                uint32_t packed = static_cast<uint32_t>(rowR) |
+                                  (static_cast<uint32_t>(rowG) << 8) |
+                                  (static_cast<uint32_t>(rowB) << 16) |
+                                  (255u << 24);
+                uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * coreX0);
+                if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
+                  auto* row32 = reinterpret_cast<uint32_t*>(row);
+                  std::fill(row32, row32 + (coreX1 - coreX0), packed);
+                } else {
+                  for (int32_t x = coreX0; x < coreX1; ++x, row += 4) {
+                    row[0] = rowR;
+                    row[1] = rowG;
+                    row[2] = rowB;
+                    row[3] = 255u;
+                  }
+                }
+              }
+            }
+            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
+            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
+            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
+            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
+            continue;
+          }
+        }
         render_sdf_region(region.x0, region.y0, region.x1, region.y1);
       } else if (type == CommandType::Text) {
         if (idx >= batch.text.x.size() ||
