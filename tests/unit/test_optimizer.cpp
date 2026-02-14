@@ -192,3 +192,83 @@ PM_TEST(optimizer, clear_pattern_too_large_ignored) {
 
   PM_CHECK(!optimized.valid, "oversized clear pattern ignored");
 }
+
+PM_TEST(optimizer, rejects_empty_palette_size) {
+  RenderBatch batch;
+  batch.palette.enabled = true;
+  batch.palette.size = 0;
+
+  uint32_t width = 4;
+  uint32_t height = 4;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(!optimized.valid, "empty palette size rejected");
+}
+
+PM_TEST(optimizer, rejects_short_target_span) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  add_rect(batch, 0, 0, 2, 2, PackRGBA8(Color{10, 20, 30, 255}));
+
+  std::vector<uint8_t> buffer(4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), 2, 2, 8};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(!optimized.valid, "short target span rejected");
+}
+
+PM_TEST(optimizer, disables_tile_stream_when_tile_size_too_large) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 512;
+  add_rect(batch, 0, 0, 4, 4, PackRGBA8(Color{10, 20, 30, 255}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  batch.tileStream.commands.resize(1);
+
+  uint32_t width = 512;
+  uint32_t height = 512;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(optimized.valid, "optimizer succeeds with large tiles");
+  PM_CHECK(!optimized.useTileStream, "tile stream disabled when tile size too large");
+}
+
+PM_TEST(optimizer, premerge_invalid_macro_offsets_disables_stream) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 4;
+  add_rect(batch, 0, 0, 4, 4, PackRGBA8(Color{20, 30, 40, 255}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = false;
+  batch.tileStream.offsets = {0, 1, 2, 3, 4};
+  batch.tileStream.commands.resize(4);
+  batch.tileStream.macroOffsets = {0};
+  batch.tileStream.macroCommands.clear();
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(optimized.valid, "optimizer succeeds with invalid macro offsets");
+  PM_CHECK(!optimized.useTileStream, "invalid macro offsets disable tile stream");
+}
