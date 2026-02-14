@@ -83,6 +83,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_store_defaults.cpp
     tests/unit/test_target_guard.cpp
     tests/unit/test_tile_stream.cpp
+    tests/unit/test_struct_clears.cpp
   )
   target_link_libraries(PrimeManifest_tests PRIVATE PrimeManifest)
   pm_require_cxx23(PrimeManifest_tests)
