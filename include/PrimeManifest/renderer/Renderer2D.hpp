@@ -238,6 +238,27 @@ struct DebugTilesStore {
   }
 };
 
+struct TileCommand {
+  CommandType type{CommandType::Rect};
+  uint32_t index = 0;
+  uint8_t x = 0;
+  uint8_t y = 0;
+  uint8_t wMinus1 = 0;
+  uint8_t hMinus1 = 0;
+};
+
+struct TileStream {
+  std::vector<uint32_t> offsets;
+  std::vector<TileCommand> commands;
+  bool enabled = false;
+
+  void clear() {
+    offsets.clear();
+    commands.clear();
+    enabled = false;
+  }
+};
+
 struct PaletteStore {
   std::array<uint32_t, 256> colorRGBA8{};
   bool enabled = false;
@@ -257,6 +278,7 @@ struct RenderBatch {
   TextRunStore runs;
   GlyphStore glyphs;
   DebugTilesStore debugTiles;
+  TileStream tileStream;
   PaletteStore palette;
   uint16_t tileSize = 32;
 
@@ -268,6 +290,7 @@ struct RenderBatch {
     runs.clear();
     glyphs.clear();
     debugTiles.clear();
+    tileStream.clear();
     palette.clear();
   }
 };

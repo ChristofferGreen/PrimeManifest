@@ -1,5 +1,6 @@
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -24,6 +25,7 @@ struct BenchConfig {
   uint16_t rectRadius = 4;
   bool enableText = true;
   bool enableDebugTiles = false;
+  bool useTileStream = false;
   uint32_t seed = 1337;
 };
 
@@ -61,6 +63,8 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.enableText = false;
     } else if (arg == "--debug-tiles") {
       cfg.enableDebugTiles = true;
+    } else if (arg == "--tile-stream") {
+      cfg.useTileStream = true;
     } else if (arg == "--seed") {
       cfg.seed = next(cfg.seed);
     }
@@ -133,10 +137,10 @@ void add_rect(RenderBatch& batch,
               bool gradient,
               uint16_t radiusQ8_8) {
   uint32_t idx = static_cast<uint32_t>(batch.rects.x0.size());
-  batch.rects.x0.push_back(x0);
-  batch.rects.y0.push_back(y0);
-  batch.rects.x1.push_back(x1);
-  batch.rects.y1.push_back(y1);
+  batch.rects.x0.push_back(static_cast<int16_t>(x0));
+  batch.rects.y0.push_back(static_cast<int16_t>(y0));
+  batch.rects.x1.push_back(static_cast<int16_t>(x1));
+  batch.rects.y1.push_back(static_cast<int16_t>(y1));
   batch.rects.colorIndex.push_back(colorIndex);
   batch.rects.radiusQ8_8.push_back(radiusQ8_8);
   batch.rects.rotationQ8_8.push_back(0);
@@ -169,10 +173,10 @@ void add_text(RenderBatch& batch,
               uint8_t colorIndex,
               uint32_t runIndex) {
   uint32_t idx = static_cast<uint32_t>(batch.text.x.size());
-  batch.text.x.push_back(x);
-  batch.text.y.push_back(y);
-  batch.text.width.push_back(width);
-  batch.text.height.push_back(height);
+  batch.text.x.push_back(static_cast<int16_t>(x));
+  batch.text.y.push_back(static_cast<int16_t>(y));
+  batch.text.width.push_back(static_cast<uint16_t>(width));
+  batch.text.height.push_back(static_cast<uint16_t>(height));
   batch.text.zQ8_8.push_back(0);
   batch.text.opacity.push_back(255);
   batch.text.colorIndex.push_back(colorIndex);
@@ -191,6 +195,125 @@ void add_debug_tiles(RenderBatch& batch, uint8_t colorIndex) {
   batch.debugTiles.lineWidth.push_back(1);
   batch.debugTiles.flags.push_back(DebugTilesFlagDirtyOnly);
   batch.commands.push_back(RenderCommand{CommandType::DebugTiles, idx});
+}
+
+void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
+  uint32_t tileSize = batch.tileSize == 0 ? 32u : batch.tileSize;
+  if (tileSize > 256u) {
+    batch.tileStream.clear();
+    return;
+  }
+  uint32_t tilesX = (width + tileSize - 1) / tileSize;
+  uint32_t tilesY = (height + tileSize - 1) / tileSize;
+  uint32_t tileCount = tilesX * tilesY;
+  if (tileCount == 0) return;
+
+  std::vector<uint32_t> tileCounts(tileCount, 0);
+
+  auto count_tiles = [&](int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    if (x1 <= 0 || y1 <= 0) return;
+    if (x0 >= static_cast<int32_t>(width) || y0 >= static_cast<int32_t>(height)) return;
+    int32_t clampedX0 = std::max(x0, 0);
+    int32_t clampedY0 = std::max(y0, 0);
+    int32_t clampedX1 = std::min(x1, static_cast<int32_t>(width));
+    int32_t clampedY1 = std::min(y1, static_cast<int32_t>(height));
+    if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return;
+    uint32_t tx0 = static_cast<uint32_t>(clampedX0) / tileSize;
+    uint32_t ty0 = static_cast<uint32_t>(clampedY0) / tileSize;
+    uint32_t tx1 = static_cast<uint32_t>(clampedX1 - 1) / tileSize;
+    uint32_t ty1 = static_cast<uint32_t>(clampedY1 - 1) / tileSize;
+    for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+      for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+        tileCounts[ty * tilesX + tx] += 1;
+      }
+    }
+  };
+
+  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
+    int32_t x0 = batch.rects.x0[i];
+    int32_t y0 = batch.rects.y0[i];
+    int32_t x1 = batch.rects.x1[i];
+    int32_t y1 = batch.rects.y1[i];
+    count_tiles(x0, y0, x1, y1);
+  }
+
+  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
+    int32_t x0 = batch.text.x[i];
+    int32_t y0 = batch.text.y[i];
+    int32_t x1 = x0 + batch.text.width[i];
+    int32_t y1 = y0 + batch.text.height[i];
+    count_tiles(x0, y0, x1, y1);
+  }
+
+  batch.tileStream.offsets.assign(tileCount + 1, 0);
+  for (uint32_t i = 0; i < tileCount; ++i) {
+    batch.tileStream.offsets[i + 1] = batch.tileStream.offsets[i] + tileCounts[i];
+  }
+  batch.tileStream.commands.assign(batch.tileStream.offsets.back(), TileCommand{});
+  std::vector<uint32_t> tileFill(tileCount, 0);
+
+  auto emit_tiles = [&](CommandType type, uint32_t index, int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    if (x1 <= 0 || y1 <= 0) return;
+    if (x0 >= static_cast<int32_t>(width) || y0 >= static_cast<int32_t>(height)) return;
+    int32_t clampedX0 = std::max(x0, 0);
+    int32_t clampedY0 = std::max(y0, 0);
+    int32_t clampedX1 = std::min(x1, static_cast<int32_t>(width));
+    int32_t clampedY1 = std::min(y1, static_cast<int32_t>(height));
+    if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return;
+    uint32_t tx0 = static_cast<uint32_t>(clampedX0) / tileSize;
+    uint32_t ty0 = static_cast<uint32_t>(clampedY0) / tileSize;
+    uint32_t tx1 = static_cast<uint32_t>(clampedX1 - 1) / tileSize;
+    uint32_t ty1 = static_cast<uint32_t>(clampedY1 - 1) / tileSize;
+    for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+      for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+        int32_t tileX0 = static_cast<int32_t>(tx * tileSize);
+        int32_t tileY0 = static_cast<int32_t>(ty * tileSize);
+        int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(width));
+        int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(tileSize), static_cast<int32_t>(height));
+        int32_t ix0 = std::max(x0, tileX0);
+        int32_t iy0 = std::max(y0, tileY0);
+        int32_t ix1 = std::min(x1, tileX1);
+        int32_t iy1 = std::min(y1, tileY1);
+        if (ix1 <= ix0 || iy1 <= iy0) continue;
+        int32_t localX0 = ix0 - tileX0;
+        int32_t localY0 = iy0 - tileY0;
+        int32_t localW = ix1 - ix0;
+        int32_t localH = iy1 - iy0;
+        if (localX0 < 0 || localY0 < 0) continue;
+        if (localW <= 0 || localH <= 0) continue;
+        if (localX0 > 255 || localY0 > 255) continue;
+        if (localW > 256 || localH > 256) continue;
+        uint32_t tileIdx = ty * tilesX + tx;
+        uint32_t offset = batch.tileStream.offsets[tileIdx] + tileFill[tileIdx]++;
+        TileCommand cmd;
+        cmd.type = type;
+        cmd.index = index;
+        cmd.x = static_cast<uint8_t>(localX0);
+        cmd.y = static_cast<uint8_t>(localY0);
+        cmd.wMinus1 = static_cast<uint8_t>(localW - 1);
+        cmd.hMinus1 = static_cast<uint8_t>(localH - 1);
+        batch.tileStream.commands[offset] = cmd;
+      }
+    }
+  };
+
+  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
+    int32_t x0 = batch.rects.x0[i];
+    int32_t y0 = batch.rects.y0[i];
+    int32_t x1 = batch.rects.x1[i];
+    int32_t y1 = batch.rects.y1[i];
+    emit_tiles(CommandType::Rect, i, x0, y0, x1, y1);
+  }
+
+  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
+    int32_t x0 = batch.text.x[i];
+    int32_t y0 = batch.text.y[i];
+    int32_t x1 = x0 + batch.text.width[i];
+    int32_t y1 = y0 + batch.text.height[i];
+    emit_tiles(CommandType::Text, i, x0, y0, x1, y1);
+  }
+
+  batch.tileStream.enabled = true;
 }
 
 void build_text_run(RenderBatch& batch, uint32_t glyphCount) {
@@ -273,6 +396,10 @@ int main(int argc, char** argv) {
     add_debug_tiles(batch, debugIndex);
   }
 
+  if (cfg.useTileStream) {
+    build_tile_stream(batch, cfg.width, cfg.height);
+  }
+
   std::vector<uint8_t> buffer(static_cast<size_t>(cfg.width) * cfg.height * 4, 0u);
   RenderTarget target{std::span<uint8_t>(buffer), cfg.width, cfg.height, cfg.width * 4};
 
@@ -290,6 +417,7 @@ int main(int argc, char** argv) {
             << " Frames: " << cfg.frames << "\n";
   std::cout << "TileSize: " << cfg.tileSize << "\n";
   std::cout << "Palette: Indexed\n";
+  std::cout << "TileStream: " << (cfg.useTileStream ? "Enabled" : "Disabled") << "\n";
   std::cout << "Elapsed: " << elapsed.count() << "s\n";
   std::cout << "FPS: " << fps << "\n";
 

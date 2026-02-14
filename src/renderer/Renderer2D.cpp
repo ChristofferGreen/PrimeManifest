@@ -289,11 +289,23 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     }
   }
 
+  bool useTileStream = batch.tileStream.enabled;
+  if (useTileStream) {
+    if (batch.tileStream.offsets.size() != static_cast<size_t>(tileCount + 1) ||
+        batch.tileStream.offsets.back() != batch.tileStream.commands.size()) {
+      useTileStream = false;
+    }
+  }
+
   bool hasDraw = false;
-  for (auto const& cmd : batch.commands) {
-    if (cmd.type == CommandType::Rect || cmd.type == CommandType::Text) {
-      hasDraw = true;
-      break;
+  if (useTileStream) {
+    hasDraw = !batch.tileStream.commands.empty();
+  } else {
+    for (auto const& cmd : batch.commands) {
+      if (cmd.type == CommandType::Rect || cmd.type == CommandType::Text) {
+        hasDraw = true;
+        break;
+      }
     }
   }
   if (!hasDraw && !debugTiles) return;
@@ -404,149 +416,169 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
       textClipX1.assign(textCount, 0);
       textClipY1.assign(textCount, 0);
     }
-    tileCounts.assign(tileCount, 0);
-    cmdTiles.assign(batch.commands.size(), CmdTileInfo{});
-    cmdActive.assign(batch.commands.size(), 0);
+    if (useTileStream) {
+      renderTiles.reserve(tileCount);
+      for (uint32_t i = 0; i < tileCount; ++i) {
+        if (batch.tileStream.offsets[i] != batch.tileStream.offsets[i + 1]) {
+          renderTiles.push_back(i);
+        }
+      }
+      for (auto const& cmd : batch.tileStream.commands) {
+        if (cmd.type == CommandType::Rect) {
+          if (cmd.index < rectActive.size()) {
+            rectActive[cmd.index] = 1;
+          }
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index < textActive.size()) {
+            textActive[cmd.index] = 1;
+          }
+        }
+      }
+    } else {
+      tileCounts.assign(tileCount, 0);
+      cmdTiles.assign(batch.commands.size(), CmdTileInfo{});
+      cmdActive.assign(batch.commands.size(), 0);
 
-    for (uint32_t i = 0; i < batch.commands.size(); ++i) {
-      auto const& cmd = batch.commands[i];
-      int32_t x0 = 0;
-      int32_t y0 = 0;
-      int32_t x1 = 0;
-      int32_t y1 = 0;
+      for (uint32_t i = 0; i < batch.commands.size(); ++i) {
+        auto const& cmd = batch.commands[i];
+        int32_t x0 = 0;
+        int32_t y0 = 0;
+        int32_t x1 = 0;
+        int32_t y1 = 0;
         if (cmd.type == CommandType::Rect) {
           if (cmd.index >= batch.rects.x0.size() ||
               cmd.index >= batch.rects.y0.size() ||
               cmd.index >= batch.rects.x1.size() ||
               cmd.index >= batch.rects.y1.size() ||
-            cmd.index >= batch.rects.colorIndex.size()) {
-          continue;
-        }
-        uint8_t opacity = cmd.index < batch.rects.opacity.size() ? batch.rects.opacity[cmd.index] : 255u;
-        if (opacity == 0) continue;
-        uint32_t color = fetch_color(batch.rects.colorIndex, cmd.index, 0u);
-        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-        uint8_t flags = cmd.index < batch.rects.flags.size() ? batch.rects.flags[cmd.index] : 0u;
-        if (opacity != 255u) {
-          uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
-          if ((combinedA + 127u) / 255u == 0u) continue;
-        }
-        bool hasGradient = (flags & RectFlagGradient) != 0u;
-        if (!hasGradient) {
-          if (cA == 0) continue;
+              cmd.index >= batch.rects.colorIndex.size()) {
+            continue;
+          }
+          uint8_t opacity = cmd.index < batch.rects.opacity.size() ? batch.rects.opacity[cmd.index] : 255u;
+          if (opacity == 0) continue;
+          uint32_t color = fetch_color(batch.rects.colorIndex, cmd.index, 0u);
+          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+          uint8_t flags = cmd.index < batch.rects.flags.size() ? batch.rects.flags[cmd.index] : 0u;
+          if (opacity != 255u) {
+            uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
+            if ((combinedA + 127u) / 255u == 0u) continue;
+          }
+          bool hasGradient = (flags & RectFlagGradient) != 0u;
+          if (!hasGradient) {
+            if (cA == 0) continue;
+          } else {
+            if (cmd.index >= batch.rects.gradientColor1Index.size()) continue;
+            uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, cmd.index, 0u);
+            uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
+            if (cA == 0 && gA == 0) continue;
+          }
+          x0 = batch.rects.x0[cmd.index];
+          y0 = batch.rects.y0[cmd.index];
+          x1 = batch.rects.x1[cmd.index];
+          y1 = batch.rects.y1[cmd.index];
+          if ((flags & RectFlagClip) != 0u &&
+              cmd.index < batch.rects.clipX0.size() &&
+              cmd.index < batch.rects.clipY0.size() &&
+              cmd.index < batch.rects.clipX1.size() &&
+              cmd.index < batch.rects.clipY1.size()) {
+            x0 = std::max(x0, static_cast<int32_t>(batch.rects.clipX0[cmd.index]));
+            y0 = std::max(y0, static_cast<int32_t>(batch.rects.clipY0[cmd.index]));
+            x1 = std::min(x1, static_cast<int32_t>(batch.rects.clipX1[cmd.index]));
+            y1 = std::min(y1, static_cast<int32_t>(batch.rects.clipY1[cmd.index]));
+            if (x1 <= x0 || y1 <= y0) continue;
+          }
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index >= batch.text.x.size() ||
+              cmd.index >= batch.text.y.size() ||
+              cmd.index >= batch.text.width.size() ||
+              cmd.index >= batch.text.height.size() ||
+              cmd.index >= batch.text.colorIndex.size() ||
+              cmd.index >= batch.text.opacity.size()) {
+            continue;
+          }
+          uint8_t opacity = batch.text.opacity[cmd.index];
+          if (opacity == 0) continue;
+          uint32_t color = fetch_color(batch.text.colorIndex, cmd.index, 0u);
+          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+          if (opacity != 255u) {
+            uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
+            if ((combinedA + 127u) / 255u == 0u) continue;
+          } else if (cA == 0) {
+            continue;
+          }
+          x0 = batch.text.x[cmd.index];
+          y0 = batch.text.y[cmd.index];
+          x1 = x0 + batch.text.width[cmd.index];
+          y1 = y0 + batch.text.height[cmd.index];
+          uint8_t flags = cmd.index < batch.text.flags.size() ? batch.text.flags[cmd.index] : 0u;
+          if ((flags & TextFlagClip) != 0u &&
+              cmd.index < batch.text.clipX0.size() &&
+              cmd.index < batch.text.clipY0.size() &&
+              cmd.index < batch.text.clipX1.size() &&
+              cmd.index < batch.text.clipY1.size()) {
+            x0 = std::max(x0, static_cast<int32_t>(batch.text.clipX0[cmd.index]));
+            y0 = std::max(y0, static_cast<int32_t>(batch.text.clipY0[cmd.index]));
+            x1 = std::min(x1, static_cast<int32_t>(batch.text.clipX1[cmd.index]));
+            y1 = std::min(y1, static_cast<int32_t>(batch.text.clipY1[cmd.index]));
+            if (x1 <= x0 || y1 <= y0) continue;
+          }
         } else {
-          if (cmd.index >= batch.rects.gradientColor1Index.size()) continue;
-          uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, cmd.index, 0u);
-          uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
-          if (cA == 0 && gA == 0) continue;
-        }
-        x0 = batch.rects.x0[cmd.index];
-        y0 = batch.rects.y0[cmd.index];
-        x1 = batch.rects.x1[cmd.index];
-        y1 = batch.rects.y1[cmd.index];
-        if ((flags & RectFlagClip) != 0u &&
-            cmd.index < batch.rects.clipX0.size() &&
-            cmd.index < batch.rects.clipY0.size() &&
-            cmd.index < batch.rects.clipX1.size() &&
-            cmd.index < batch.rects.clipY1.size()) {
-          x0 = std::max(x0, static_cast<int32_t>(batch.rects.clipX0[cmd.index]));
-          y0 = std::max(y0, static_cast<int32_t>(batch.rects.clipY0[cmd.index]));
-          x1 = std::min(x1, static_cast<int32_t>(batch.rects.clipX1[cmd.index]));
-          y1 = std::min(y1, static_cast<int32_t>(batch.rects.clipY1[cmd.index]));
-          if (x1 <= x0 || y1 <= y0) continue;
-        }
-      } else if (cmd.type == CommandType::Text) {
-        if (cmd.index >= batch.text.x.size() ||
-            cmd.index >= batch.text.y.size() ||
-            cmd.index >= batch.text.width.size() ||
-            cmd.index >= batch.text.height.size() ||
-            cmd.index >= batch.text.colorIndex.size() ||
-            cmd.index >= batch.text.opacity.size()) {
           continue;
         }
-        uint8_t opacity = batch.text.opacity[cmd.index];
-        if (opacity == 0) continue;
-        uint32_t color = fetch_color(batch.text.colorIndex, cmd.index, 0u);
-        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-        if (opacity != 255u) {
-          uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
-          if ((combinedA + 127u) / 255u == 0u) continue;
-        } else if (cA == 0) {
-          continue;
+
+        if (x1 <= 0 || y1 <= 0) continue;
+        if (x0 >= static_cast<int32_t>(target.width) || y0 >= static_cast<int32_t>(target.height)) continue;
+        int32_t clampedX0 = std::max<int32_t>(x0, 0);
+        int32_t clampedY0 = std::max<int32_t>(y0, 0);
+        int32_t clampedX1 = std::min<int32_t>(x1, static_cast<int32_t>(target.width));
+        int32_t clampedY1 = std::min<int32_t>(y1, static_cast<int32_t>(target.height));
+        if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) continue;
+
+        uint32_t tx0 = 0;
+        uint32_t ty0 = 0;
+        uint32_t tx1 = 0;
+        uint32_t ty1 = 0;
+        if (tilePow2) {
+          tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
+          ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
+          tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
+          ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
+        } else {
+          tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
+          ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
+          tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
+          ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
         }
-        x0 = batch.text.x[cmd.index];
-        y0 = batch.text.y[cmd.index];
-        x1 = x0 + batch.text.width[cmd.index];
-        y1 = y0 + batch.text.height[cmd.index];
-        uint8_t flags = cmd.index < batch.text.flags.size() ? batch.text.flags[cmd.index] : 0u;
-        if ((flags & TextFlagClip) != 0u &&
-            cmd.index < batch.text.clipX0.size() &&
-            cmd.index < batch.text.clipY0.size() &&
-            cmd.index < batch.text.clipX1.size() &&
-            cmd.index < batch.text.clipY1.size()) {
-          x0 = std::max(x0, static_cast<int32_t>(batch.text.clipX0[cmd.index]));
-          y0 = std::max(y0, static_cast<int32_t>(batch.text.clipY0[cmd.index]));
-          x1 = std::min(x1, static_cast<int32_t>(batch.text.clipX1[cmd.index]));
-          y1 = std::min(y1, static_cast<int32_t>(batch.text.clipY1[cmd.index]));
-          if (x1 <= x0 || y1 <= y0) continue;
+
+        cmdActive[i] = 1;
+        cmdTiles[i] = CmdTileInfo{clampedX0, clampedY0, clampedX1, clampedY1, tx0, ty0, tx1, ty1};
+        if (cmd.type == CommandType::Rect && cmd.index < rectActive.size()) {
+          rectActive[cmd.index] = 1;
         }
-      } else {
-        continue;
-      }
-
-      if (x1 <= 0 || y1 <= 0) continue;
-      if (x0 >= static_cast<int32_t>(target.width) || y0 >= static_cast<int32_t>(target.height)) continue;
-      int32_t clampedX0 = std::max<int32_t>(x0, 0);
-      int32_t clampedY0 = std::max<int32_t>(y0, 0);
-      int32_t clampedX1 = std::min<int32_t>(x1, static_cast<int32_t>(target.width));
-      int32_t clampedY1 = std::min<int32_t>(y1, static_cast<int32_t>(target.height));
-      if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) continue;
-
-      uint32_t tx0 = 0;
-      uint32_t ty0 = 0;
-      uint32_t tx1 = 0;
-      uint32_t ty1 = 0;
-      if (tilePow2) {
-        tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
-        ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
-        tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
-        ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
-      } else {
-        tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
-        ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
-        tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
-        ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
-      }
-
-      cmdActive[i] = 1;
-      cmdTiles[i] = CmdTileInfo{clampedX0, clampedY0, clampedX1, clampedY1, tx0, ty0, tx1, ty1};
-      if (cmd.type == CommandType::Rect && cmd.index < rectActive.size()) {
-        rectActive[cmd.index] = 1;
-      }
-      if (cmd.type == CommandType::Text && cmd.index < textActive.size()) {
-        textActive[cmd.index] = 1;
-      }
-      for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-        for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-          tileCounts[ty * grid.tilesX + tx] += 1;
+        if (cmd.type == CommandType::Text && cmd.index < textActive.size()) {
+          textActive[cmd.index] = 1;
+        }
+        for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+          for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+            tileCounts[ty * grid.tilesX + tx] += 1;
+          }
         }
       }
-    }
 
-    tileOffsets.assign(tileCount + 1, 0);
-    for (uint32_t i = 0; i < tileCount; ++i) {
-      tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
-    }
-    tileRefs.assign(tileOffsets.back(), 0);
-    tileFill.assign(tileCount, 0);
-    for (uint32_t i = 0; i < batch.commands.size(); ++i) {
-      if (cmdActive[i] == 0) continue;
-      auto const& info = cmdTiles[i];
-      for (uint32_t ty = info.ty0; ty <= info.ty1; ++ty) {
-        for (uint32_t tx = info.tx0; tx <= info.tx1; ++tx) {
-          uint32_t tileIdx = ty * grid.tilesX + tx;
-          uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-          tileRefs[offset] = i;
+      tileOffsets.assign(tileCount + 1, 0);
+      for (uint32_t i = 0; i < tileCount; ++i) {
+        tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
+      }
+      tileRefs.assign(tileOffsets.back(), 0);
+      tileFill.assign(tileCount, 0);
+      for (uint32_t i = 0; i < batch.commands.size(); ++i) {
+        if (cmdActive[i] == 0) continue;
+        auto const& info = cmdTiles[i];
+        for (uint32_t ty = info.ty0; ty <= info.ty1; ++ty) {
+          for (uint32_t tx = info.tx0; tx <= info.tx1; ++tx) {
+            uint32_t tileIdx = ty * grid.tilesX + tx;
+            uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
+            tileRefs[offset] = i;
+          }
         }
       }
     }
@@ -685,9 +717,11 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
       }
     }
 
-    renderTiles.reserve(tileCount);
-    for (uint32_t i = 0; i < tileCount; ++i) {
-      if (tileCounts[i] != 0) renderTiles.push_back(i);
+    if (!useTileStream) {
+      renderTiles.reserve(tileCount);
+      for (uint32_t i = 0; i < tileCount; ++i) {
+        if (tileCounts[i] != 0) renderTiles.push_back(i);
+      }
     }
   }
 
@@ -695,6 +729,8 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     renderTiles.clear();
   }
   if (renderTiles.empty() && !debugTiles) return;
+
+  auto const& activeOffsets = useTileStream ? batch.tileStream.offsets : tileOffsets;
 
   auto render_tile = [&](uint32_t tileIndex) {
     uint32_t tx = tileIndex % grid.tilesX;
@@ -704,14 +740,34 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
     uint32_t tx1 = std::min(tx0 + grid.tileSize, target.width);
     uint32_t ty1 = std::min(ty0 + grid.tileSize, target.height);
 
-    uint32_t start = tileOffsets[tileIndex];
-    uint32_t end = tileOffsets[tileIndex + 1];
+    uint32_t start = activeOffsets[tileIndex];
+    uint32_t end = activeOffsets[tileIndex + 1];
     for (uint32_t i = start; i < end; ++i) {
-      uint32_t cmdIndex = tileRefs[i];
-      if (cmdIndex >= batch.commands.size()) continue;
-      auto const& cmd = batch.commands[cmdIndex];
-      if (cmd.type == CommandType::Rect) {
-        uint32_t idx = cmd.index;
+      CommandType type = CommandType::Rect;
+      uint32_t idx = 0;
+      int32_t drawX0 = 0;
+      int32_t drawY0 = 0;
+      int32_t drawX1 = 0;
+      int32_t drawY1 = 0;
+      if (useTileStream) {
+        if (i >= batch.tileStream.commands.size()) continue;
+        auto const& tileCmd = batch.tileStream.commands[i];
+        type = tileCmd.type;
+        idx = tileCmd.index;
+        drawX0 = static_cast<int32_t>(tx0) + static_cast<int32_t>(tileCmd.x);
+        drawY0 = static_cast<int32_t>(ty0) + static_cast<int32_t>(tileCmd.y);
+        drawX1 = drawX0 + static_cast<int32_t>(tileCmd.wMinus1) + 1;
+        drawY1 = drawY0 + static_cast<int32_t>(tileCmd.hMinus1) + 1;
+        if (drawX1 <= drawX0 || drawY1 <= drawY0) continue;
+      } else {
+        uint32_t cmdIndex = tileRefs[i];
+        if (cmdIndex >= batch.commands.size()) continue;
+        auto const& cmd = batch.commands[cmdIndex];
+        type = cmd.type;
+        idx = cmd.index;
+      }
+
+      if (type == CommandType::Rect) {
         if (idx >= batch.rects.x0.size() ||
             idx >= batch.rects.y0.size() ||
             idx >= batch.rects.x1.size() ||
@@ -725,10 +781,17 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
         int32_t x1 = batch.rects.x1[idx];
         int32_t y1 = batch.rects.y1[idx];
 
-        int32_t rx0 = std::max<int32_t>(x0, static_cast<int32_t>(tx0));
-        int32_t ry0 = std::max<int32_t>(y0, static_cast<int32_t>(ty0));
-        int32_t rx1 = std::min<int32_t>(x1, static_cast<int32_t>(tx1));
-        int32_t ry1 = std::min<int32_t>(y1, static_cast<int32_t>(ty1));
+        if (!useTileStream) {
+          drawX0 = x0;
+          drawY0 = y0;
+          drawX1 = x1;
+          drawY1 = y1;
+        }
+
+        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
         if (rx1 <= rx0 || ry1 <= ry0) continue;
 
         uint16_t radiusQ = idx < batch.rects.radiusQ8_8.size() ? batch.rects.radiusQ8_8[idx] : 0;
@@ -835,7 +898,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           clip.y1 = batch.rects.clipY1[idx];
         }
         if (clipEnabled) {
-          if (clip.x1 <= x0 || clip.x0 >= x1 || clip.y1 <= y0 || clip.y0 >= y1) continue;
+          if (clip.x1 <= drawX0 || clip.x0 >= drawX1 || clip.y1 <= drawY0 || clip.y0 >= drawY1) continue;
         }
 
         float cx = (static_cast<float>(x0) + static_cast<float>(x1)) * 0.5f;
@@ -1264,8 +1327,7 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           render_span(y, rx0, ix0);
           render_span(y, ix1, rx1);
         }
-      } else if (cmd.type == CommandType::Text) {
-        uint32_t idx = cmd.index;
+      } else if (type == CommandType::Text) {
         if (idx >= batch.text.x.size() ||
             idx >= batch.text.y.size() ||
             idx >= batch.text.width.size() ||
@@ -1309,7 +1371,11 @@ void RenderImpl(RenderTarget target, RenderBatch const& batch) {
           clip.y1 = batch.text.clipY1[idx];
         }
         if (clipEnabled) {
-          if (clip.x1 <= x0 || clip.x0 >= x1 || clip.y1 <= y0 || clip.y0 >= y1) continue;
+          if (useTileStream) {
+            if (clip.x1 <= drawX0 || clip.x0 >= drawX1 || clip.y1 <= drawY0 || clip.y0 >= drawY1) continue;
+          } else {
+            if (clip.x1 <= x0 || clip.x0 >= x1 || clip.y1 <= y0 || clip.y0 >= y1) continue;
+          }
         }
 
         uint32_t color = fetch_color(batch.text.colorIndex, idx, 0u);
