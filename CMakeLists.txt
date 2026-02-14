@@ -79,6 +79,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_text.cpp
     tests/unit/test_text_bake.cpp
     tests/unit/test_tiles.cpp
+    tests/unit/test_store_defaults.cpp
   )
   target_link_libraries(PrimeManifest_tests PRIVATE PrimeManifest)
   pm_require_cxx23(PrimeManifest_tests)
