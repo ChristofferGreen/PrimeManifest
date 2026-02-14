@@ -83,6 +83,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_text_store_defaults.cpp
     tests/unit/test_tiles.cpp
     tests/unit/test_store_defaults.cpp
+    tests/unit/test_store_more.cpp
     tests/unit/test_target_guard.cpp
     tests/unit/test_tile_stream.cpp
     tests/unit/test_struct_clears.cpp
