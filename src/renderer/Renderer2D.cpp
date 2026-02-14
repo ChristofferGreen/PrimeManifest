@@ -674,6 +674,17 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         bool useEdgeTable = (idx < rectEdgeOffset.size() && rectEdgeOffset[idx] != 0xFFFFFFFFu);
         uint32_t edgeOffset = useEdgeTable ? rectEdgeOffset[idx] : 0u;
 
+        bool gradientVertical = false;
+        float gradSign = 1.0f;
+        if (hasGradient) {
+          constexpr float GradEpsilon = 1e-4f;
+          if (std::abs(gradDir.x) <= GradEpsilon &&
+              std::abs(std::abs(gradDir.y) - 1.0f) <= GradEpsilon) {
+            gradientVertical = true;
+            gradSign = gradDir.y >= 0.0f ? 1.0f : -1.0f;
+          }
+        }
+
         bool smoothBlend = (flags & RectFlagSmoothBlend) != 0u;
         uint8_t baseAlpha = idx < rectBaseAlpha.size() ? rectBaseAlpha[idx] : cA;
         auto fill_opaque_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
@@ -705,55 +716,84 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         };
         auto render_sdf_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
           if (x1f <= x0f || y1f <= y0f) return;
-          for (int32_t y = y0f; y < y1f; ++y) {
-            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
-            for (int32_t x = x0f; x < x1f; ++x, row += 4) {
-            Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
-            Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-            local = rotate_point(local, cosA, -sinA);
-            float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
-            if (dist > 1.0f) continue;
-            uint8_t cov = coverage_from_dist(dist);
-            if (cov == 0) continue;
-
-            uint8_t finalA = baseAlpha;
-            if (cov != 255u) {
-              finalA = apply_coverage(baseAlpha, cov);
-            }
-            if (finalA == 0) continue;
-
-            if (!hasGradient) {
-              if (smoothBlend) {
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, finalA);
-              } else if (useEdgeTable && cov != 255u && baseAlpha == 255u) {
-                uint8_t pmR = rectEdgePmRStore[edgeOffset + cov];
-                uint8_t pmG = rectEdgePmGStore[edgeOffset + cov];
-                uint8_t pmB = rectEdgePmBStore[edgeOffset + cov];
-                blend_px(row, pmR, pmG, pmB, cov);
-              } else {
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, finalA);
+          if (hasGradient && gradientVertical) {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              float dotBase = gradSign * (static_cast<float>(y) + 0.5f);
+              float t = clamp01((dotBase - gradMin) * gradInvRange);
+              uint8_t rowR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+              uint8_t rowG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+              uint8_t rowB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+              uint8_t rowA = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
+              uint8_t alpha = apply_opacity(rowA, opacity);
+              if (alpha == 0) continue;
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
+                local = rotate_point(local, cosA, -sinA);
+                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
+                if (dist > 1.0f) continue;
+                uint8_t cov = coverage_from_dist(dist);
+                if (cov == 0) continue;
+                uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
+                if (alphaCov == 0) continue;
+                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(rowR) * alphaCov + 127u) / 255u);
+                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(rowG) * alphaCov + 127u) / 255u);
+                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(rowB) * alphaCov + 127u) / 255u);
+                blend_px(row, pmR, pmG, pmB, alphaCov);
               }
-            } else {
-              float t = clamp01((dot(p, gradDir) - gradMin) * gradInvRange);
-              uint8_t r = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
-              uint8_t g = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
-              uint8_t b = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
-              uint8_t a = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
-              uint8_t alpha = apply_opacity(a, opacity);
-              uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
-              if (alphaCov == 0) continue;
-              uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(r) * alphaCov + 127u) / 255u);
-              uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(g) * alphaCov + 127u) / 255u);
-              uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(b) * alphaCov + 127u) / 255u);
-              blend_px(row, pmR, pmG, pmB, alphaCov);
             }
-          }
+          } else {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
+                local = rotate_point(local, cosA, -sinA);
+                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
+                if (dist > 1.0f) continue;
+                uint8_t cov = coverage_from_dist(dist);
+                if (cov == 0) continue;
+
+                uint8_t finalA = baseAlpha;
+                if (cov != 255u) {
+                  finalA = apply_coverage(baseAlpha, cov);
+                }
+                if (finalA == 0) continue;
+
+                if (!hasGradient) {
+                  if (smoothBlend) {
+                    uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
+                    uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
+                    uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
+                    blend_px(row, pmR, pmG, pmB, finalA);
+                  } else if (useEdgeTable && cov != 255u && baseAlpha == 255u) {
+                    uint8_t pmR = rectEdgePmRStore[edgeOffset + cov];
+                    uint8_t pmG = rectEdgePmGStore[edgeOffset + cov];
+                    uint8_t pmB = rectEdgePmBStore[edgeOffset + cov];
+                    blend_px(row, pmR, pmG, pmB, cov);
+                  } else {
+                    uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
+                    uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
+                    uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
+                    blend_px(row, pmR, pmG, pmB, finalA);
+                  }
+                } else {
+                  float t = clamp01((dot(p, gradDir) - gradMin) * gradInvRange);
+                  uint8_t r = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+                  uint8_t g = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+                  uint8_t b = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+                  uint8_t a = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
+                  uint8_t alpha = apply_opacity(a, opacity);
+                  uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
+                  if (alphaCov == 0) continue;
+                  uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(r) * alphaCov + 127u) / 255u);
+                  uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(g) * alphaCov + 127u) / 255u);
+                  uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(b) * alphaCov + 127u) / 255u);
+                  blend_px(row, pmR, pmG, pmB, alphaCov);
+                }
+              }
+            }
           }
         };
         if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&

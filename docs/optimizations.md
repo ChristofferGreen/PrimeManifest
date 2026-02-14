@@ -66,6 +66,7 @@ Date: 2026-02-14
 | Precompute rect gradient params per active rect | Kept | Disabling cache mean 385.71 FPS. |
 | Precompute rect center/rotation/half-extents | Rejected | Release mean 340.55 FPS (regression). |
 | Opaque rect fast path (axis-aligned, no gradient) + rounded core fill | Kept | Default 149.33 FPS vs 94.53 off. Heavy 14.86 FPS vs 10.20 off. |
+| Vertical gradient row fast path (axis-aligned) | Candidate | Default 162.01 FPS. Heavy 18.64 FPS. |
 | Thread-local scratch vectors for prepass | Rejected | Segfault in release tests. |
 | Cache per-command RGBA channels | Kept | Disabling cache mean 380.90 FPS. |
 | Cache per-command clip rects | Kept | Disabling cache mean 371.06 FPS. |
@@ -145,6 +146,14 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy (fast path off) | 10.20 | `--no-opaque-rect-fastpath`. |
 | 2026-02-14 | Heavy render-only (fast path on) | 18.29 | `--optimized`. |
 | 2026-02-14 | Heavy render-only (fast path off) | 10.91 | `--optimized --no-opaque-rect-fastpath`. |
+
+## Vertical Gradient Row Fast Path
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (combined) | 162.01 | 1280x720, 4000 rects, 200 texts, tile 32. |
+| 2026-02-14 | Default (render-only) | 200.61 | `--optimized`. |
+| 2026-02-14 | Heavy (combined) | 18.64 | 1280x720, 40000 rects, 2000 texts, tile 32. |
+| 2026-02-14 | Heavy (render-only) | 22.68 | `--optimized`. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
