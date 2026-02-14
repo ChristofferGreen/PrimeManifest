@@ -17,9 +17,14 @@ function(pm_require_cxx23 target)
   endif()
 endfunction()
 
+option(PRIMEMANIFEST_ENABLE_FONTS "Enable FreeType+HarfBuzz text shaping" OFF)
+
 set(PRIMEMANIFEST_SOURCES
   src/renderer/Optimizer2D.cpp
   src/renderer/Renderer2D.cpp
+  src/text/FontRegistry.cpp
+  src/text/TextBake.cpp
+  src/util/BitmapFont.cpp
 )
 
 add_library(PrimeManifest ${PRIMEMANIFEST_SOURCES})
@@ -30,6 +35,23 @@ target_include_directories(PrimeManifest
     $<INSTALL_INTERFACE:include>
 )
 
+if(PRIMEMANIFEST_ENABLE_FONTS)
+  find_package(PkgConfig)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(FREETYPE IMPORTED_TARGET freetype2)
+    pkg_check_modules(HARFBUZZ IMPORTED_TARGET harfbuzz)
+  endif()
+  if(FREETYPE_FOUND AND HARFBUZZ_FOUND)
+    target_link_libraries(PrimeManifest PRIVATE PkgConfig::FREETYPE PkgConfig::HARFBUZZ)
+    target_compile_definitions(PrimeManifest PUBLIC PRIMEMANIFEST_ENABLE_FONTS=1)
+  else()
+    message(WARNING "FreeType/HarfBuzz not found; font rendering disabled (fallback to bitmap font).")
+    target_compile_definitions(PrimeManifest PUBLIC PRIMEMANIFEST_ENABLE_FONTS=0)
+  endif()
+else()
+  target_compile_definitions(PrimeManifest PUBLIC PRIMEMANIFEST_ENABLE_FONTS=0)
+endif()
+
 pm_require_cxx23(PrimeManifest)
 
 option(PRIMEMANIFEST_BUILD_TESTS "Build PrimeManifest tests" ON)
@@ -37,7 +59,18 @@ if(PRIMEMANIFEST_BUILD_TESTS)
   enable_testing()
 
   add_executable(PrimeManifest_tests
+    tests/unit/test_batch.cpp
+    tests/unit/test_bitmap_font.cpp
+    tests/unit/test_clear.cpp
+    tests/unit/test_debug_tiles.cpp
+    tests/unit/test_font_registry.cpp
     tests/unit/test_main.cpp
+    tests/unit/test_misc.cpp
+    tests/unit/test_ordering.cpp
+    tests/unit/test_rect.cpp
+    tests/unit/test_text.cpp
+    tests/unit/test_text_bake.cpp
+    tests/unit/test_tiles.cpp
   )
   target_link_libraries(PrimeManifest_tests PRIVATE PrimeManifest)
   pm_require_cxx23(PrimeManifest_tests)
@@ -49,4 +82,7 @@ if(PRIMEMANIFEST_BUILD_EXAMPLES)
   add_executable(renderer_bench examples/renderer_bench.cpp)
   target_link_libraries(renderer_bench PRIVATE PrimeManifest)
   pm_require_cxx23(renderer_bench)
+  add_executable(text_render_demo examples/text_render_demo.cpp)
+  target_link_libraries(text_render_demo PRIVATE PrimeManifest)
+  pm_require_cxx23(text_render_demo)
 endif()
