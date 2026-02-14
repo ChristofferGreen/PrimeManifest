@@ -70,6 +70,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_main.cpp
     tests/unit/test_misc.cpp
     tests/unit/test_optimizer.cpp
+    tests/unit/test_optimizer_filters.cpp
     tests/unit/test_ordering.cpp
     tests/unit/test_palette.cpp
     tests/unit/test_profiles.cpp
