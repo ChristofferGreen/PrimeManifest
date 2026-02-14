@@ -71,6 +71,7 @@ Date: 2026-02-14
 | Gradient row increment (general) | Candidate | Default 236.55 FPS. Heavy 24.47 FPS. |
 | Axis-aligned rect skip-rotation | Candidate | Default 261.78 FPS. Heavy 24.25 FPS. |
 | Front-to-back early-out (assume sorted) | Candidate | Default render-only 300.78 FPS vs 285.59 FPS. Heavy mostly noise. |
+| Tile-stream rendering | Candidate | Default 491.14 FPS vs 236.80 FPS. Heavy 106.82 FPS vs 23.80 FPS. |
 | Thread-local scratch vectors for prepass | Rejected | Segfault in release tests. |
 | Cache per-command RGBA channels | Kept | Disabling cache mean 380.90 FPS. |
 | Cache per-command clip rects | Kept | Disabling cache mean 371.06 FPS. |
@@ -194,6 +195,22 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy (combined, F2B off) | 23.80 | `--front-to-back` disabled. |
 | 2026-02-14 | Heavy (render-only, F2B on) | 30.78 | `--optimized --front-to-back`. |
 | 2026-02-14 | Heavy (render-only, F2B off) | 30.44 | `--optimized`. |
+
+## Tile-Stream + Front-to-Back (assume sorted)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (combined, stream off) | 236.80 | `--tile-stream` disabled. |
+| 2026-02-14 | Default (combined, stream on) | 491.14 | `--tile-stream`. |
+| 2026-02-14 | Default (combined, stream+F2B) | 492.20 | `--tile-stream --front-to-back`. |
+| 2026-02-14 | Default (render-only, stream off) | 285.59 | `--optimized`. |
+| 2026-02-14 | Default (render-only, stream on) | 933.21 | `--optimized --tile-stream`. |
+| 2026-02-14 | Default (render-only, stream+F2B) | 861.30 | `--optimized --tile-stream --front-to-back`. |
+| 2026-02-14 | Heavy (combined, stream off) | 23.80 | `--tile-stream` disabled. |
+| 2026-02-14 | Heavy (combined, stream on) | 106.82 | `--tile-stream`. |
+| 2026-02-14 | Heavy (combined, stream+F2B) | 105.71 | `--tile-stream --front-to-back`. |
+| 2026-02-14 | Heavy (render-only, stream off) | 30.44 | `--optimized`. |
+| 2026-02-14 | Heavy (render-only, stream on) | 570.87 | `--optimized --tile-stream`. |
+| 2026-02-14 | Heavy (render-only, stream+F2B) | 619.46 | `--optimized --tile-stream --front-to-back`. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
