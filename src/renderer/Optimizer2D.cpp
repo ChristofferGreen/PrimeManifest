@@ -744,6 +744,14 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
           }
         }
       }
+
+      renderTiles.clear();
+      renderTiles.reserve(tileCount);
+      for (uint32_t i = 0; i < tileCount; ++i) {
+        if (tileCounts[i] > 0) {
+          renderTiles.push_back(i);
+        }
+      }
     }
 
     if (!rectActive.empty()) {

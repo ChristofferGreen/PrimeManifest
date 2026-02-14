@@ -856,6 +856,9 @@ int main(int argc, char** argv) {
     std::cout << "Profile: WorkerCount " << workerCount
               << " CoreEquiv " << coreEquiv
               << " Util " << utilPct << "%\n";
+    std::cout << "Profile: RenderedTiles " << profile.renderedTileCount
+              << " RenderedCommands " << profile.renderedCommandCount
+              << " RenderedPixels " << profile.renderedPixelCount << "\n";
     for (size_t i = 0; i < workerCount; ++i) {
       double workerMs = static_cast<double>(profile.workerNs[i]) / 1.0e6;
       std::cout << "Profile: Worker " << i

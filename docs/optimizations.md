@@ -104,6 +104,27 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy `--radius 0` (optimized, tile stream) | 436.82 | 2.290 | 7.855 | 22.824 | 83.06 | 1280x720, 40000 rects, 2000 texts. |
 | 2026-02-14 | Heavy `--radius 4` (optimized, tile stream) | 363.06 | 3.210 | 7.786 | 28.866 | 74.94 | 1280x720, 40000 rects, 2000 texts. |
 | 2026-02-14 | Heavy `--radius 8` (optimized, tile stream) | 332.95 | 3.118 | 8.152 | 30.862 | 82.48 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Default `--tile 32` (optimized, non-tile-stream) | 153.47 | 9.056 | 0.807 | 83.487 | 76.82 | `--optimized`, renderTiles fix; RenderedTiles 920, RenderedCommands 23341. |
+
+## Tile Sweep (post non-tile-stream renderTiles fix)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default `--tile 8` (combined) | 94.05 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 16` (combined) | 105.71 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 32` (combined) | 132.70 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 64` (combined) | 112.91 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 8` (render-only) | 130.40 | `--optimized`, 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 16` (render-only) | 108.98 | `--optimized`, 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 32` (render-only) | 128.56 | `--optimized`, 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 64` (render-only) | 110.09 | `--optimized`, 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Heavy `--tile 8` (combined) | 11.37 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 16` (combined) | 12.53 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 32` (combined) | 12.94 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 64` (combined) | 12.19 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 8` (render-only) | 13.27 | `--optimized`, 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 16` (render-only) | 13.48 | `--optimized`, 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 32` (render-only) | 14.99 | `--optimized`, 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 64` (render-only) | 12.84 | `--optimized`, 1280x720, 40000 rects, 2000 texts. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

@@ -86,6 +86,9 @@ struct RendererProfile {
   uint32_t tileCount = 0;
   uint32_t activeTileCount = 0;
   uint32_t commandCount = 0;
+  uint64_t renderedTileCount = 0;
+  uint64_t renderedCommandCount = 0;
+  uint64_t renderedPixelCount = 0;
   std::vector<uint64_t> workerNs;
   std::vector<uint32_t> workerTiles;
 
@@ -97,6 +100,9 @@ struct RendererProfile {
     tileCount = 0;
     activeTileCount = 0;
     commandCount = 0;
+    renderedTileCount = 0;
+    renderedCommandCount = 0;
+    renderedPixelCount = 0;
     workerNs.clear();
     workerTiles.clear();
   }

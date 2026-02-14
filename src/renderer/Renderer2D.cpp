@@ -360,6 +360,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
   if (renderTiles.empty() && !debugTiles) return;
 
+  std::atomic<uint64_t> renderedTiles{0};
+  std::atomic<uint64_t> renderedCommands{0};
+  std::atomic<uint64_t> renderedPixels{0};
+
   auto render_tile = [&](uint32_t tileIndex) {
     uint32_t tx = tileIndex % tilesX;
     uint32_t ty = tileIndex / tilesX;
@@ -371,6 +375,8 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     bool frontToBack = useTileStream;
     uint32_t tileArea = (tx1 - tx0) * (ty1 - ty0);
     uint32_t opaqueCount = 0;
+    uint64_t tileCommands = 0;
+    uint64_t tilePixels = static_cast<uint64_t>(tx1 - tx0) * static_cast<uint64_t>(ty1 - ty0);
     uint8_t* surfaceBase = target.data.data();
     uint32_t surfaceStride = target.strideBytes;
     int32_t surfaceY0 = 0;
@@ -474,6 +480,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         type = cmd.type;
         idx = cmd.index;
       }
+      ++tileCommands;
 
       if (type == CommandType::Rect) {
         if (idx >= batch.rects.x0.size() ||
@@ -915,6 +922,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       }
     }
 
+    if (profile) {
+      renderedTiles.fetch_add(1, std::memory_order_relaxed);
+      renderedCommands.fetch_add(tileCommands, std::memory_order_relaxed);
+      renderedPixels.fetch_add(tilePixels, std::memory_order_relaxed);
+    }
+
     if (useTileBuffer && hasClear && opaqueCount < tileArea) {
       uint8_t clearR = static_cast<uint8_t>(clearColor & 0xFFu);
       uint8_t clearG = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
@@ -1051,6 +1064,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         }
       }
     }
+  }
+
+  if (profile) {
+    profile->renderedTileCount = renderedTiles.load(std::memory_order_relaxed);
+    profile->renderedCommandCount = renderedCommands.load(std::memory_order_relaxed);
+    profile->renderedPixelCount = renderedPixels.load(std::memory_order_relaxed);
   }
 }
 
