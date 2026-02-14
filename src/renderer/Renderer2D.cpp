@@ -676,9 +676,38 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
         bool smoothBlend = (flags & RectFlagSmoothBlend) != 0u;
         uint8_t baseAlpha = idx < rectBaseAlpha.size() ? rectBaseAlpha[idx] : cA;
-        for (int32_t y = region.y0; y < region.y1; ++y) {
-          uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * region.x0);
-          for (int32_t x = region.x0; x < region.x1; ++x, row += 4) {
+        auto fill_opaque_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
+          if (x1f <= x0f || y1f <= y0f) return;
+          if (frontToBack) {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                write_px(row, cR, cG, cB);
+              }
+            }
+          } else {
+            uint32_t packed = color;
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
+                auto* row32 = reinterpret_cast<uint32_t*>(row);
+                std::fill(row32, row32 + (x1f - x0f), packed);
+              } else {
+                for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                  row[0] = cR;
+                  row[1] = cG;
+                  row[2] = cB;
+                  row[3] = 255u;
+                }
+              }
+            }
+          }
+        };
+        auto render_sdf_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
+          if (x1f <= x0f || y1f <= y0f) return;
+          for (int32_t y = y0f; y < y1f; ++y) {
+            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+            for (int32_t x = x0f; x < x1f; ++x, row += 4) {
             Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
             Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
             local = rotate_point(local, cosA, -sinA);
@@ -725,7 +754,30 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               blend_px(row, pmR, pmG, pmB, alphaCov);
             }
           }
+          }
+        };
+        if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&
+            rotation == 0.0f && radius <= 0.0f) {
+          fill_opaque_region(region.x0, region.y0, region.x1, region.y1);
+          continue;
         }
+        if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&
+            rotation == 0.0f && radius > 0.0f) {
+          float inset = radius + 0.5f;
+          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
+          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
+          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
+          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
+          if (coreX1 > coreX0 && coreY1 > coreY0) {
+            fill_opaque_region(coreX0, coreY0, coreX1, coreY1);
+            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
+            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
+            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
+            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
+            continue;
+          }
+        }
+        render_sdf_region(region.x0, region.y0, region.x1, region.y1);
       } else if (type == CommandType::Text) {
         if (idx >= batch.text.x.size() ||
             idx >= batch.text.y.size() ||

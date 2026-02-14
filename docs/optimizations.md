@@ -65,7 +65,7 @@ Date: 2026-02-14
 | Precompute text LUT per active command | Kept | Disabling LUT mean 349.01 FPS. |
 | Precompute rect gradient params per active rect | Kept | Disabling cache mean 385.71 FPS. |
 | Precompute rect center/rotation/half-extents | Rejected | Release mean 340.55 FPS (regression). |
-| 32-bit fills for opaque rect interior + opaque glyph rects | Kept | Release measurement pending. |
+| Opaque rect fast path (axis-aligned, no gradient) + rounded core fill | Kept | Default 149.33 FPS vs 94.53 off. Heavy 14.86 FPS vs 10.20 off. |
 | Thread-local scratch vectors for prepass | Rejected | Segfault in release tests. |
 | Cache per-command RGBA channels | Kept | Disabling cache mean 380.90 FPS. |
 | Cache per-command clip rects | Kept | Disabling cache mean 371.06 FPS. |
@@ -133,6 +133,18 @@ Date: 2026-02-14
 | 2026-02-14 | Default (render-only) | 154.03 | 7.020 | 6.954 | 72.375 | 0.000 | 0.000 | 0.000 | 0.000 | 85.92 | `--optimized`, 1280x720, 4000 rects, 200 texts, tile 32. |
 | 2026-02-14 | Heavy (combined) | 13.17 | 61.434 | 61.371 | 719.545 | 8.625 | 1.156 | 6.967 | 0.424 | 97.60 | 1280x720, 40000 rects, 2000 texts, tile 32. |
 | 2026-02-14 | Heavy (render-only) | 15.60 | 62.147 | 62.083 | 723.710 | 0.000 | 0.000 | 0.000 | 0.000 | 97.04 | `--optimized`, 1280x720, 40000 rects, 2000 texts, tile 32. |
+
+## Opaque Rect Fast Path (A/B)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (fast path on) | 149.33 | 1280x720, 4000 rects, 200 texts, tile 32. |
+| 2026-02-14 | Default (fast path off) | 94.53 | `--no-opaque-rect-fastpath`. |
+| 2026-02-14 | Default render-only (fast path on) | 163.40 | `--optimized`. |
+| 2026-02-14 | Default render-only (fast path off) | 112.16 | `--optimized --no-opaque-rect-fastpath`. |
+| 2026-02-14 | Heavy (fast path on) | 14.86 | 1280x720, 40000 rects, 2000 texts, tile 32. |
+| 2026-02-14 | Heavy (fast path off) | 10.20 | `--no-opaque-rect-fastpath`. |
+| 2026-02-14 | Heavy render-only (fast path on) | 18.29 | `--optimized`. |
+| 2026-02-14 | Heavy render-only (fast path off) | 10.91 | `--optimized --no-opaque-rect-fastpath`. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

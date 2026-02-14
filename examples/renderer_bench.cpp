@@ -33,6 +33,7 @@ struct BenchConfig {
   std::string dumpPath;
   bool profile = false;
   bool useOptimized = false;
+  bool disableOpaqueRectFastPath = false;
   uint32_t seed = 1337;
 };
 
@@ -83,6 +84,8 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.profile = true;
     } else if (arg == "--optimized") {
       cfg.useOptimized = true;
+    } else if (arg == "--no-opaque-rect-fastpath") {
+      cfg.disableOpaqueRectFastPath = true;
     } else if (arg == "--seed") {
       cfg.seed = next(cfg.seed);
     }
@@ -748,6 +751,7 @@ int main(int argc, char** argv) {
   batch.palette.enabled = true;
   batch.palette.colorRGBA8 = build_palette();
   batch.palette.size = 256;
+  batch.disableOpaqueRectFastPath = cfg.disableOpaqueRectFastPath;
 
   build_glyph_store(batch);
   build_text_run(batch, 12);
