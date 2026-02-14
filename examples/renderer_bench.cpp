@@ -19,6 +19,7 @@ struct BenchConfig {
   uint32_t textCount = 200;
   uint32_t frames = 300;
   uint16_t tileSize = 64;
+  uint16_t rectRadius = 4;
   bool enableText = true;
   bool enableDebugTiles = false;
   uint32_t seed = 1337;
@@ -52,6 +53,8 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.frames = next(cfg.frames);
     } else if (arg == "--tile") {
       cfg.tileSize = static_cast<uint16_t>(next(cfg.tileSize));
+    } else if (arg == "--radius") {
+      cfg.rectRadius = static_cast<uint16_t>(next(cfg.rectRadius));
     } else if (arg == "--no-text") {
       cfg.enableText = false;
     } else if (arg == "--debug-tiles") {
@@ -76,14 +79,15 @@ void add_rect(RenderBatch& batch,
               int32_t y1,
               uint32_t color,
               uint32_t gradientColor,
-              bool gradient) {
+              bool gradient,
+              uint16_t radiusQ8_8) {
   uint32_t idx = static_cast<uint32_t>(batch.rects.x0.size());
   batch.rects.x0.push_back(x0);
   batch.rects.y0.push_back(y0);
   batch.rects.x1.push_back(x1);
   batch.rects.y1.push_back(y1);
   batch.rects.colorRGBA8.push_back(color);
-  batch.rects.radiusQ8_8.push_back(static_cast<uint16_t>(4 * 256));
+  batch.rects.radiusQ8_8.push_back(radiusQ8_8);
   batch.rects.rotationQ8_8.push_back(0);
   batch.rects.zQ8_8.push_back(0);
   batch.rects.opacity.push_back(255);
@@ -162,6 +166,7 @@ void build_glyph_store(RenderBatch& batch) {
   bitmap.stride = 8;
   bitmap.pixels.resize(static_cast<size_t>(bitmap.height) * bitmap.stride, 255);
   batch.glyphs.bitmaps.push_back(std::move(bitmap));
+  batch.glyphs.bitmapOpaque.push_back(1);
 }
 
 } // namespace
@@ -200,7 +205,8 @@ int main(int argc, char** argv) {
                                   static_cast<uint8_t>(cDist(rng)),
                                   255});
     bool gradient = (i % 4 == 0);
-    add_rect(batch, x0, y0, x1, y1, color, g1, gradient);
+    uint16_t radiusQ8_8 = static_cast<uint16_t>(cfg.rectRadius * 256);
+    add_rect(batch, x0, y0, x1, y1, color, g1, gradient, radiusQ8_8);
   }
 
   if (cfg.enableText) {

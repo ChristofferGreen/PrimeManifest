@@ -206,6 +206,7 @@ struct GlyphStore {
   std::vector<int16_t> glyphYQ8_8;
   std::vector<uint32_t> bitmapIndex;
   std::vector<GlyphBitmap> bitmaps;
+  std::vector<uint8_t> bitmapOpaque;
   std::vector<GlyphAtlas> atlases;
 
   void clear() {
@@ -213,6 +214,7 @@ struct GlyphStore {
     glyphYQ8_8.clear();
     bitmapIndex.clear();
     bitmaps.clear();
+    bitmapOpaque.clear();
     atlases.clear();
   }
   size_t size() const {

@@ -232,6 +232,7 @@ void test_text() {
   bitmap.stride = 2;
   bitmap.pixels = {255, 255, 255, 255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -487,6 +488,7 @@ void test_text_clip() {
       255, 255, 255,
   };
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -666,6 +668,7 @@ void test_text_opacity_zero() {
   bitmap.stride = 2;
   bitmap.pixels = {255, 255, 255, 255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -732,6 +735,7 @@ void test_text_offscreen() {
   bitmap.stride = 2;
   bitmap.pixels = {255, 255, 255, 255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -970,6 +974,7 @@ void test_determinism() {
   bitmap.stride = 2;
   bitmap.pixels = {255, 255, 255, 255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
   batch.glyphs.bitmapIndex.push_back(0);
@@ -1015,6 +1020,7 @@ void test_text_atlas() {
   bitmap.atlasX = 0;
   bitmap.atlasY = 0;
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -1061,6 +1067,7 @@ void test_text_atlas_offset() {
   bitmap.atlasX = 1;
   bitmap.atlasY = 1;
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -1150,6 +1157,7 @@ void test_random_fuzz_determinism() {
       0, 255, 0,
   };
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   std::mt19937 rng(42);
   std::uniform_int_distribution<int32_t> posDist(0, 120);
@@ -1269,6 +1277,7 @@ void test_text_over_rect_order() {
   bitmap.stride = 2;
   bitmap.pixels = {255, 255, 255, 255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
@@ -1306,6 +1315,7 @@ void test_large_text_across_tiles() {
   bitmap.stride = 2;
   bitmap.pixels = {255, 255, 255, 255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   for (uint32_t i = 0; i < 32; ++i) {
     batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(i * 2 * 256));
@@ -1474,6 +1484,7 @@ void test_text_multiple_glyphs_spacing() {
   bitmap.stride = 1;
   bitmap.pixels = {255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   for (uint32_t i = 0; i < 3; ++i) {
     batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(i * 4 * 256));
@@ -1547,6 +1558,7 @@ void test_text_scale() {
   bitmap.stride = 1;
   bitmap.pixels = {255};
   batch.glyphs.bitmaps.push_back(bitmap);
+  batch.glyphs.bitmapOpaque.push_back(0);
 
   batch.glyphs.glyphXQ8_8.push_back(0);
   batch.glyphs.glyphYQ8_8.push_back(0);
