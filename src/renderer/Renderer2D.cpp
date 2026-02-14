@@ -80,20 +80,6 @@ auto blend_premultiplied(uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB,
   dst[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) + (dstA * invA + 127u) / 255u) & 0xFFu);
 }
 
-auto blend_front_to_back(uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB, uint8_t srcA) -> void {
-  uint8_t dstA = dst[3];
-  if (dstA >= OpaqueAlphaCutoff) return;
-  uint16_t invA = static_cast<uint16_t>(255u - dstA);
-  dst[0] = static_cast<uint8_t>((static_cast<uint16_t>(dst[0]) + (static_cast<uint16_t>(srcR) * invA + 127u) / 255u) &
-                                0xFFu);
-  dst[1] = static_cast<uint8_t>((static_cast<uint16_t>(dst[1]) + (static_cast<uint16_t>(srcG) * invA + 127u) / 255u) &
-                                0xFFu);
-  dst[2] = static_cast<uint8_t>((static_cast<uint16_t>(dst[2]) + (static_cast<uint16_t>(srcB) * invA + 127u) / 255u) &
-                                0xFFu);
-  dst[3] = static_cast<uint8_t>((static_cast<uint16_t>(dstA) + (static_cast<uint16_t>(srcA) * invA + 127u) / 255u) &
-                                0xFFu);
-}
-
 auto apply_opacity(uint8_t a, uint8_t opacity) -> uint8_t {
   uint16_t v = static_cast<uint16_t>(a) * static_cast<uint16_t>(opacity);
   v = static_cast<uint16_t>((v + 127u) / 255u);
@@ -104,10 +90,6 @@ auto apply_coverage(uint8_t baseAlpha, uint8_t coverage) -> uint8_t {
   uint16_t v = static_cast<uint16_t>(baseAlpha) * static_cast<uint16_t>(coverage);
   v = static_cast<uint16_t>((v + 127u) / 255u);
   return static_cast<uint8_t>(std::min<uint16_t>(v, 255u));
-}
-
-auto apply_alpha(uint8_t a, uint8_t opacity, uint8_t coverage) -> uint8_t {
-  return apply_coverage(apply_opacity(a, opacity), coverage);
 }
 
 
@@ -209,15 +191,6 @@ auto make_tile_grid(uint32_t width, uint32_t height, uint32_t tileSize) -> TileG
   grid.tilesX = (width + grid.tileSize - 1) / grid.tileSize;
   grid.tilesY = (height + grid.tileSize - 1) / grid.tileSize;
   return grid;
-}
-
-auto rect_intersects_tile(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
-                          uint32_t tx0, uint32_t ty0, uint32_t tx1, uint32_t ty1) -> bool {
-  if (x1 <= static_cast<int32_t>(tx0)) return false;
-  if (x0 >= static_cast<int32_t>(tx1)) return false;
-  if (y1 <= static_cast<int32_t>(ty0)) return false;
-  if (y0 >= static_cast<int32_t>(ty1)) return false;
-  return true;
 }
 
 struct CommandBounds {
