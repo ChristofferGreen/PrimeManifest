@@ -130,3 +130,65 @@ PM_TEST(optimizer, premade_tile_stream_used) {
   PM_CHECK(optimized.useTileStream, "premade tile stream used");
   PM_CHECK(optimized.tileStream == &batch.tileStream, "tile stream pointer matches batch");
 }
+
+PM_TEST(optimizer, premerge_tile_stream_with_fallback_macro_offsets) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 4;
+
+  add_rect(batch, 0, 0, 4, 4, PackRGBA8(Color{20, 30, 40, 255}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = false;
+  batch.tileStream.offsets = {0, 1, 2, 3, 4};
+  batch.tileStream.commands.resize(4);
+  for (uint32_t i = 0; i < 4; ++i) {
+    TileCommand cmd{};
+    cmd.type = CommandType::Rect;
+    cmd.index = 0;
+    cmd.order = i;
+    cmd.x = 0;
+    cmd.y = 0;
+    cmd.wMinus1 = 3;
+    cmd.hMinus1 = 3;
+    batch.tileStream.commands[i] = cmd;
+  }
+  batch.tileStream.macroOffsets.clear();
+  batch.tileStream.macroCommands.clear();
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(optimized.valid, "optimizer succeeds with premerge");
+  PM_CHECK(optimized.useTileStream, "premerge keeps tile stream enabled");
+  PM_CHECK(optimized.tileStream == &optimized.mergedTileStream, "premerge stores merged tile stream");
+}
+
+PM_TEST(optimizer, clear_pattern_too_large_ignored) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.tileSize = 16;
+
+  uint32_t idx = static_cast<uint32_t>(batch.clearPattern.width.size());
+  batch.clearPattern.width.push_back(32);
+  batch.clearPattern.height.push_back(32);
+  batch.clearPattern.dataOffset.push_back(0);
+  batch.clearPattern.data.assign(static_cast<size_t>(32 * 32 * 4), 255);
+  batch.commands.push_back(RenderCommand{CommandType::ClearPattern, idx});
+
+  uint32_t width = 32;
+  uint32_t height = 32;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  PM_CHECK(!optimized.valid, "oversized clear pattern ignored");
+}
