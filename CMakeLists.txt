@@ -62,6 +62,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_batch.cpp
     tests/unit/test_bitmap_font.cpp
     tests/unit/test_clear.cpp
+    tests/unit/test_color_helpers.cpp
     tests/unit/test_command_structs.cpp
     tests/unit/test_debug_tiles.cpp
     tests/unit/test_font_registry.cpp
