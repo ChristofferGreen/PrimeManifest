@@ -39,3 +39,28 @@ PM_TEST(profile, render_populates_stats) {
   PM_CHECK(profile.renderedRectCount >= 1, "profile counts rects");
   PM_CHECK(profile.renderedPixelCount > 0, "profile counts pixels");
 }
+
+PM_TEST(profile, tile_buffer_pixels_reported) {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 0}));
+  batch.tileSize = 8;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 128}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 0};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  RendererProfile profile;
+  batch.profile = &profile;
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  RenderOptimized(target, batch, optimized);
+
+  PM_CHECK(profile.renderedTileBufferPixels == 64, "tile buffer pixels counted");
+}
