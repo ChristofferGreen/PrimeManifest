@@ -538,7 +538,8 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         uint16_t radiusQ = idx < batch.rects.radiusQ8_8.size() ? batch.rects.radiusQ8_8[idx] : 0;
         float radius = static_cast<float>(radiusQ) / 256.0f;
         int16_t rotationQ = idx < batch.rects.rotationQ8_8.size() ? batch.rects.rotationQ8_8[idx] : 0;
-        float rotation = static_cast<float>(rotationQ) / 256.0f;
+        bool axisAligned = (rotationQ == 0);
+        float rotation = axisAligned ? 0.0f : static_cast<float>(rotationQ) / 256.0f;
         uint8_t opacity = idx < batch.rects.opacity.size() ? batch.rects.opacity[idx] : 255u;
         uint8_t flags = idx < batch.rects.flags.size() ? batch.rects.flags[idx] : 0u;
 
@@ -645,8 +646,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         float cx = (static_cast<float>(x0) + static_cast<float>(x1)) * 0.5f;
         float cy = (static_cast<float>(y0) + static_cast<float>(y1)) * 0.5f;
         Vec2f rectCenter{cx, cy};
-        float cosA = std::cos(rotation);
-        float sinA = std::sin(rotation);
+        float cosA = 1.0f;
+        float sinA = 0.0f;
+        if (!axisAligned) {
+          cosA = std::cos(rotation);
+          sinA = std::sin(rotation);
+        }
         Vec2f halfExtents{(static_cast<float>(x1) - static_cast<float>(x0)) * 0.5f,
                           (static_cast<float>(y1) - static_cast<float>(y0)) * 0.5f};
 
@@ -730,7 +735,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               for (int32_t x = x0f; x < x1f; ++x, row += 4) {
                 Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
                 Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-                local = rotate_point(local, cosA, -sinA);
+                if (!axisAligned) {
+                  local = rotate_point(local, cosA, -sinA);
+                }
                 float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
                 if (dist > 1.0f) continue;
                 uint8_t cov = coverage_from_dist(dist);
@@ -759,7 +766,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 if (alpha == 0) continue;
                 Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
                 Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-                local = rotate_point(local, cosA, -sinA);
+                if (!axisAligned) {
+                  local = rotate_point(local, cosA, -sinA);
+                }
                 float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
                 if (dist > 1.0f) continue;
                 uint8_t cov = coverage_from_dist(dist);
@@ -778,7 +787,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               for (int32_t x = x0f; x < x1f; ++x, row += 4) {
                 Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
                 Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-                local = rotate_point(local, cosA, -sinA);
+                if (!axisAligned) {
+                  local = rotate_point(local, cosA, -sinA);
+                }
                 float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
                 if (dist > 1.0f) continue;
                 uint8_t cov = coverage_from_dist(dist);

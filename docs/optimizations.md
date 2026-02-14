@@ -69,6 +69,7 @@ Date: 2026-02-14
 | Vertical gradient row fast path (axis-aligned) | Candidate | Default 162.01 FPS. Heavy 18.64 FPS. |
 | Rounded gradient core fill (axis-aligned, vertical, opaque) | Candidate | Default 235.76 FPS. Heavy 22.67 FPS. |
 | Gradient row increment (general) | Candidate | Default 236.55 FPS. Heavy 24.47 FPS. |
+| Axis-aligned rect skip-rotation | Candidate | Default 261.78 FPS. Heavy 24.25 FPS. |
 | Thread-local scratch vectors for prepass | Rejected | Segfault in release tests. |
 | Cache per-command RGBA channels | Kept | Disabling cache mean 380.90 FPS. |
 | Cache per-command clip rects | Kept | Disabling cache mean 371.06 FPS. |
@@ -172,6 +173,14 @@ Date: 2026-02-14
 | 2026-02-14 | Default (render-only) | 314.09 | `--optimized`. |
 | 2026-02-14 | Heavy (combined) | 24.47 | 1280x720, 40000 rects, 2000 texts, tile 32. |
 | 2026-02-14 | Heavy (render-only) | 31.01 | `--optimized`. |
+
+## Axis-Aligned Rect Fast Path (skip rotation)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (combined) | 261.78 | 1280x720, 4000 rects, 200 texts, tile 32. |
+| 2026-02-14 | Default (render-only) | 350.49 | `--optimized`. |
+| 2026-02-14 | Heavy (combined) | 24.25 | 1280x720, 40000 rects, 2000 texts, tile 32. |
+| 2026-02-14 | Heavy (render-only) | 30.51 | `--optimized`. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
