@@ -189,40 +189,40 @@ Date: 2026-02-14
 | Date | Scenario | FPS | Notes |
 | --- | --- | --- | --- |
 | 2026-02-14 | Default (combined, F2B on) | 236.29 | `--front-to-back`. |
-| 2026-02-14 | Default (combined, F2B off) | 236.80 | `--front-to-back` disabled. |
+| 2026-02-14 | Default (combined, F2B off) | 236.80 | `--no-front-to-back`. |
 | 2026-02-14 | Default (render-only, F2B on) | 300.78 | `--optimized --front-to-back`. |
-| 2026-02-14 | Default (render-only, F2B off) | 285.59 | `--optimized`. |
+| 2026-02-14 | Default (render-only, F2B off) | 285.59 | `--optimized --no-front-to-back`. |
 | 2026-02-14 | Heavy (combined, F2B on) | 23.35 | `--front-to-back`. |
-| 2026-02-14 | Heavy (combined, F2B off) | 23.80 | `--front-to-back` disabled. |
+| 2026-02-14 | Heavy (combined, F2B off) | 23.80 | `--no-front-to-back`. |
 | 2026-02-14 | Heavy (render-only, F2B on) | 30.78 | `--optimized --front-to-back`. |
-| 2026-02-14 | Heavy (render-only, F2B off) | 30.44 | `--optimized`. |
+| 2026-02-14 | Heavy (render-only, F2B off) | 30.44 | `--optimized --no-front-to-back`. |
 
 ## Tile-Stream + Front-to-Back (assume sorted)
 | Date | Scenario | FPS | Notes |
 | --- | --- | --- | --- |
-| 2026-02-14 | Default (combined, stream off) | 236.80 | `--tile-stream` disabled. |
+| 2026-02-14 | Default (combined, stream off) | 236.80 | `--tile-stream` disabled, `--no-auto-tile-stream`. |
 | 2026-02-14 | Default (combined, stream on) | 491.14 | `--tile-stream`. |
 | 2026-02-14 | Default (combined, stream+F2B) | 492.20 | `--tile-stream --front-to-back`. |
-| 2026-02-14 | Default (render-only, stream off) | 285.59 | `--optimized`. |
+| 2026-02-14 | Default (render-only, stream off) | 285.59 | `--optimized --no-auto-tile-stream`. |
 | 2026-02-14 | Default (render-only, stream on) | 933.21 | `--optimized --tile-stream`. |
 | 2026-02-14 | Default (render-only, stream+F2B) | 861.30 | `--optimized --tile-stream --front-to-back`. |
-| 2026-02-14 | Heavy (combined, stream off) | 23.80 | `--tile-stream` disabled. |
+| 2026-02-14 | Heavy (combined, stream off) | 23.80 | `--tile-stream` disabled, `--no-auto-tile-stream`. |
 | 2026-02-14 | Heavy (combined, stream on) | 106.82 | `--tile-stream`. |
 | 2026-02-14 | Heavy (combined, stream+F2B) | 105.71 | `--tile-stream --front-to-back`. |
-| 2026-02-14 | Heavy (render-only, stream off) | 30.44 | `--optimized`. |
+| 2026-02-14 | Heavy (render-only, stream off) | 30.44 | `--optimized --no-auto-tile-stream`. |
 | 2026-02-14 | Heavy (render-only, stream on) | 570.87 | `--optimized --tile-stream`. |
 | 2026-02-14 | Heavy (render-only, stream+F2B) | 619.46 | `--optimized --tile-stream --front-to-back`. |
 
 ## Auto Tile-Stream (generated)
 | Date | Scenario | FPS | Notes |
 | --- | --- | --- | --- |
-| 2026-02-14 | Default (combined, auto off) | 208.20 | `--auto-tile-stream` disabled. |
+| 2026-02-14 | Default (combined, auto off) | 208.20 | `--no-auto-tile-stream`. |
 | 2026-02-14 | Default (combined, auto on) | 457.67 | `--auto-tile-stream`. |
-| 2026-02-14 | Default (render-only, auto off) | 319.01 | `--optimized`. |
+| 2026-02-14 | Default (render-only, auto off) | 319.01 | `--optimized --no-auto-tile-stream`. |
 | 2026-02-14 | Default (render-only, auto on) | 816.38 | `--optimized --auto-tile-stream`. |
-| 2026-02-14 | Heavy (combined, auto off) | 22.64 | `--auto-tile-stream` disabled. |
+| 2026-02-14 | Heavy (combined, auto off) | 22.64 | `--no-auto-tile-stream`. |
 | 2026-02-14 | Heavy (combined, auto on) | 81.12 | `--auto-tile-stream`. |
-| 2026-02-14 | Heavy (render-only, auto off) | 28.84 | `--optimized`. |
+| 2026-02-14 | Heavy (render-only, auto off) | 28.84 | `--optimized --no-auto-tile-stream`. |
 | 2026-02-14 | Heavy (render-only, auto on) | 485.88 | `--optimized --auto-tile-stream`. |
 
 ## Next Steps

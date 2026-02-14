@@ -34,8 +34,8 @@ struct BenchConfig {
   bool profile = false;
   bool useOptimized = false;
   bool disableOpaqueRectFastPath = false;
-  bool assumeFrontToBack = false;
-  bool autoTileStream = false;
+  bool assumeFrontToBack = true;
+  bool autoTileStream = true;
   uint32_t seed = 1337;
 };
 
@@ -90,8 +90,12 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.disableOpaqueRectFastPath = true;
     } else if (arg == "--front-to-back") {
       cfg.assumeFrontToBack = true;
+    } else if (arg == "--no-front-to-back") {
+      cfg.assumeFrontToBack = false;
     } else if (arg == "--auto-tile-stream") {
       cfg.autoTileStream = true;
+    } else if (arg == "--no-auto-tile-stream") {
+      cfg.autoTileStream = false;
     } else if (arg == "--seed") {
       cfg.seed = next(cfg.seed);
     }

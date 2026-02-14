@@ -391,7 +391,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     uint32_t tx1 = std::min(tx0 + tileSize, target.width);
     uint32_t ty1 = std::min(ty0 + tileSize, target.height);
 
-    bool frontToBack = useTileStream || batch.assumeFrontToBack;
+    bool frontToBack = batch.assumeFrontToBack;
     uint32_t tileArea = (tx1 - tx0) * (ty1 - ty0);
     uint32_t opaqueCount = 0;
     uint64_t tileCommands = 0;
