@@ -31,6 +31,10 @@ struct OptimizedBatch {
   bool useTileBuffer = false;
   bool hasClear = false;
   uint32_t clearColor = 0;
+  bool clearPattern = false;
+  uint16_t clearPatternWidth = 0;
+  uint16_t clearPatternHeight = 0;
+  uint32_t clearPatternOffset = 0;
   bool debugTiles = false;
   uint32_t debugColor = 0;
   uint8_t debugLineWidth = 1;
@@ -102,6 +106,10 @@ struct OptimizedBatch {
     useTileBuffer = false;
     hasClear = false;
     clearColor = 0;
+    clearPattern = false;
+    clearPatternWidth = 0;
+    clearPatternHeight = 0;
+    clearPatternOffset = 0;
     debugTiles = false;
     debugColor = 0;
     debugLineWidth = 1;

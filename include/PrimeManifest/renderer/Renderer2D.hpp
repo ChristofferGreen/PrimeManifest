@@ -32,6 +32,7 @@ enum class CommandType : uint8_t {
   Rect = 1,
   Text = 2,
   DebugTiles = 3,
+  ClearPattern = 4,
 };
 
 struct RenderCommand {
@@ -146,6 +147,23 @@ struct ClearStore {
   }
   size_t size() const {
     return colorIndex.size();
+  }
+};
+
+struct ClearPatternStore {
+  std::vector<uint16_t> width;
+  std::vector<uint16_t> height;
+  std::vector<uint32_t> dataOffset;
+  std::vector<uint8_t> data;
+
+  void clear() {
+    width.clear();
+    height.clear();
+    dataOffset.clear();
+    data.clear();
+  }
+  size_t size() const {
+    return width.size();
   }
 };
 
@@ -344,6 +362,7 @@ struct PaletteStore {
 struct RenderBatch {
   std::vector<RenderCommand> commands;
   ClearStore clear;
+  ClearPatternStore clearPattern;
   RectStore rects;
   TextStore text;
   TextRunStore runs;
@@ -362,6 +381,7 @@ struct RenderBatch {
   void clearAll() {
     commands.clear();
     clear.clear();
+    clearPattern.clear();
     rects.clear();
     text.clear();
     runs.clear();

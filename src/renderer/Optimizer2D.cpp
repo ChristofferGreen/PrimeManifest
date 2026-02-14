@@ -372,14 +372,54 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
     return batch.palette.colorRGBA8[paletteIndex];
   };
 
+  auto gridStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+  TileGrid grid = make_tile_grid(target.width, target.height, batch.tileSize);
+  uint32_t tileCount = grid.tilesX * grid.tilesY;
+  if (tileCount == 0) return false;
+  bool tilePow2 = (grid.tileSize & (grid.tileSize - 1)) == 0;
+  uint32_t tileShift = 0;
+  if (tilePow2) {
+    while ((1u << tileShift) < grid.tileSize) {
+      ++tileShift;
+    }
+  }
+  if (profile) {
+    profile->optTileGridNs = to_ns(gridStart, std::chrono::steady_clock::now());
+  }
+
   auto scanStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   uint32_t clearColor = 0;
   bool hasClear = false;
+  bool clearPattern = false;
+  uint16_t clearPatternWidth = 0;
+  uint16_t clearPatternHeight = 0;
+  uint32_t clearPatternOffset = 0;
   for (auto const& cmd : batch.commands) {
-    if (cmd.type != CommandType::Clear) continue;
-    if (cmd.index < batch.clear.colorIndex.size()) {
-      clearColor = fetch_color(batch.clear.colorIndex, cmd.index, clearColor);
-      hasClear = true;
+    if (cmd.type == CommandType::Clear) {
+      if (cmd.index < batch.clear.colorIndex.size()) {
+        clearColor = fetch_color(batch.clear.colorIndex, cmd.index, clearColor);
+        hasClear = true;
+        clearPattern = false;
+      }
+    } else if (cmd.type == CommandType::ClearPattern) {
+      if (cmd.index < batch.clearPattern.width.size() &&
+          cmd.index < batch.clearPattern.height.size() &&
+          cmd.index < batch.clearPattern.dataOffset.size()) {
+        uint16_t width = batch.clearPattern.width[cmd.index];
+        uint16_t height = batch.clearPattern.height[cmd.index];
+        uint32_t offset = batch.clearPattern.dataOffset[cmd.index];
+        if (width > 0 && height > 0 &&
+            width <= grid.tileSize && height <= grid.tileSize) {
+          size_t bytes = static_cast<size_t>(width) * height * 4u;
+          if (static_cast<size_t>(offset) + bytes <= batch.clearPattern.data.size()) {
+            clearPattern = true;
+            clearPatternWidth = width;
+            clearPatternHeight = height;
+            clearPatternOffset = offset;
+            hasClear = true;
+          }
+        }
+      }
     }
   }
 
@@ -402,21 +442,6 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
   }
   if (profile) {
     profile->optScanNs = to_ns(scanStart, std::chrono::steady_clock::now());
-  }
-
-  auto gridStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-  TileGrid grid = make_tile_grid(target.width, target.height, batch.tileSize);
-  uint32_t tileCount = grid.tilesX * grid.tilesY;
-  if (tileCount == 0) return false;
-  bool tilePow2 = (grid.tileSize & (grid.tileSize - 1)) == 0;
-  uint32_t tileShift = 0;
-  if (tilePow2) {
-    while ((1u << tileShift) < grid.tileSize) {
-      ++tileShift;
-    }
-  }
-  if (profile) {
-    profile->optTileGridNs = to_ns(gridStart, std::chrono::steady_clock::now());
   }
 
   auto tileStreamStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -480,6 +505,10 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
   prepared.tileStream = useTileStream ? tileStream : nullptr;
   prepared.hasClear = hasClear;
   prepared.clearColor = clearColor;
+  prepared.clearPattern = clearPattern;
+  prepared.clearPatternWidth = clearPatternWidth;
+  prepared.clearPatternHeight = clearPatternHeight;
+  prepared.clearPatternOffset = clearPatternOffset;
   prepared.debugTiles = debugTiles;
   prepared.debugColor = debugColor;
   prepared.debugLineWidth = debugLineWidth;
@@ -825,9 +854,15 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
       auto renderTilesStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       renderTiles.clear();
       renderTiles.reserve(tileCount);
-      for (uint32_t i = 0; i < tileCount; ++i) {
-        if (tileCounts[i] > 0) {
+      if (hasClear) {
+        for (uint32_t i = 0; i < tileCount; ++i) {
           renderTiles.push_back(i);
+        }
+      } else {
+        for (uint32_t i = 0; i < tileCount; ++i) {
+          if (tileCounts[i] > 0) {
+            renderTiles.push_back(i);
+          }
         }
       }
       if (profile) {

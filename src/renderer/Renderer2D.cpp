@@ -282,6 +282,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   bool useTileBuffer = prepared.useTileBuffer;
   bool hasClear = prepared.hasClear;
   uint32_t clearColor = prepared.clearColor;
+  bool clearPattern = prepared.clearPattern;
+  uint16_t clearPatternWidth = prepared.clearPatternWidth;
+  uint16_t clearPatternHeight = prepared.clearPatternHeight;
+  uint32_t clearPatternOffset = prepared.clearPatternOffset;
   bool debugTiles = prepared.debugTiles;
   uint32_t debugColor = prepared.debugColor;
   uint8_t debugLineWidth = prepared.debugLineWidth;
@@ -333,29 +337,48 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
   auto clearStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (hasClear && !useTileBuffer) {
-    uint32_t packed = clearColor;
     uint8_t* base = target.data.data();
-    if (target.strideBytes == target.width * 4 &&
-        (reinterpret_cast<uintptr_t>(base) % alignof(uint32_t) == 0)) {
-      auto* dst = reinterpret_cast<uint32_t*>(base);
-      std::fill(dst, dst + static_cast<size_t>(target.width) * target.height, packed);
-    } else {
-      uint8_t r = static_cast<uint8_t>(clearColor & 0xFFu);
-      uint8_t g = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
-      uint8_t b = static_cast<uint8_t>((clearColor >> 16) & 0xFFu);
-      uint8_t a = static_cast<uint8_t>((clearColor >> 24) & 0xFFu);
+    if (clearPattern) {
+      uint32_t patternStride = static_cast<uint32_t>(clearPatternWidth) * 4u;
+      uint8_t const* pattern = batch.clearPattern.data.data() + clearPatternOffset;
       for (uint32_t y = 0; y < target.height; ++y) {
+        uint32_t py = y % clearPatternHeight;
+        uint8_t const* srcRow = pattern + static_cast<size_t>(py) * patternStride;
         uint8_t* row = base + static_cast<size_t>(y) * target.strideBytes;
-        if (reinterpret_cast<uintptr_t>(row) % alignof(uint32_t) == 0) {
-          auto* row32 = reinterpret_cast<uint32_t*>(row);
-          std::fill(row32, row32 + target.width, packed);
-        } else {
-          for (uint32_t x = 0; x < target.width; ++x) {
-            size_t idx = static_cast<size_t>(4u * x);
-            row[idx + 0] = r;
-            row[idx + 1] = g;
-            row[idx + 2] = b;
-            row[idx + 3] = a;
+        for (uint32_t x = 0; x < target.width; ++x) {
+          uint32_t px = x % clearPatternWidth;
+          size_t src = static_cast<size_t>(px) * 4u;
+          size_t dst = static_cast<size_t>(x) * 4u;
+          row[dst + 0] = srcRow[src + 0];
+          row[dst + 1] = srcRow[src + 1];
+          row[dst + 2] = srcRow[src + 2];
+          row[dst + 3] = srcRow[src + 3];
+        }
+      }
+    } else {
+      uint32_t packed = clearColor;
+      if (target.strideBytes == target.width * 4 &&
+          (reinterpret_cast<uintptr_t>(base) % alignof(uint32_t) == 0)) {
+        auto* dst = reinterpret_cast<uint32_t*>(base);
+        std::fill(dst, dst + static_cast<size_t>(target.width) * target.height, packed);
+      } else {
+        uint8_t r = static_cast<uint8_t>(clearColor & 0xFFu);
+        uint8_t g = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
+        uint8_t b = static_cast<uint8_t>((clearColor >> 16) & 0xFFu);
+        uint8_t a = static_cast<uint8_t>((clearColor >> 24) & 0xFFu);
+        for (uint32_t y = 0; y < target.height; ++y) {
+          uint8_t* row = base + static_cast<size_t>(y) * target.strideBytes;
+          if (reinterpret_cast<uintptr_t>(row) % alignof(uint32_t) == 0) {
+            auto* row32 = reinterpret_cast<uint32_t*>(row);
+            std::fill(row32, row32 + target.width, packed);
+          } else {
+            for (uint32_t x = 0; x < target.width; ++x) {
+              size_t idx = static_cast<size_t>(4u * x);
+              row[idx + 0] = r;
+              row[idx + 1] = g;
+              row[idx + 2] = b;
+              row[idx + 3] = a;
+            }
           }
         }
       }
@@ -391,7 +414,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     uint32_t tx1 = std::min(tx0 + tileSize, target.width);
     uint32_t ty1 = std::min(ty0 + tileSize, target.height);
 
-    bool frontToBack = batch.assumeFrontToBack;
+    bool frontToBack = batch.assumeFrontToBack && useTileBuffer;
     uint32_t tileArea = (tx1 - tx0) * (ty1 - ty0);
     uint32_t opaqueCount = 0;
     uint64_t tileCommands = 0;
@@ -1119,31 +1142,67 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     }
 
     if (useTileBuffer && hasClear && opaqueCount < tileArea) {
-      uint8_t clearR = static_cast<uint8_t>(clearColor & 0xFFu);
-      uint8_t clearG = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
-      uint8_t clearB = static_cast<uint8_t>((clearColor >> 16) & 0xFFu);
-      uint8_t clearA = static_cast<uint8_t>((clearColor >> 24) & 0xFFu);
-      uint8_t clearPmR = static_cast<uint8_t>((static_cast<uint16_t>(clearR) * clearA + 127u) / 255u);
-      uint8_t clearPmG = static_cast<uint8_t>((static_cast<uint16_t>(clearG) * clearA + 127u) / 255u);
-      uint8_t clearPmB = static_cast<uint8_t>((static_cast<uint16_t>(clearB) * clearA + 127u) / 255u);
-      for (uint32_t y = ty0; y < ty1; ++y) {
-        uint8_t* dstRow = target.data.data() + static_cast<size_t>(y) * target.strideBytes +
-                          static_cast<size_t>(4 * tx0);
-        for (uint32_t x = tx0; x < tx1; ++x, dstRow += 4) {
-          uint8_t srcA = dstRow[3];
-          uint16_t invA = static_cast<uint16_t>(255u - srcA);
-          dstRow[0] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[0]) +
-                                            (static_cast<uint16_t>(clearPmR) * invA + 127u) / 255u) &
-                                           0xFFu);
-          dstRow[1] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[1]) +
-                                            (static_cast<uint16_t>(clearPmG) * invA + 127u) / 255u) &
-                                           0xFFu);
-          dstRow[2] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[2]) +
-                                            (static_cast<uint16_t>(clearPmB) * invA + 127u) / 255u) &
-                                           0xFFu);
-          dstRow[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) +
-                                            (static_cast<uint16_t>(clearA) * invA + 127u) / 255u) &
-                                           0xFFu);
+      if (clearPattern) {
+        uint32_t patternStride = static_cast<uint32_t>(clearPatternWidth) * 4u;
+        uint8_t const* pattern = batch.clearPattern.data.data() + clearPatternOffset;
+        for (uint32_t y = ty0; y < ty1; ++y) {
+          uint32_t py = y % clearPatternHeight;
+          uint8_t const* srcRow = pattern + static_cast<size_t>(py) * patternStride;
+          uint8_t* dstRow = target.data.data() + static_cast<size_t>(y) * target.strideBytes +
+                            static_cast<size_t>(4 * tx0);
+          for (uint32_t x = tx0; x < tx1; ++x, dstRow += 4) {
+            uint32_t px = x % clearPatternWidth;
+            size_t src = static_cast<size_t>(px) * 4u;
+            uint8_t clearR = srcRow[src + 0];
+            uint8_t clearG = srcRow[src + 1];
+            uint8_t clearB = srcRow[src + 2];
+            uint8_t clearA = srcRow[src + 3];
+            uint8_t clearPmR = static_cast<uint8_t>((static_cast<uint16_t>(clearR) * clearA + 127u) / 255u);
+            uint8_t clearPmG = static_cast<uint8_t>((static_cast<uint16_t>(clearG) * clearA + 127u) / 255u);
+            uint8_t clearPmB = static_cast<uint8_t>((static_cast<uint16_t>(clearB) * clearA + 127u) / 255u);
+            uint8_t srcA = dstRow[3];
+            uint16_t invA = static_cast<uint16_t>(255u - srcA);
+            dstRow[0] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[0]) +
+                                              (static_cast<uint16_t>(clearPmR) * invA + 127u) / 255u) &
+                                             0xFFu);
+            dstRow[1] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[1]) +
+                                              (static_cast<uint16_t>(clearPmG) * invA + 127u) / 255u) &
+                                             0xFFu);
+            dstRow[2] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[2]) +
+                                              (static_cast<uint16_t>(clearPmB) * invA + 127u) / 255u) &
+                                             0xFFu);
+            dstRow[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) +
+                                              (static_cast<uint16_t>(clearA) * invA + 127u) / 255u) &
+                                             0xFFu);
+          }
+        }
+      } else {
+        uint8_t clearR = static_cast<uint8_t>(clearColor & 0xFFu);
+        uint8_t clearG = static_cast<uint8_t>((clearColor >> 8) & 0xFFu);
+        uint8_t clearB = static_cast<uint8_t>((clearColor >> 16) & 0xFFu);
+        uint8_t clearA = static_cast<uint8_t>((clearColor >> 24) & 0xFFu);
+        uint8_t clearPmR = static_cast<uint8_t>((static_cast<uint16_t>(clearR) * clearA + 127u) / 255u);
+        uint8_t clearPmG = static_cast<uint8_t>((static_cast<uint16_t>(clearG) * clearA + 127u) / 255u);
+        uint8_t clearPmB = static_cast<uint8_t>((static_cast<uint16_t>(clearB) * clearA + 127u) / 255u);
+        for (uint32_t y = ty0; y < ty1; ++y) {
+          uint8_t* dstRow = target.data.data() + static_cast<size_t>(y) * target.strideBytes +
+                            static_cast<size_t>(4 * tx0);
+          for (uint32_t x = tx0; x < tx1; ++x, dstRow += 4) {
+            uint8_t srcA = dstRow[3];
+            uint16_t invA = static_cast<uint16_t>(255u - srcA);
+            dstRow[0] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[0]) +
+                                              (static_cast<uint16_t>(clearPmR) * invA + 127u) / 255u) &
+                                             0xFFu);
+            dstRow[1] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[1]) +
+                                              (static_cast<uint16_t>(clearPmG) * invA + 127u) / 255u) &
+                                             0xFFu);
+            dstRow[2] = static_cast<uint8_t>((static_cast<uint16_t>(dstRow[2]) +
+                                              (static_cast<uint16_t>(clearPmB) * invA + 127u) / 255u) &
+                                             0xFFu);
+            dstRow[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) +
+                                              (static_cast<uint16_t>(clearA) * invA + 127u) / 255u) &
+                                             0xFFu);
+          }
         }
       }
       if (profile) {
@@ -1241,18 +1300,16 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       uint32_t tx1 = std::min(tx0 + tileSize, target.width);
       uint32_t ty1 = std::min(ty0 + tileSize, target.height);
 
-      uint32_t x0 = tx0;
-      uint32_t y0 = ty0;
-      uint32_t x1 = tx1;
-      uint32_t y1 = ty1;
-
       uint32_t lineWidth = debugLineWidth;
-      if (lineWidth > 1) {
-        x0 = (tx0 + lineWidth < tx1) ? tx0 + lineWidth : tx1;
-        y0 = (ty0 + lineWidth < ty1) ? ty0 + lineWidth : ty1;
-        x1 = (tx1 > lineWidth) ? tx1 - lineWidth : tx1;
-        y1 = (ty1 > lineWidth) ? ty1 - lineWidth : ty1;
-      }
+      uint32_t innerX0 = tx0 + lineWidth;
+      uint32_t innerY0 = ty0 + lineWidth;
+      uint32_t innerX1 = (tx1 > lineWidth) ? tx1 - lineWidth : tx1;
+      uint32_t innerY1 = (ty1 > lineWidth) ? ty1 - lineWidth : ty1;
+
+      uint32_t x0 = std::min(innerX0, tx1);
+      uint32_t y0 = std::min(innerY0, ty1);
+      uint32_t x1 = std::max(innerX1, tx0);
+      uint32_t y1 = std::max(innerY1, ty0);
 
       for (uint32_t y = ty0; y < ty1; ++y) {
         uint8_t* row = target.data.data() + static_cast<size_t>(y) * target.strideBytes +

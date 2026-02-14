@@ -15,9 +15,11 @@ namespace {
 int failures = 0;
 
 void render_batch(RenderTarget target, RenderBatch const& batch) {
+  RenderBatch local = batch;
+  local.assumeFrontToBack = false;
   OptimizedBatch optimized;
-  OptimizeRenderBatch(target, batch, optimized);
-  RenderOptimized(target, batch, optimized);
+  OptimizeRenderBatch(target, local, optimized);
+  RenderOptimized(target, local, optimized);
 }
 
 void check(bool cond, char const* msg) {
@@ -87,6 +89,24 @@ void add_clear(RenderBatch& batch, uint32_t color) {
   uint32_t idx = static_cast<uint32_t>(batch.clear.colorIndex.size());
   batch.clear.colorIndex.push_back(palette_index(batch, color));
   batch.commands.push_back(RenderCommand{CommandType::Clear, idx});
+}
+
+void add_clear_pattern(RenderBatch& batch,
+                       uint16_t width,
+                       uint16_t height,
+                       std::vector<uint32_t> const& pixels) {
+  uint32_t idx = static_cast<uint32_t>(batch.clearPattern.width.size());
+  batch.clearPattern.width.push_back(width);
+  batch.clearPattern.height.push_back(height);
+  batch.clearPattern.dataOffset.push_back(static_cast<uint32_t>(batch.clearPattern.data.size()));
+  batch.clearPattern.data.reserve(batch.clearPattern.data.size() + pixels.size() * 4u);
+  for (uint32_t color : pixels) {
+    batch.clearPattern.data.push_back(static_cast<uint8_t>(color & 0xFFu));
+    batch.clearPattern.data.push_back(static_cast<uint8_t>((color >> 8) & 0xFFu));
+    batch.clearPattern.data.push_back(static_cast<uint8_t>((color >> 16) & 0xFFu));
+    batch.clearPattern.data.push_back(static_cast<uint8_t>((color >> 24) & 0xFFu));
+  }
+  batch.commands.push_back(RenderCommand{CommandType::ClearPattern, idx});
 }
 
 void add_rect(RenderBatch& batch,
@@ -227,6 +247,38 @@ void test_clear_alpha() {
   render_batch(target, batch);
 
   check(channel_at(buffer, width, 0, 0, 3) == 128, "clear preserves alpha");
+}
+
+void test_clear_pattern() {
+  RenderBatch batch;
+  batch.palette.enabled = true;
+  batch.palette.size = 1;
+  batch.palette.colorRGBA8[0] = PackRGBA8(Color{0, 0, 0, 0});
+
+  std::vector<uint32_t> pixels = {
+    PackRGBA8(Color{255, 0, 0, 255}),
+    PackRGBA8(Color{0, 255, 0, 255}),
+    PackRGBA8(Color{0, 0, 255, 255}),
+    PackRGBA8(Color{255, 255, 255, 255}),
+  };
+  add_clear_pattern(batch, 2, 2, pixels);
+
+  uint32_t width = 4;
+  uint32_t height = 4;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  render_batch(target, batch);
+
+  uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
+  uint32_t green = PackRGBA8(Color{0, 255, 0, 255});
+  uint32_t blue = PackRGBA8(Color{0, 0, 255, 255});
+  uint32_t white = PackRGBA8(Color{255, 255, 255, 255});
+  check(pixel_at(buffer, width, 0, 0) == red, "pattern (0,0) is red");
+  check(pixel_at(buffer, width, 1, 0) == green, "pattern (1,0) is green");
+  check(pixel_at(buffer, width, 0, 1) == blue, "pattern (0,1) is blue");
+  check(pixel_at(buffer, width, 1, 1) == white, "pattern (1,1) is white");
+  check(pixel_at(buffer, width, 2, 0) == red, "pattern repeats horizontally");
 }
 
 void test_clear_last_wins() {
@@ -1621,6 +1673,7 @@ void test_text_scale() {
 int main() {
   test_clear();
   test_clear_alpha();
+  test_clear_pattern();
   test_clear_last_wins();
   test_rect();
   test_text();
