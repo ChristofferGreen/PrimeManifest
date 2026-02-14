@@ -87,6 +87,24 @@ Date: 2026-02-14
 | Hierarchical tile stream + in-place tile buffer | Candidate | Release mean 358.37 FPS vs 341.19 FPS baseline (~5% win, high variance). |
 | Pre-merged per-tile tile stream | Kept | Release mean 573.13 FPS vs 358.65 FPS baseline (~60% win). |
 
+## Profiling Sweeps (single-run, `--profile`)
+| Date | Scenario | FPS | Render ms | Build ms | TileWork ms | Util % | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-14 | Default `--tile 8` (optimized, tile stream) | 741.71 | 1.620 | 0.907 | 13.529 | 69.59 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 16` (optimized, tile stream) | 664.81 | 1.656 | 1.029 | 14.514 | 73.04 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 24` (optimized, tile stream) | 522.80 | 2.573 | 0.768 | 19.843 | 64.27 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--tile 32` (optimized, tile stream) | 491.70 | 1.959 | 0.738 | 19.779 | 84.14 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Heavy `--tile 8` (optimized, tile stream) | 675.49 | 1.608 | 8.978 | 14.556 | 75.44 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 16` (optimized, tile stream) | 629.50 | 2.403 | 8.322 | 22.937 | 79.54 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 24` (optimized, tile stream) | 416.95 | 2.346 | 7.892 | 22.325 | 79.30 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--tile 32` (optimized, tile stream) | 294.24 | 3.338 | 7.770 | 28.508 | 71.17 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Default `--radius 0` (optimized, tile stream) | 543.81 | 1.714 | 0.760 | 16.653 | 80.97 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--radius 4` (optimized, tile stream) | 534.76 | 1.850 | 0.760 | 16.977 | 76.47 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Default `--radius 8` (optimized, tile stream) | 495.14 | 1.992 | 0.741 | 19.688 | 82.36 | 1280x720, 4000 rects, 200 texts. |
+| 2026-02-14 | Heavy `--radius 0` (optimized, tile stream) | 436.82 | 2.290 | 7.855 | 22.824 | 83.06 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--radius 4` (optimized, tile stream) | 363.06 | 3.210 | 7.786 | 28.866 | 74.94 | 1280x720, 40000 rects, 2000 texts. |
+| 2026-02-14 | Heavy `--radius 8` (optimized, tile stream) | 332.95 | 3.118 | 8.152 | 30.862 | 82.48 | 1280x720, 40000 rects, 2000 texts. |
+
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
 2. For each new optimization, capture a 20x600 release measurement and append a row.
