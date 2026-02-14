@@ -70,6 +70,7 @@ Date: 2026-02-14
 | Rounded gradient core fill (axis-aligned, vertical, opaque) | Candidate | Default 235.76 FPS. Heavy 22.67 FPS. |
 | Gradient row increment (general) | Candidate | Default 236.55 FPS. Heavy 24.47 FPS. |
 | Axis-aligned rect skip-rotation | Candidate | Default 261.78 FPS. Heavy 24.25 FPS. |
+| Front-to-back early-out (assume sorted) | Candidate | Default render-only 300.78 FPS vs 285.59 FPS. Heavy mostly noise. |
 | Thread-local scratch vectors for prepass | Rejected | Segfault in release tests. |
 | Cache per-command RGBA channels | Kept | Disabling cache mean 380.90 FPS. |
 | Cache per-command clip rects | Kept | Disabling cache mean 371.06 FPS. |
@@ -181,6 +182,18 @@ Date: 2026-02-14
 | 2026-02-14 | Default (render-only) | 350.49 | `--optimized`. |
 | 2026-02-14 | Heavy (combined) | 24.25 | 1280x720, 40000 rects, 2000 texts, tile 32. |
 | 2026-02-14 | Heavy (render-only) | 30.51 | `--optimized`. |
+
+## Front-to-Back Early-Out (assume sorted)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (combined, F2B on) | 236.29 | `--front-to-back`. |
+| 2026-02-14 | Default (combined, F2B off) | 236.80 | `--front-to-back` disabled. |
+| 2026-02-14 | Default (render-only, F2B on) | 300.78 | `--optimized --front-to-back`. |
+| 2026-02-14 | Default (render-only, F2B off) | 285.59 | `--optimized`. |
+| 2026-02-14 | Heavy (combined, F2B on) | 23.35 | `--front-to-back`. |
+| 2026-02-14 | Heavy (combined, F2B off) | 23.80 | `--front-to-back` disabled. |
+| 2026-02-14 | Heavy (render-only, F2B on) | 30.78 | `--optimized --front-to-back`. |
+| 2026-02-14 | Heavy (render-only, F2B off) | 30.44 | `--optimized`. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
