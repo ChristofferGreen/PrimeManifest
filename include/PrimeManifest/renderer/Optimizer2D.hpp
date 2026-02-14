@@ -36,6 +36,7 @@ struct OptimizedBatch {
   uint8_t debugLineWidth = 1;
   uint8_t debugFlags = 0;
   bool valid = false;
+  uint64_t sourceRevision = 0;
 
   TileStream mergedTileStream;
   TileStream generatedTileStream;
@@ -106,6 +107,7 @@ struct OptimizedBatch {
     debugLineWidth = 1;
     debugFlags = 0;
     valid = false;
+    sourceRevision = 0;
     mergedTileStream.clear();
     generatedTileStream.clear();
     tileStream = nullptr;

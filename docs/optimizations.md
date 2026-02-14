@@ -225,6 +225,16 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy (render-only, auto off) | 28.84 | `--optimized --no-auto-tile-stream`. |
 | 2026-02-14 | Heavy (render-only, auto on) | 485.88 | `--optimized --auto-tile-stream`. |
 
+## Reuse Optimized Batch (cached)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (combined, reuse off) | 415.59 | Median of 3 runs, default settings. |
+| 2026-02-14 | Default (combined, reuse on) | 888.49 | Median of 3 runs, `--reuse-optimized`. |
+| 2026-02-14 | Default (render-only) | 863.29 | Median of 3 runs, `--optimized`. |
+| 2026-02-14 | Heavy (combined, reuse off) | 85.09 | Median of 3 runs, 40k rects/2k texts. |
+| 2026-02-14 | Heavy (combined, reuse on) | 557.77 | Median of 3 runs, `--reuse-optimized`. |
+| 2026-02-14 | Heavy (render-only) | 457.07 | Median of 3 runs, `--optimized`. |
+
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
 2. For each new optimization, capture a 20x600 release measurement and append a row.

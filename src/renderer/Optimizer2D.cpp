@@ -991,7 +991,18 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
 } // namespace
 
 void OptimizeRenderBatch(RenderTarget target, RenderBatch const& batch, OptimizedBatch& optimized) {
+  if (batch.reuseOptimized && optimized.valid) {
+    if (optimized.sourceRevision == batch.revision &&
+        optimized.targetWidth == target.width &&
+        optimized.targetHeight == target.height &&
+        optimized.tileSize == batch.tileSize) {
+      return;
+    }
+  }
   optimize_batch(target, batch, optimized);
+  if (optimized.valid) {
+    optimized.sourceRevision = batch.revision;
+  }
 }
 
 } // namespace PrimeManifest

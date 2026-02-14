@@ -34,6 +34,7 @@ struct BenchConfig {
   bool profile = false;
   bool useOptimized = false;
   bool disableOpaqueRectFastPath = false;
+  bool reuseOptimized = false;
   bool assumeFrontToBack = true;
   bool autoTileStream = true;
   uint32_t seed = 1337;
@@ -88,6 +89,8 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.useOptimized = true;
     } else if (arg == "--no-opaque-rect-fastpath") {
       cfg.disableOpaqueRectFastPath = true;
+    } else if (arg == "--reuse-optimized") {
+      cfg.reuseOptimized = true;
     } else if (arg == "--front-to-back") {
       cfg.assumeFrontToBack = true;
     } else if (arg == "--no-front-to-back") {
@@ -762,6 +765,7 @@ int main(int argc, char** argv) {
   batch.palette.colorRGBA8 = build_palette();
   batch.palette.size = 256;
   batch.disableOpaqueRectFastPath = cfg.disableOpaqueRectFastPath;
+  batch.reuseOptimized = cfg.reuseOptimized;
   batch.assumeFrontToBack = cfg.assumeFrontToBack;
   batch.autoTileStream = cfg.autoTileStream;
 
@@ -802,6 +806,8 @@ int main(int argc, char** argv) {
     }
   }
 
+  batch.revision = 1;
+
   if (cfg.enableDebugTiles) {
     uint8_t debugIndex = 0;
     add_debug_tiles(batch, debugIndex);
@@ -838,6 +844,7 @@ int main(int argc, char** argv) {
   std::cout << "TileSize: " << cfg.tileSize << "\n";
   std::cout << "Palette: Indexed\n";
   std::cout << "TileStream: " << (cfg.useTileStream ? "Enabled" : "Disabled") << "\n";
+  std::cout << "ReuseOptimized: " << (cfg.reuseOptimized ? "Enabled" : "Disabled") << "\n";
   std::cout << "FrontToBack: " << (cfg.assumeFrontToBack ? "Enabled" : "Disabled") << "\n";
   std::cout << "AutoTileStream: " << (cfg.autoTileStream ? "Enabled" : "Disabled") << "\n";
   std::cout << "Optimized: " << (cfg.useOptimized ? "Enabled" : "Disabled") << "\n";
