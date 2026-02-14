@@ -72,6 +72,7 @@ Date: 2026-02-14
 | Axis-aligned rect skip-rotation | Candidate | Default 261.78 FPS. Heavy 24.25 FPS. |
 | Front-to-back early-out (assume sorted) | Candidate | Default render-only 300.78 FPS vs 285.59 FPS. Heavy mostly noise. |
 | Tile-stream rendering | Candidate | Default 491.14 FPS vs 236.80 FPS. Heavy 106.82 FPS vs 23.80 FPS. |
+| Auto tile-stream generation | Candidate | Default 457.67 FPS vs 208.20 FPS. Heavy 81.12 FPS vs 22.64 FPS. |
 | Thread-local scratch vectors for prepass | Rejected | Segfault in release tests. |
 | Cache per-command RGBA channels | Kept | Disabling cache mean 380.90 FPS. |
 | Cache per-command clip rects | Kept | Disabling cache mean 371.06 FPS. |
@@ -211,6 +212,18 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy (render-only, stream off) | 30.44 | `--optimized`. |
 | 2026-02-14 | Heavy (render-only, stream on) | 570.87 | `--optimized --tile-stream`. |
 | 2026-02-14 | Heavy (render-only, stream+F2B) | 619.46 | `--optimized --tile-stream --front-to-back`. |
+
+## Auto Tile-Stream (generated)
+| Date | Scenario | FPS | Notes |
+| --- | --- | --- | --- |
+| 2026-02-14 | Default (combined, auto off) | 208.20 | `--auto-tile-stream` disabled. |
+| 2026-02-14 | Default (combined, auto on) | 457.67 | `--auto-tile-stream`. |
+| 2026-02-14 | Default (render-only, auto off) | 319.01 | `--optimized`. |
+| 2026-02-14 | Default (render-only, auto on) | 816.38 | `--optimized --auto-tile-stream`. |
+| 2026-02-14 | Heavy (combined, auto off) | 22.64 | `--auto-tile-stream` disabled. |
+| 2026-02-14 | Heavy (combined, auto on) | 81.12 | `--auto-tile-stream`. |
+| 2026-02-14 | Heavy (render-only, auto off) | 28.84 | `--optimized`. |
+| 2026-02-14 | Heavy (render-only, auto on) | 485.88 | `--optimized --auto-tile-stream`. |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

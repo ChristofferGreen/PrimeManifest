@@ -38,6 +38,7 @@ struct OptimizedBatch {
   bool valid = false;
 
   TileStream mergedTileStream;
+  TileStream generatedTileStream;
   TileStream const* tileStream = nullptr;
 
   std::vector<uint32_t> tileCounts;
@@ -106,6 +107,7 @@ struct OptimizedBatch {
     debugFlags = 0;
     valid = false;
     mergedTileStream.clear();
+    generatedTileStream.clear();
     tileStream = nullptr;
     tileCounts.clear();
     cmdTiles.clear();

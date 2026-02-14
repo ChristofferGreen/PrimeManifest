@@ -449,6 +449,7 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
   if (profile) {
     profile->optTileStreamNs = to_ns(tileStreamStart, std::chrono::steady_clock::now());
   }
+  bool allowAutoTileStream = batch.autoTileStream && !useTileStream && grid.tileSize <= 256u;
 
   bool hasDraw = false;
   if (useTileStream) {
@@ -763,6 +764,58 @@ auto optimize_batch(RenderTarget target, RenderBatch const& batch, OptimizedBatc
             tileRefs[offset] = i;
           }
         }
+      }
+
+      if (allowAutoTileStream) {
+        TileStream generated;
+        generated.offsets.assign(tileOffsets.begin(), tileOffsets.end());
+        generated.commands.resize(tileRefs.size());
+        for (uint32_t tileIndex = 0; tileIndex < tileCount; ++tileIndex) {
+          uint32_t tx = tileIndex % grid.tilesX;
+          uint32_t ty = tileIndex / grid.tilesX;
+          int32_t tx0 = static_cast<int32_t>(tx * grid.tileSize);
+          int32_t ty0 = static_cast<int32_t>(ty * grid.tileSize);
+          int32_t tx1 = std::min(tx0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(target.width));
+          int32_t ty1 = std::min(ty0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(target.height));
+          uint32_t start = tileOffsets[tileIndex];
+          uint32_t end = tileOffsets[tileIndex + 1];
+          for (uint32_t i = start; i < end; ++i) {
+            uint32_t cmdIndex = tileRefs[i];
+            if (cmdIndex >= batch.commands.size() || cmdIndex >= cmdTiles.size()) continue;
+            auto const& cmd = batch.commands[cmdIndex];
+            auto const& info = cmdTiles[cmdIndex];
+            int32_t lx0 = std::max(info.x0, tx0);
+            int32_t ly0 = std::max(info.y0, ty0);
+            int32_t lx1 = std::min(info.x1, tx1);
+            int32_t ly1 = std::min(info.y1, ty1);
+            if (lx1 <= lx0 || ly1 <= ly0) continue;
+            int32_t localX = lx0 - tx0;
+            int32_t localY = ly0 - ty0;
+            int32_t localW = lx1 - lx0;
+            int32_t localH = ly1 - ly0;
+            if (localX < 0 || localY < 0 || localW <= 0 || localH <= 0) continue;
+            if (localX > 255 || localY > 255 || localW > 256 || localH > 256) continue;
+            TileCommand out{};
+            out.type = cmd.type;
+            out.index = cmd.index;
+            out.order = cmdIndex;
+            out.x = static_cast<uint8_t>(localX);
+            out.y = static_cast<uint8_t>(localY);
+            out.wMinus1 = static_cast<uint8_t>(localW - 1);
+            out.hMinus1 = static_cast<uint8_t>(localH - 1);
+            generated.commands[i] = out;
+          }
+        }
+        generated.enabled = true;
+        generated.preMerged = true;
+        prepared.generatedTileStream = std::move(generated);
+        tileStream = &prepared.generatedTileStream;
+        useTileStream = true;
+        useTileBuffer = true;
+        prepared.useTileStream = true;
+        prepared.useTileBuffer = true;
+        prepared.tileStream = tileStream;
+        allowAutoTileStream = false;
       }
 
       if (profile) {

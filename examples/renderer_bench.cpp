@@ -35,6 +35,7 @@ struct BenchConfig {
   bool useOptimized = false;
   bool disableOpaqueRectFastPath = false;
   bool assumeFrontToBack = false;
+  bool autoTileStream = false;
   uint32_t seed = 1337;
 };
 
@@ -89,6 +90,8 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.disableOpaqueRectFastPath = true;
     } else if (arg == "--front-to-back") {
       cfg.assumeFrontToBack = true;
+    } else if (arg == "--auto-tile-stream") {
+      cfg.autoTileStream = true;
     } else if (arg == "--seed") {
       cfg.seed = next(cfg.seed);
     }
@@ -756,6 +759,7 @@ int main(int argc, char** argv) {
   batch.palette.size = 256;
   batch.disableOpaqueRectFastPath = cfg.disableOpaqueRectFastPath;
   batch.assumeFrontToBack = cfg.assumeFrontToBack;
+  batch.autoTileStream = cfg.autoTileStream;
 
   build_glyph_store(batch);
   build_text_run(batch, 12);
@@ -831,6 +835,7 @@ int main(int argc, char** argv) {
   std::cout << "Palette: Indexed\n";
   std::cout << "TileStream: " << (cfg.useTileStream ? "Enabled" : "Disabled") << "\n";
   std::cout << "FrontToBack: " << (cfg.assumeFrontToBack ? "Enabled" : "Disabled") << "\n";
+  std::cout << "AutoTileStream: " << (cfg.autoTileStream ? "Enabled" : "Disabled") << "\n";
   std::cout << "Optimized: " << (cfg.useOptimized ? "Enabled" : "Disabled") << "\n";
   std::cout << "Elapsed: " << elapsed.count() << "s\n";
   std::cout << "FPS: " << fps << "\n";

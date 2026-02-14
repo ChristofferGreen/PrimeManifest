@@ -354,6 +354,7 @@ struct RenderBatch {
   uint16_t tileSize = 32;
   bool disableOpaqueRectFastPath = false;
   bool assumeFrontToBack = false;
+  bool autoTileStream = false;
   RendererProfile* profile = nullptr;
 
   void clearAll() {
@@ -368,6 +369,7 @@ struct RenderBatch {
     palette.clear();
     disableOpaqueRectFastPath = false;
     assumeFrontToBack = false;
+    autoTileStream = false;
   }
 };
 
