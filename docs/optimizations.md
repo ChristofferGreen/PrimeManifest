@@ -266,6 +266,7 @@ Date: 2026-02-15
 | Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |
 | Circle-only tile pool chunk size override (`chunkSize=1`) | Kept | 20-run mean 243.23 FPS vs 239.84 current head (~1.4% win). |
 | Circle-only tile pool chunk size override (`chunkSize=2`) | Rejected | 20-run mean 236.62 FPS vs 243.23 (regression). |
+| Circle-only tile pool chunk size override (`chunkSize=2`, 750k) | Rejected | 20-run mean 76.32 FPS vs 83.01 baseline (regression). |
 | Hoist clipped-row `row_ptr` base (opaque circles) | Rejected | 20-run mean 219.03 FPS vs 243.23 current head (regression). |
 | Use `edgeCov` directly as src alpha in opaque edge blends | Rejected | 20-run mean 237.35 FPS vs 243.23 current head (regression). |
 | Sort renderTiles by per-tile circle counts (`chunkSize=1`) | Kept | 20-run mean 244.25 FPS vs 243.23 current head (~0.4% win). |
