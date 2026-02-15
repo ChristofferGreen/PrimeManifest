@@ -246,10 +246,11 @@ Date: 2026-02-15
 - Optimizer: runs every frame (dynamic circles), render-only mode disabled.
 
 ## Circle Benchmark Measurements
-| Date | Runs | Frames | Mean FPS | Min | Max | Commit | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-02-15 | 5 | 300 | 208.45 | 192.40 | 218.53 | `cc6326b` | Baseline after blend lookup cache, tileSize auto=128. |
-| 2026-02-15 | 10 | 300 | 218.44 | 198.38 | 231.78 | `ea71015` | Cached edge premultiplied colors (2x5-run batches). |
+| Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-15 | 5 | 300 | 208.45 | 208.93 | 192.40 | 218.53 | 9.13 | `cc6326b` | Baseline after blend lookup cache, tileSize auto=128. |
+| 2026-02-15 | 10 | 300 | 218.44 | 221.62 | 198.38 | 231.78 | 11.75 | `ea71015` | Cached edge premultiplied colors (2x5-run batches). |
+| 2026-02-15 | 10 | 300 | 197.36 | 198.39 | 183.52 | 207.55 | 7.69 | `76abd6d` | High-quality baseline run set (current head). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
