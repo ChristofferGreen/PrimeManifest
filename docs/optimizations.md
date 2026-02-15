@@ -248,6 +248,7 @@ Date: 2026-02-15
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-15 | 20 | 300 | 244.25 | 245.59 | 216.49 | 250.62 | 6.95 | `3336535` | Circle-only tiles sorted by load + chunkSize=1. |
 | 2026-02-15 | 20 | 300 | 243.23 | 245.30 | 223.76 | 253.27 | 7.50 | `d67b42b` | Circle-only tiles use chunk size 1 in tile pool. |
 | 2026-02-15 | 20 | 300 | 239.84 | 241.70 | 229.71 | 245.01 | 4.35 | `9115b50` | Clipped opaque small-circle path uses edge list + span fill. |
 | 2026-02-15 | 5 | 300 | 208.45 | 208.93 | 192.40 | 218.53 | 9.13 | `cc6326b` | Baseline after blend lookup cache, tileSize auto=128. |
@@ -266,10 +267,11 @@ Date: 2026-02-15
 | Circle-only tile pool chunk size override (`chunkSize=2`) | Rejected | 20-run mean 236.62 FPS vs 243.23 (regression). |
 | Hoist clipped-row `row_ptr` base (opaque circles) | Rejected | 20-run mean 219.03 FPS vs 243.23 current head (regression). |
 | Use `edgeCov` directly as src alpha in opaque edge blends | Rejected | 20-run mean 237.35 FPS vs 243.23 current head (regression). |
+| Sort renderTiles by per-tile circle counts (`chunkSize=1`) | Kept | 20-run mean 244.25 FPS vs 243.23 current head (~0.4% win). |
 | Circle-only tileRefs fast path (skip command dispatch) | Rejected | 20-run mean 200.05 FPS vs 239.84 current head (regression). |
 | Palette-opaque circle path (reuse cached palette channels, skip alpha checks) | Rejected | 20-run mean 205.66 FPS vs 239.84 current head (regression). |
 | Pack circle edge X/cov into 16-bit entries | Rejected | 20-run mean 207.30 FPS vs 239.84 current head (regression, high variance). |
-| Sort renderTiles by per-tile circle counts | Rejected | 20-run mean 235.79 FPS vs 239.84 current head (slight regression). |
+| Sort renderTiles by per-tile circle counts (`chunkSize` default) | Rejected | 20-run mean 235.79 FPS vs 239.84 current head (slight regression). |
 | Cache per-radius edge premultiplied colors (per palette) | Kept | Mean 218.44 FPS vs 208.45 baseline (~4.8% win). |
 | Pointer-increment mask row traversal for partial circles | Rejected | Mean ~197 FPS vs ~204 baseline (regression). |
 | Use `pmTable[255]` for circle color (skip palette load) | Rejected | Mean ~165 FPS (regression). |
