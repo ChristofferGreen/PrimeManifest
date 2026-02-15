@@ -1160,12 +1160,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 uint8_t x = edgeX[i];
                 uint8_t cov = edgeCov[i];
                 uint32_t pm = pmTable[cov];
-                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
                 blend_px(rowBase + static_cast<size_t>(4u * x),
                          static_cast<uint8_t>(pm & 0xFFu),
                          static_cast<uint8_t>((pm >> 8) & 0xFFu),
                          static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         srcA);
+                         cov);
               }
             }
             continue;
@@ -1211,60 +1210,84 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
             auto const* maskRow = maskRowPtr;
             uint8_t* row = rowBase;
-            for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
-              uint8_t coverage = maskRow[x];
-              if (coverage == 0) continue;
-              uint32_t pm = pmTable[coverage];
-              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-              if (srcA == 0) continue;
-              blend_px(row,
-                       static_cast<uint8_t>(pm & 0xFFu),
-                       static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                       static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                       srcA);
-            }
-
-            if (opaqueEnd >= opaqueStart && cA == 255) {
-              uint32_t packed = color;
-              uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
-              int32_t count = opaqueEnd - opaqueStart + 1;
-              if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                std::fill(row32, row32 + count, packed);
-              } else {
-                for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                  opaqueRow[0] = cR;
-                  opaqueRow[1] = cG;
-                  opaqueRow[2] = cB;
-                  opaqueRow[3] = 255u;
+            if (cA == 255) {
+              for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
+                uint8_t coverage = maskRow[x];
+                if (coverage == 0) continue;
+                uint32_t pm = pmTable[coverage];
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         coverage);
+              }
+              if (opaqueEnd >= opaqueStart) {
+                uint32_t packed = color;
+                uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                int32_t count = opaqueEnd - opaqueStart + 1;
+                if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                  auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                  std::fill(row32, row32 + count, packed);
+                } else {
+                  for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                    opaqueRow[0] = cR;
+                    opaqueRow[1] = cG;
+                    opaqueRow[2] = cB;
+                    opaqueRow[3] = 255u;
+                  }
                 }
               }
-            } else if (opaqueEnd >= opaqueStart) {
-              uint32_t pmOpaque = pmTable[255u];
-              uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
-              row = rowBase + static_cast<size_t>(4u * opaqueStart);
-              for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
+              int32_t tailStart = std::max(opaqueEnd + 1, 0);
+              row = rowBase + static_cast<size_t>(4u * tailStart);
+              for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
+                uint8_t coverage = maskRow[x];
+                if (coverage == 0) continue;
+                uint32_t pm = pmTable[coverage];
                 blend_px(row,
-                         static_cast<uint8_t>(pmOpaque & 0xFFu),
-                         static_cast<uint8_t>((pmOpaque >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pmOpaque >> 16) & 0xFFu),
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         coverage);
+              }
+            } else {
+              for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
+                uint8_t coverage = maskRow[x];
+                if (coverage == 0) continue;
+                uint32_t pm = pmTable[coverage];
+                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                if (srcA == 0) continue;
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
                          srcA);
               }
-            }
-
-            int32_t tailStart = std::max(opaqueEnd + 1, 0);
-            row = rowBase + static_cast<size_t>(4u * tailStart);
-            for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
-              uint8_t coverage = maskRow[x];
-              if (coverage == 0) continue;
-              uint32_t pm = pmTable[coverage];
-              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-              if (srcA == 0) continue;
-              blend_px(row,
-                       static_cast<uint8_t>(pm & 0xFFu),
-                       static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                       static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                       srcA);
+              if (opaqueEnd >= opaqueStart) {
+                uint32_t pmOpaque = pmTable[255u];
+                uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
+                row = rowBase + static_cast<size_t>(4u * opaqueStart);
+                for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
+                  blend_px(row,
+                           static_cast<uint8_t>(pmOpaque & 0xFFu),
+                           static_cast<uint8_t>((pmOpaque >> 8) & 0xFFu),
+                           static_cast<uint8_t>((pmOpaque >> 16) & 0xFFu),
+                           srcA);
+                }
+              }
+              int32_t tailStart = std::max(opaqueEnd + 1, 0);
+              row = rowBase + static_cast<size_t>(4u * tailStart);
+              for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
+                uint8_t coverage = maskRow[x];
+                if (coverage == 0) continue;
+                uint32_t pm = pmTable[coverage];
+                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                if (srcA == 0) continue;
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
+              }
             }
           }
         } else {
