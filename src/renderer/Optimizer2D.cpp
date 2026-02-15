@@ -150,7 +150,7 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   bool circleMajority = drawCount > 0 && (counts.circle * 2 > drawCount);
   bool circleOnly = circleMajority && counts.rect == 0 && counts.text == 0;
   if (tileSize == 32u && circleOnly) {
-    return batch.reuseOptimized ? 16u : 64u;
+    return batch.reuseOptimized ? 16u : 128u;
   }
   return tileSize;
 }
