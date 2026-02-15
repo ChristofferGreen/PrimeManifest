@@ -22,6 +22,7 @@ option(PRIMEMANIFEST_ENABLE_FONTS "Enable FreeType+HarfBuzz text shaping" OFF)
 set(PRIMEMANIFEST_SOURCES
   src/renderer/Optimizer2D.cpp
   src/renderer/Renderer2D.cpp
+  src/text/FontBitmap.cpp
   src/text/FontRegistry.cpp
   src/text/TextBake.cpp
   src/util/BitmapFont.cpp
@@ -66,6 +67,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_command_structs.cpp
     tests/unit/test_debug_tiles.cpp
     tests/unit/test_font_registry.cpp
+    tests/unit/test_font_bitmap.cpp
     tests/unit/test_front_to_back.cpp
     tests/unit/test_gradient_cache.cpp
     tests/unit/test_layout.cpp

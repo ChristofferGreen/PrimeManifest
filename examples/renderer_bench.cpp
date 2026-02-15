@@ -730,7 +730,7 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
 void build_text_run(RenderBatch& batch, uint32_t glyphCount) {
   uint32_t start = static_cast<uint32_t>(batch.glyphs.glyphXQ8_8.size());
   for (uint32_t i = 0; i < glyphCount; ++i) {
-    batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(i * 10 * 256));
+    batch.glyphs.glyphXQ8_8.push_back(static_cast<int32_t>(i * 10 * 256));
     batch.glyphs.glyphYQ8_8.push_back(0);
     batch.glyphs.bitmapIndex.push_back(0);
   }

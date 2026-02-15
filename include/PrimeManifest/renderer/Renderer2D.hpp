@@ -6,6 +6,8 @@
 #include <span>
 #include <vector>
 
+#include "PrimeManifest/text/GlyphBitmapFormat.hpp"
+
 namespace PrimeManifest {
 
 struct Color {
@@ -270,6 +272,7 @@ struct GlyphStore {
     int32_t bearingY = 0;
     int32_t advance = 0;
     int32_t stride = 0;
+    GlyphBitmapFormat format = GlyphBitmapFormat::Mask8;
     int32_t atlasIndex = -1;
     int32_t atlasX = 0;
     int32_t atlasY = 0;
@@ -283,8 +286,8 @@ struct GlyphStore {
     std::vector<uint8_t> pixels;
   };
 
-  std::vector<int16_t> glyphXQ8_8;
-  std::vector<int16_t> glyphYQ8_8;
+  std::vector<int32_t> glyphXQ8_8;
+  std::vector<int32_t> glyphYQ8_8;
   std::vector<uint32_t> bitmapIndex;
   std::vector<GlyphBitmap> bitmaps;
   std::vector<uint8_t> bitmapOpaque;

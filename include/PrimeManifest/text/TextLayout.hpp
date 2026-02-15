@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "PrimeManifest/text/GlyphBitmapFormat.hpp"
+
 namespace PrimeManifest {
 
 struct GlyphAtlas;
@@ -18,6 +20,7 @@ struct GlyphBitmap {
   int32_t bearingY = 0;
   int32_t advance = 0;
   int32_t stride = 0;
+  GlyphBitmapFormat format = GlyphBitmapFormat::Mask8;
   std::vector<uint8_t> pixels;
   std::shared_ptr<GlyphAtlas> atlas;
   int32_t atlasX = 0;

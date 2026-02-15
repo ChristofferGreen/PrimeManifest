@@ -3,6 +3,8 @@
 
 #include "test_harness.hpp"
 
+#include <filesystem>
+
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
@@ -42,5 +44,32 @@ PM_TEST(font_registry, layout_text_handles_fonts_disabled) {
   (void)run;
 #else
   PM_CHECK(!run, "LayoutText returns null when fonts disabled");
+#endif
+}
+
+PM_TEST(font_registry, emoji_fixed_sizes_load) {
+#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS && defined(__APPLE__)
+  std::filesystem::path emojiPath = "/System/Library/Fonts/Apple Color Emoji.ttc";
+  if (!std::filesystem::exists(emojiPath)) {
+    return;
+  }
+
+  auto& registry = GetFontRegistry();
+  registry.addBundleDir(emojiPath.parent_path().string());
+  registry.loadBundledFonts();
+
+  Typography emoji;
+  emoji.family = "Apple Color Emoji";
+  emoji.size = 18.0f;
+  emoji.weight = 400;
+  emoji.fallback = FontFallbackPolicy::BundleThenOS;
+
+  auto run = LayoutText("😀", emoji, 1.0f, true);
+  PM_CHECK(run, "emoji layout returns run");
+  if (!run) return;
+  PM_CHECK(!run->glyphs.empty(), "emoji glyph emitted");
+  if (!run->glyphs.empty()) {
+    PM_CHECK(run->glyphs[0].bitmap != nullptr, "emoji glyph has bitmap");
+  }
 #endif
 }

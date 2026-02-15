@@ -21,6 +21,7 @@ auto copy_bitmap(GlyphBitmap const& src) -> GlyphStore::GlyphBitmap {
   out.bearingX = src.bearingX;
   out.bearingY = src.bearingY;
   out.advance = src.advance;
+  out.format = src.format;
   out.atlasIndex = -1;
   out.atlasX = 0;
   out.atlasY = 0;
@@ -29,7 +30,7 @@ auto copy_bitmap(GlyphBitmap const& src) -> GlyphStore::GlyphBitmap {
     out.pixels = src.pixels;
     return out;
   }
-  if (src.atlas && src.width > 0 && src.height > 0) {
+  if (src.atlas && src.width > 0 && src.height > 0 && src.format == GlyphBitmapFormat::Mask8) {
     out.stride = src.width;
     out.pixels.resize(static_cast<size_t>(src.width) * src.height);
     int32_t atlasStride = src.atlas->stride;
@@ -48,10 +49,19 @@ auto copy_bitmap(GlyphBitmap const& src) -> GlyphStore::GlyphBitmap {
 
 auto bitmap_is_opaque(GlyphStore::GlyphBitmap const& bmp) -> bool {
   if (bmp.pixels.empty()) return false;
-  for (uint8_t v : bmp.pixels) {
-    if (v != 255u) return false;
+  if (bmp.format == GlyphBitmapFormat::Mask8) {
+    for (uint8_t v : bmp.pixels) {
+      if (v != 255u) return false;
+    }
+    return true;
   }
-  return true;
+  if (bmp.format == GlyphBitmapFormat::ColorBGRA) {
+    for (size_t i = 3; i < bmp.pixels.size(); i += 4) {
+      if (bmp.pixels[i] != 255u) return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 } // namespace
@@ -84,8 +94,8 @@ auto AppendTextRun(RenderBatch& batch,
 
     int32_t gx = static_cast<int32_t>(std::lround(glyph.x * 256.0f));
     int32_t gy = static_cast<int32_t>(std::lround(glyph.y * 256.0f));
-    batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(gx));
-    batch.glyphs.glyphYQ8_8.push_back(static_cast<int16_t>(gy));
+    batch.glyphs.glyphXQ8_8.push_back(gx);
+    batch.glyphs.glyphYQ8_8.push_back(gy);
     batch.glyphs.bitmapIndex.push_back(bitmapIndex);
   }
 

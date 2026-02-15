@@ -137,7 +137,7 @@ PM_TEST(misc, random_fuzz_is_deterministic) {
   }
 
   for (uint32_t i = 0; i < 40; ++i) {
-    batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(i * 2 * 256));
+    batch.glyphs.glyphXQ8_8.push_back(static_cast<int32_t>(i * 2 * 256));
     batch.glyphs.glyphYQ8_8.push_back(0);
     batch.glyphs.bitmapIndex.push_back(0);
   }

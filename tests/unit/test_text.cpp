@@ -478,7 +478,7 @@ PM_TEST(text, large_across_tiles) {
   batch.glyphs.bitmapOpaque.push_back(0);
 
   for (uint32_t i = 0; i < 32; ++i) {
-    batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(i * 2 * 256));
+    batch.glyphs.glyphXQ8_8.push_back(static_cast<int32_t>(i * 2 * 256));
     batch.glyphs.glyphYQ8_8.push_back(0);
     batch.glyphs.bitmapIndex.push_back(0);
   }
@@ -517,7 +517,7 @@ PM_TEST(text, multiple_glyph_spacing) {
   batch.glyphs.bitmapOpaque.push_back(0);
 
   for (uint32_t i = 0; i < 3; ++i) {
-    batch.glyphs.glyphXQ8_8.push_back(static_cast<int16_t>(i * 4 * 256));
+    batch.glyphs.glyphXQ8_8.push_back(static_cast<int32_t>(i * 4 * 256));
     batch.glyphs.glyphYQ8_8.push_back(0);
     batch.glyphs.bitmapIndex.push_back(0);
   }

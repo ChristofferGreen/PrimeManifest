@@ -459,6 +459,31 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         blend_premultiplied(dst, pmR, pmG, pmB, srcA);
       }
     };
+    auto blend_rgba = [&](uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB, uint8_t srcA) {
+      if (srcA == 0) return;
+      uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * srcA + 127u) / 255u);
+      uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * srcA + 127u) / 255u);
+      uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * srcA + 127u) / 255u);
+      if (frontToBack) {
+        uint8_t dstA = dst[3];
+        if (dstA >= OpaqueAlphaCutoff) return;
+        uint16_t invA = static_cast<uint16_t>(255u - dstA);
+        dst[0] = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dst[0]) + (static_cast<uint16_t>(pmR) * invA + 127u) / 255u) & 0xFFu);
+        dst[1] = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dst[1]) + (static_cast<uint16_t>(pmG) * invA + 127u) / 255u) & 0xFFu);
+        dst[2] = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dst[2]) + (static_cast<uint16_t>(pmB) * invA + 127u) / 255u) & 0xFFu);
+        uint8_t newA = static_cast<uint8_t>(
+          (static_cast<uint16_t>(dstA) + (static_cast<uint16_t>(srcA) * invA + 127u) / 255u) & 0xFFu);
+        dst[3] = newA;
+        if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+          ++opaqueCount;
+        }
+      } else {
+        blend_premultiplied(dst, pmR, pmG, pmB, srcA);
+      }
+    };
     auto write_px = [&](uint8_t* dst, uint8_t r, uint8_t g, uint8_t b) {
       if (frontToBack) {
         uint8_t dstA = dst[3];
@@ -1063,7 +1088,8 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             tileTextPixels += static_cast<uint64_t>(cx1 - cx0) * static_cast<uint64_t>(cy1 - cy0);
           }
 
-          if (opaqueText) {
+          bool colorGlyph = bmp.format == GlyphBitmapFormat::ColorBGRA;
+          if (opaqueText && !colorGlyph) {
             bool glyphOpaque = false;
             if (bitmapIndex < batch.glyphs.bitmapOpaque.size()) {
               glyphOpaque = batch.glyphs.bitmapOpaque[bitmapIndex] != 0u;
@@ -1099,6 +1125,31 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               }
               continue;
             }
+          }
+
+          if (colorGlyph) {
+            const uint8_t* srcBase = bmp.pixels.data();
+            int32_t srcStride = bmp.stride;
+            if (!srcBase || srcStride <= 0) continue;
+            for (int32_t y = cy0; y < cy1; ++y) {
+              int32_t srcRow = y - gy0;
+              const uint8_t* src = srcBase + static_cast<size_t>(srcRow) * srcStride +
+                                   static_cast<size_t>(cx0 - gx0) * 4u;
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4 * cx0);
+              for (int32_t x = cx0; x < cx1; ++x, src += 4, row += 4) {
+                uint8_t b = src[0];
+                uint8_t g = src[1];
+                uint8_t r = src[2];
+                uint8_t a = src[3];
+                if (a == 0) {
+                  a = std::max(r, std::max(g, b));
+                }
+                a = apply_opacity(a, opacity);
+                if (a == 0) continue;
+                blend_rgba(row, r, g, b, a);
+              }
+            }
+            continue;
           }
 
           const uint8_t* srcBase = nullptr;

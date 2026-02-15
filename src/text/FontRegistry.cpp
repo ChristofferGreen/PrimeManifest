@@ -1,4 +1,5 @@
 #include "PrimeManifest/text/FontRegistry.hpp"
+#include "PrimeManifest/text/FontBitmap.hpp"
 
 #include "PrimeManifest/util/BitmapFont.hpp"
 
@@ -232,6 +233,40 @@ static bool face_supports_glyph(FontFace* face, uint32_t codepoint) {
   return FT_Get_Char_Index(face->face, codepoint) != 0;
 }
 
+static void select_unicode_charmap(FT_Face face) {
+  if (!face) return;
+  if (FT_Select_Charmap(face, FT_ENCODING_UNICODE) == 0) return;
+  for (int i = 0; i < face->num_charmaps; ++i) {
+    if (face->charmaps[i] && face->charmaps[i]->encoding == FT_ENCODING_UNICODE) {
+      FT_Set_Charmap(face, face->charmaps[i]);
+      break;
+    }
+  }
+}
+
+static uint16_t set_face_pixel_size(FT_Face face, uint16_t sizePx) {
+  if (!face || sizePx == 0) return 0;
+  if (FT_Set_Pixel_Sizes(face, 0, sizePx) == 0) return sizePx;
+  if (face->num_fixed_sizes <= 0) return 0;
+
+  int bestIndex = -1;
+  int bestDiff = std::numeric_limits<int>::max();
+  int bestSize = 0;
+  for (int i = 0; i < face->num_fixed_sizes; ++i) {
+    FT_Bitmap_Size size = face->available_sizes[i];
+    int yPpem = size.y_ppem > 0 ? static_cast<int>(size.y_ppem / 64) : size.height;
+    int diff = std::abs(yPpem - static_cast<int>(sizePx));
+    if (diff < bestDiff || (diff == bestDiff && yPpem > bestSize)) {
+      bestDiff = diff;
+      bestIndex = i;
+      bestSize = yPpem;
+    }
+  }
+  if (bestIndex < 0) return 0;
+  if (FT_Select_Size(face, bestIndex) != 0) return 0;
+  return static_cast<uint16_t>(bestSize > 0 ? bestSize : sizePx);
+}
+
 } // namespace
 
 struct FontRegistry::Impl {
@@ -278,6 +313,7 @@ struct FontRegistry::Impl {
       if (FT_New_Face(ftLibrary, path.c_str(), idx, &f) != 0 || !f) {
         continue;
       }
+      select_unicode_charmap(f);
       auto entry = std::make_unique<FontFace>();
       entry->id = nextFaceId++;
       entry->family = f->family_name ? f->family_name : "";
@@ -324,6 +360,7 @@ struct FontRegistry::Impl {
                              &f) != 0 || !f) {
         continue;
       }
+      select_unicode_charmap(f);
       auto entry = std::make_unique<FontFace>();
       entry->id = nextFaceId++;
       entry->family = f->family_name ? f->family_name : buffer.name;
@@ -447,24 +484,48 @@ struct FontRegistry::Impl {
 
   FontFace* selectPrimaryFace(Typography const& typography) {
     loadBundledFonts();
-    if (bundledFaces.empty()) return nullptr;
     std::string target = to_lower(typography.family);
     if (target == "bitmap") return nullptr;
-    if (target.empty() || target == "default") return bundledFaces.front();
 
-    FontFace* best = nullptr;
-    int bestScore = std::numeric_limits<int>::max();
-    for (auto* face : bundledFaces) {
-      if (!face) continue;
-      if (to_lower(face->family) != target) continue;
-      int score = std::abs(static_cast<int>(face->weight) - static_cast<int>(typography.weight));
-      if (face->slant != typography.slant) score += 500;
-      if (score < bestScore) {
-        bestScore = score;
-        best = face;
+    auto pick_best = [&](std::vector<FontFace*> const& faces) -> FontFace* {
+      FontFace* best = nullptr;
+      int bestScore = std::numeric_limits<int>::max();
+      for (auto* face : faces) {
+        if (!face) continue;
+        if (!target.empty() && target != "default" && to_lower(face->family) != target) continue;
+        int score = std::abs(static_cast<int>(face->weight) - static_cast<int>(typography.weight));
+        if (face->slant != typography.slant) score += 500;
+        if (score < bestScore) {
+          bestScore = score;
+          best = face;
+        }
+      }
+      return best;
+    };
+
+    if (target.empty() || target == "default") {
+      if (!bundledFaces.empty()) return bundledFaces.front();
+      if (typography.fallback == FontFallbackPolicy::BundleThenOS) {
+        loadOsFallbackFonts();
+        while (true) {
+          if (auto* best = pick_best(osFaces)) return best;
+          if (!loadNextOsFallbackFace()) break;
+        }
+      }
+      return nullptr;
+    }
+
+    if (auto* best = pick_best(bundledFaces)) return best;
+    if (typography.fallback == FontFallbackPolicy::BundleThenOS) {
+      loadOsFallbackFonts();
+      while (true) {
+        if (auto* best = pick_best(osFaces)) return best;
+        if (!loadNextOsFallbackFace()) break;
       }
     }
-    return best ? best : bundledFaces.front();
+    if (!bundledFaces.empty()) return bundledFaces.front();
+    if (!osFaces.empty()) return osFaces.front();
+    return nullptr;
   }
 
   FontFace* resolveFaceForCodepoint(uint32_t codepoint,
@@ -569,12 +630,16 @@ struct FontRegistry::Impl {
     auto it = glyphCache.find(key);
     if (it != glyphCache.end()) return it->second.get();
 
-    if (FT_Set_Pixel_Sizes(face->face, 0, sizePx) != 0) return nullptr;
-    if (FT_Load_Glyph(face->face, glyphId, FT_LOAD_DEFAULT) != 0) return nullptr;
+    uint16_t effectiveSize = set_face_pixel_size(face->face, sizePx);
+    if (effectiveSize == 0) return nullptr;
+    FT_Int32 loadFlags = FT_LOAD_DEFAULT | FT_LOAD_COLOR;
+    if (FT_Load_Glyph(face->face, glyphId, loadFlags) != 0) return nullptr;
     if (emboldenStrength > 0 && face->face->glyph->format == FT_GLYPH_FORMAT_OUTLINE) {
       FT_Outline_Embolden(&face->face->glyph->outline, static_cast<FT_Pos>(emboldenStrength));
     }
-    if (FT_Render_Glyph(face->face->glyph, FT_RENDER_MODE_NORMAL) != 0) return nullptr;
+    if (face->face->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
+      if (FT_Render_Glyph(face->face->glyph, FT_RENDER_MODE_NORMAL) != 0) return nullptr;
+    }
 
     FT_GlyphSlot slot = face->face->glyph;
     FT_Bitmap& bm = slot->bitmap;
@@ -586,30 +651,55 @@ struct FontRegistry::Impl {
     bitmap->bearingY = slot->bitmap_top;
     bitmap->advance = static_cast<int>(slot->advance.x / 64);
     if (bm.buffer && bitmap->width > 0 && bitmap->height > 0) {
-      int atlasX = 0;
-      int atlasY = 0;
-      auto atlas = allocateAtlasSlot(bitmap->width, bitmap->height, atlasX, atlasY);
-      if (atlas) {
-        bitmap->atlas = atlas;
-        bitmap->atlasX = atlasX;
-        bitmap->atlasY = atlasY;
-        bitmap->stride = atlas->stride;
-        int pitch = bm.pitch;
-        for (int y = 0; y < bitmap->height; ++y) {
-          const uint8_t* srcRow = bm.buffer + (pitch >= 0 ? y * pitch : (bitmap->height - 1 - y) * -pitch);
-          uint8_t* dstRow = atlas->pixels.data() +
-                            static_cast<size_t>(atlasY + y) * atlas->stride +
-                            static_cast<size_t>(atlasX);
-          std::memcpy(dstRow, srcRow, static_cast<size_t>(bitmap->width));
-        }
-      } else {
-        bitmap->stride = bitmap->width;
-        bitmap->pixels.resize(static_cast<size_t>(bitmap->width) * bitmap->height);
+      if (bm.pixel_mode == FT_PIXEL_MODE_BGRA) {
+        bitmap->format = GlyphBitmapFormat::ColorBGRA;
+        bitmap->stride = bitmap->width * 4;
+        bitmap->pixels.resize(static_cast<size_t>(bitmap->stride) * bitmap->height);
         int pitch = bm.pitch;
         for (int y = 0; y < bitmap->height; ++y) {
           const uint8_t* srcRow = bm.buffer + (pitch >= 0 ? y * pitch : (bitmap->height - 1 - y) * -pitch);
           uint8_t* dstRow = bitmap->pixels.data() + static_cast<size_t>(y) * bitmap->stride;
-          std::memcpy(dstRow, srcRow, static_cast<size_t>(bitmap->width));
+          std::memcpy(dstRow, srcRow, static_cast<size_t>(bitmap->stride));
+        }
+      } else {
+        FontBitmapFormat format = FontBitmapFormat::Gray8;
+        switch (bm.pixel_mode) {
+          case FT_PIXEL_MODE_MONO: format = FontBitmapFormat::Mono1; break;
+          default: format = FontBitmapFormat::Gray8; break;
+        }
+
+        FontBitmapView view;
+        view.buffer = bm.buffer;
+        view.width = bitmap->width;
+        view.height = bitmap->height;
+        view.pitch = bm.pitch;
+        view.format = format;
+
+        std::vector<uint8_t> converted;
+        int32_t convertedStride = 0;
+        if (!ConvertFontBitmapToAlpha(view, converted, convertedStride)) {
+          return nullptr;
+        }
+
+        bitmap->format = GlyphBitmapFormat::Mask8;
+        int atlasX = 0;
+        int atlasY = 0;
+        auto atlas = allocateAtlasSlot(bitmap->width, bitmap->height, atlasX, atlasY);
+        if (atlas) {
+          bitmap->atlas = atlas;
+          bitmap->atlasX = atlasX;
+          bitmap->atlasY = atlasY;
+          bitmap->stride = atlas->stride;
+          for (int y = 0; y < bitmap->height; ++y) {
+            const uint8_t* srcRow = converted.data() + static_cast<size_t>(y) * convertedStride;
+            uint8_t* dstRow = atlas->pixels.data() +
+                              static_cast<size_t>(atlasY + y) * atlas->stride +
+                              static_cast<size_t>(atlasX);
+            std::memcpy(dstRow, srcRow, static_cast<size_t>(bitmap->width));
+          }
+        } else {
+          bitmap->stride = bitmap->width;
+          bitmap->pixels = std::move(converted);
         }
       }
     }
@@ -682,12 +772,15 @@ struct FontRegistry::Impl {
     for (auto const& seg : segments) {
       if (!seg.face || !seg.face->face || seg.startIndex >= seg.endIndex) continue;
 
-      FT_Set_Pixel_Sizes(seg.face->face, 0, sizePixels);
+      uint16_t effectiveSize = set_face_pixel_size(seg.face->face, sizePixels);
+      if (effectiveSize == 0) {
+        continue;
+      }
       if (seg.face->hbFont) {
         hb_ft_font_set_load_flags(seg.face->hbFont, FT_LOAD_DEFAULT);
         hb_ft_font_changed(seg.face->hbFont);
       }
-      uint16_t emboldenStrength = compute_synthetic_bold(seg.face->weight, typography.weight, sizePixels);
+      uint16_t emboldenStrength = compute_synthetic_bold(seg.face->weight, typography.weight, effectiveSize);
       if (emboldenStrength > 0) {
         float emboldenLogical = static_cast<float>(emboldenStrength) / 64.0f * invScale;
         maxEmbolden = std::max(maxEmbolden, emboldenLogical);
@@ -743,7 +836,7 @@ struct FontRegistry::Impl {
         placement.x = penX + xOffset;
         placement.y = penY - yOffset;
         if (buildGlyphs) {
-          placement.bitmap = getGlyphBitmap(seg.face, infos[i].codepoint, sizePixels, emboldenStrength);
+          placement.bitmap = getGlyphBitmap(seg.face, infos[i].codepoint, effectiveSize, emboldenStrength);
         }
         run->glyphs.push_back(placement);
 
