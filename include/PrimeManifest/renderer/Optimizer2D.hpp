@@ -30,6 +30,8 @@ struct OptimizedBatch {
   bool useTileStream = false;
   bool useTileBuffer = false;
   bool tileRefsAreCircleIndices = false;
+  bool circleRadiusUniform = false;
+  uint16_t circleRadiusValue = 0;
   bool hasClear = false;
   uint32_t clearColor = 0;
   bool clearPattern = false;
@@ -108,6 +110,8 @@ struct OptimizedBatch {
     useTileStream = false;
     useTileBuffer = false;
     tileRefsAreCircleIndices = false;
+    circleRadiusUniform = false;
+    circleRadiusValue = 0;
     hasClear = false;
     clearColor = 0;
     clearPattern = false;

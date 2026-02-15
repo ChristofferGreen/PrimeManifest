@@ -615,24 +615,26 @@ auto optimize_batch(RenderTarget target,
     profile->optScanNs = to_ns(scanStart, std::chrono::steady_clock::now());
   }
 
-  bool circleRadiusUniform = false;
-  uint16_t circleRadiusValue = 0;
+  prepared.circleRadiusUniform = false;
+  prepared.circleRadiusValue = 0;
   size_t circleUniformCount = std::min({batch.circles.centerX.size(),
                                         batch.circles.centerY.size(),
                                         batch.circles.radius.size(),
                                         batch.circles.colorIndex.size()});
   if (circleUniformCount > 0) {
-    circleRadiusValue = batch.circles.radius[0];
-    circleRadiusUniform = true;
+    uint16_t baseRadius = batch.circles.radius[0];
+    bool uniform = true;
     for (size_t i = 1; i < circleUniformCount; ++i) {
-      if (batch.circles.radius[i] != circleRadiusValue) {
-        circleRadiusUniform = false;
+      if (batch.circles.radius[i] != baseRadius) {
+        uniform = false;
         break;
       }
     }
+    if (uniform) {
+      prepared.circleRadiusUniform = true;
+      prepared.circleRadiusValue = baseRadius;
+    }
   }
-  prepared.circleRadiusUniform = circleRadiusUniform;
-  prepared.circleRadiusValue = circleRadiusUniform ? circleRadiusValue : 0;
 
   auto tileStreamStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   bool useTileStream = batch.tileStream.enabled;

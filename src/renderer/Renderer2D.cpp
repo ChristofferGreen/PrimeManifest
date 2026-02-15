@@ -436,6 +436,27 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   if (prepared.commandTypeCounts.circle > 0) {
     circleCache = &circle_mask_cache();
   }
+  bool circleRadiusUniform = prepared.circleRadiusUniform;
+  int32_t uniformCircleRadius = static_cast<int32_t>(prepared.circleRadiusValue);
+  bool uniformCircleMask = circleRadiusUniform && uniformCircleRadius <= MaxCircleMaskRadius;
+  auto const* uniformMask = static_cast<std::vector<uint8_t> const*>(nullptr);
+  auto const* uniformEdgeOffset = static_cast<std::vector<uint16_t> const*>(nullptr);
+  auto const* uniformEdgeX = static_cast<std::vector<uint8_t> const*>(nullptr);
+  auto const* uniformEdgeCov = static_cast<std::vector<uint8_t> const*>(nullptr);
+  auto const* uniformOpaqueStart = static_cast<std::vector<int8_t> const*>(nullptr);
+  auto const* uniformOpaqueEnd = static_cast<std::vector<int8_t> const*>(nullptr);
+  int32_t uniformMaskSize = 0;
+  if (uniformCircleMask && circleCache) {
+    size_t rIndex = static_cast<size_t>(uniformCircleRadius);
+    auto const& cache = *circleCache;
+    uniformMask = &cache.masks[rIndex];
+    uniformEdgeOffset = &cache.edgeOffset[rIndex];
+    uniformEdgeX = &cache.edgeX[rIndex];
+    uniformEdgeCov = &cache.edgeCov[rIndex];
+    uniformOpaqueStart = &cache.opaqueStart[rIndex];
+    uniformOpaqueEnd = &cache.opaqueEnd[rIndex];
+    uniformMaskSize = uniformCircleRadius * 2 + 1;
+  }
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -1101,7 +1122,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         }
         int32_t cx = circleCenterX[idx];
         int32_t cy = circleCenterY[idx];
-        int32_t r = static_cast<int32_t>(circleRadius[idx]);
+        int32_t r = circleRadiusUniform ? uniformCircleRadius : static_cast<int32_t>(circleRadius[idx]);
         int32_t x0 = cx - r;
         int32_t y0 = cy - r;
         int32_t x1 = cx + r + 1;
@@ -1120,13 +1141,15 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
         if (r <= MaxCircleMaskRadius) {
           auto const& cache = *circleCache;
-          auto const& mask = cache.masks[static_cast<size_t>(r)];
-          auto const& edgeOffset = cache.edgeOffset[static_cast<size_t>(r)];
-          auto const& edgeX = cache.edgeX[static_cast<size_t>(r)];
-          auto const& edgeCov = cache.edgeCov[static_cast<size_t>(r)];
-          auto const& rowOpaqueStart = cache.opaqueStart[static_cast<size_t>(r)];
-          auto const& rowOpaqueEnd = cache.opaqueEnd[static_cast<size_t>(r)];
-          int32_t size = r * 2 + 1;
+          auto const& mask = uniformCircleMask ? *uniformMask : cache.masks[static_cast<size_t>(r)];
+          auto const& edgeOffset = uniformCircleMask ? *uniformEdgeOffset : cache.edgeOffset[static_cast<size_t>(r)];
+          auto const& edgeX = uniformCircleMask ? *uniformEdgeX : cache.edgeX[static_cast<size_t>(r)];
+          auto const& edgeCov = uniformCircleMask ? *uniformEdgeCov : cache.edgeCov[static_cast<size_t>(r)];
+          auto const& rowOpaqueStart =
+            uniformCircleMask ? *uniformOpaqueStart : cache.opaqueStart[static_cast<size_t>(r)];
+          auto const& rowOpaqueEnd =
+            uniformCircleMask ? *uniformOpaqueEnd : cache.opaqueEnd[static_cast<size_t>(r)];
+          int32_t size = uniformCircleMask ? uniformMaskSize : (r * 2 + 1);
           int32_t maskX0 = cx - r;
           int32_t maskY0 = cy - r;
           bool fullInside = maskX0 >= static_cast<int32_t>(tx0) &&
