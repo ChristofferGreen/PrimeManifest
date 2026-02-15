@@ -701,9 +701,6 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           idx = cmd.index;
         }
       }
-      if (doProfile) {
-        ++tileCommands;
-      }
 
       if (type == CommandType::Rect) {
         if (idx >= batch.rects.x0.size() ||

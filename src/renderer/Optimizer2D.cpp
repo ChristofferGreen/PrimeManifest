@@ -673,6 +673,8 @@ auto optimize_batch(RenderTarget target,
   if (circleMajority && !batch.reuseOptimized) {
     allowAutoTileStream = false;
   }
+  bool circleOnlyDraw = commandCounts.circle > 0 && commandCounts.rect == 0 && commandCounts.text == 0;
+  bool useCircleRefs = circleOnlyDraw && !useTileStream && !allowAutoTileStream;
 
   bool hasDraw = false;
   if (useTileStream) {
@@ -1034,174 +1036,24 @@ auto optimize_batch(RenderTarget target,
         cmdTiles.resize(batch.commands.size());
         cmdActive.assign(batch.commands.size(), 0);
 
-        for (uint32_t i = 0; i < batch.commands.size(); ++i) {
-          auto const& cmd = batch.commands[i];
-          int32_t x0 = 0;
-          int32_t y0 = 0;
-          int32_t x1 = 0;
-          int32_t y1 = 0;
-          if (cmd.type == CommandType::Rect) {
-            if (cmd.index >= batch.rects.x0.size() ||
-                cmd.index >= batch.rects.y0.size() ||
-                cmd.index >= batch.rects.x1.size() ||
-                cmd.index >= batch.rects.y1.size() ||
-                cmd.index >= batch.rects.colorIndex.size()) {
-              continue;
-            }
-            uint8_t flags = cmd.index < batch.rects.flags.size() ? batch.rects.flags[cmd.index] : 0u;
-            uint8_t opacity = cmd.index < batch.rects.opacity.size() ? batch.rects.opacity[cmd.index] : 255u;
-            if (opacity == 0) continue;
-            bool hasGradient = (flags & RectFlagGradient) != 0u;
-            if (hasGradient && cmd.index >= batch.rects.gradientColor1Index.size()) continue;
-            if (!paletteOpaque) {
-              uint32_t color = fetch_color(batch.rects.colorIndex, cmd.index, 0u);
-              uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-              if (opacity != 255u) {
-                uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
-                if ((combinedA + 127u) / 255u == 0u) continue;
-              }
-              if (!hasGradient) {
-                if (cA == 0) continue;
-              } else {
-                uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, cmd.index, 0u);
-                uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
-                if (cA == 0 && gA == 0) continue;
-              }
-            }
-            x0 = batch.rects.x0[cmd.index];
-            y0 = batch.rects.y0[cmd.index];
-            x1 = batch.rects.x1[cmd.index];
-            y1 = batch.rects.y1[cmd.index];
-            if ((flags & RectFlagClip) != 0u &&
-                cmd.index < batch.rects.clipX0.size() &&
-                cmd.index < batch.rects.clipY0.size() &&
-                cmd.index < batch.rects.clipX1.size() &&
-                cmd.index < batch.rects.clipY1.size()) {
-              x0 = std::max(x0, static_cast<int32_t>(batch.rects.clipX0[cmd.index]));
-              y0 = std::max(y0, static_cast<int32_t>(batch.rects.clipY0[cmd.index]));
-              x1 = std::min(x1, static_cast<int32_t>(batch.rects.clipX1[cmd.index]));
-              y1 = std::min(y1, static_cast<int32_t>(batch.rects.clipY1[cmd.index]));
-              if (x1 <= x0 || y1 <= y0) continue;
-            }
-          } else if (cmd.type == CommandType::Circle) {
-            if (cmd.index >= batch.circles.centerX.size() ||
-                cmd.index >= batch.circles.centerY.size() ||
-                cmd.index >= batch.circles.radius.size() ||
-                cmd.index >= batch.circles.colorIndex.size()) {
-              continue;
-            }
-            if (!paletteOpaque) {
-              uint32_t color = fetch_color(batch.circles.colorIndex, cmd.index, 0u);
-              uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-              if (cA == 0) continue;
-            }
-            int32_t cx = batch.circles.centerX[cmd.index];
-            int32_t cy = batch.circles.centerY[cmd.index];
-            int32_t r = static_cast<int32_t>(batch.circles.radius[cmd.index]);
-            int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
-            x0 = cx - r - circlePad;
-            y0 = cy - r - circlePad;
-            x1 = cx + r + 1 + circlePad;
-            y1 = cy + r + 1 + circlePad;
-          } else if (cmd.type == CommandType::Text) {
-            if (cmd.index >= batch.text.x.size() ||
-                cmd.index >= batch.text.y.size() ||
-                cmd.index >= batch.text.width.size() ||
-                cmd.index >= batch.text.height.size() ||
-                cmd.index >= batch.text.colorIndex.size() ||
-                cmd.index >= batch.text.opacity.size()) {
-              continue;
-            }
-            uint8_t opacity = batch.text.opacity[cmd.index];
-            if (opacity == 0) continue;
-            if (!paletteOpaque) {
-              uint32_t color = fetch_color(batch.text.colorIndex, cmd.index, 0u);
-              uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-              if (opacity != 255u) {
-                uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
-                if ((combinedA + 127u) / 255u == 0u) continue;
-              } else if (cA == 0) {
-                continue;
-              }
-            }
-            x0 = batch.text.x[cmd.index];
-            y0 = batch.text.y[cmd.index];
-            x1 = x0 + batch.text.width[cmd.index];
-            y1 = y0 + batch.text.height[cmd.index];
-            uint8_t flags = cmd.index < batch.text.flags.size() ? batch.text.flags[cmd.index] : 0u;
-            if ((flags & TextFlagClip) != 0u &&
-                cmd.index < batch.text.clipX0.size() &&
-                cmd.index < batch.text.clipY0.size() &&
-                cmd.index < batch.text.clipX1.size() &&
-                cmd.index < batch.text.clipY1.size()) {
-              x0 = std::max(x0, static_cast<int32_t>(batch.text.clipX0[cmd.index]));
-              y0 = std::max(y0, static_cast<int32_t>(batch.text.clipY0[cmd.index]));
-              x1 = std::min(x1, static_cast<int32_t>(batch.text.clipX1[cmd.index]));
-              y1 = std::min(y1, static_cast<int32_t>(batch.text.clipY1[cmd.index]));
-              if (x1 <= x0 || y1 <= y0) continue;
-            }
-          } else {
-            continue;
-          }
-
-          if (x1 <= 0 || y1 <= 0) continue;
-          if (x0 >= static_cast<int32_t>(target.width) || y0 >= static_cast<int32_t>(target.height)) continue;
-          int32_t clampedX0 = std::max<int32_t>(x0, 0);
-          int32_t clampedY0 = std::max<int32_t>(y0, 0);
-          int32_t clampedX1 = std::min<int32_t>(x1, static_cast<int32_t>(target.width));
-          int32_t clampedY1 = std::min<int32_t>(y1, static_cast<int32_t>(target.height));
-          if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) continue;
-
-          uint32_t tx0 = 0;
-          uint32_t ty0 = 0;
-          uint32_t tx1 = 0;
-          uint32_t ty1 = 0;
-          if (tilePow2) {
-            tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
-            ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
-            tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
-            ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
-          } else {
-            tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
-            ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
-            tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
-            ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
-          }
-
-          cmdActive[i] = 1;
-          cmdTiles[i] = OptimizedBatch::CmdTileInfo{clampedX0, clampedY0, clampedX1, clampedY1, tx0, ty0, tx1, ty1};
-          if (cmd.type == CommandType::Rect && cmd.index < rectActive.size()) {
-            rectActive[cmd.index] = 1;
-          }
-          if (cmd.type == CommandType::Text && cmd.index < textActive.size()) {
-            textActive[cmd.index] = 1;
-          }
-          for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-            for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-              tileCounts[ty * grid.tilesX + tx] += 1;
-            }
-          }
-        }
-
-        tileOffsets.assign(tileCount + 1, 0);
-        for (uint32_t i = 0; i < tileCount; ++i) {
-          tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
-        }
-        tileRefs.assign(tileOffsets.back(), 0);
-        tileFill.assign(tileCount, 0);
-        for (uint32_t i = 0; i < batch.commands.size(); ++i) {
-          if (cmdActive[i] == 0) continue;
-          auto const& info = cmdTiles[i];
-          for (uint32_t ty = info.ty0; ty <= info.ty1; ++ty) {
-            for (uint32_t tx = info.tx0; tx <= info.tx1; ++tx) {
-              uint32_t tileIdx = ty * grid.tilesX + tx;
-              uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-              if (useCircleRefs) {
-                auto const& cmd = batch.commands[i];
-                tileRefs[offset] = cmd.type == CommandType::Circle ? cmd.index : i;
-              } else {
-                tileRefs[offset] = i;
-              }
+      tileOffsets.assign(tileCount + 1, 0);
+      for (uint32_t i = 0; i < tileCount; ++i) {
+        tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
+      }
+      tileRefs.assign(tileOffsets.back(), 0);
+      tileFill.assign(tileCount, 0);
+      for (uint32_t i = 0; i < batch.commands.size(); ++i) {
+        if (cmdActive[i] == 0) continue;
+        auto const& info = cmdTiles[i];
+        for (uint32_t ty = info.ty0; ty <= info.ty1; ++ty) {
+          for (uint32_t tx = info.tx0; tx <= info.tx1; ++tx) {
+            uint32_t tileIdx = ty * grid.tilesX + tx;
+            uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
+            if (useCircleRefs) {
+              auto const& cmd = batch.commands[i];
+              tileRefs[offset] = cmd.type == CommandType::Circle ? cmd.index : i;
+            } else {
+              tileRefs[offset] = i;
             }
           }
         }
