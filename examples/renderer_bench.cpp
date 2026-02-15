@@ -87,7 +87,7 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.width = 1920;
       cfg.height = 1080;
       cfg.rectCount = 0;
-      cfg.circleCount = 250000;
+      cfg.circleCount = 750000;
       cfg.textCount = 0;
       cfg.frames = 300;
       cfg.tileSize = 32;
