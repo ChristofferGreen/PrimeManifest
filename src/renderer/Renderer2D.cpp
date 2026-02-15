@@ -361,6 +361,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   };
   struct PalettePmCache {
     std::vector<uint32_t> table;
+    std::vector<uint8_t> colorR;
+    std::vector<uint8_t> colorG;
+    std::vector<uint8_t> colorB;
+    std::vector<uint8_t> colorA;
     uint64_t hash = 0;
     uint16_t size = 0;
   };
@@ -375,12 +379,20 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     palettePm.size = batch.palette.size;
     palettePm.hash = paletteHash;
     palettePm.table.assign(paletteSize * 256u, 0u);
+    palettePm.colorR.assign(paletteSize, 0u);
+    palettePm.colorG.assign(paletteSize, 0u);
+    palettePm.colorB.assign(paletteSize, 0u);
+    palettePm.colorA.assign(paletteSize, 0u);
     for (size_t i = 0; i < paletteSize; ++i) {
       uint32_t color = batch.palette.colorRGBA8[i];
       uint8_t r = static_cast<uint8_t>(color & 0xFFu);
       uint8_t g = static_cast<uint8_t>((color >> 8) & 0xFFu);
       uint8_t b = static_cast<uint8_t>((color >> 16) & 0xFFu);
       uint8_t a = static_cast<uint8_t>((color >> 24) & 0xFFu);
+      palettePm.colorR[i] = r;
+      palettePm.colorG[i] = g;
+      palettePm.colorB[i] = b;
+      palettePm.colorA[i] = a;
       size_t base = i * 256u;
       if (a == 0) {
         continue;
@@ -404,6 +416,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     }
   }
   auto const& palettePmCache = palettePm.table;
+  auto const& paletteR = palettePm.colorR;
+  auto const& paletteG = palettePm.colorG;
+  auto const& paletteB = palettePm.colorB;
+  auto const& paletteA = palettePm.colorA;
   bool paletteFull = batch.palette.size >= 256;
   bool circleOnly =
     prepared.commandTypeCounts.circle > 0 &&
@@ -1093,10 +1109,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
         uint32_t const* pmTable = palettePmCache.data() + pmOffset;
         uint32_t color = batch.palette.colorRGBA8[paletteIndex];
-        uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
-        uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
-        uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
-        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+        uint8_t cR = paletteR[paletteIndex];
+        uint8_t cG = paletteG[paletteIndex];
+        uint8_t cB = paletteB[paletteIndex];
+        uint8_t cA = paletteA[paletteIndex];
         if (cA == 0) continue;
 
         if (r <= MaxCircleMaskRadius) {
