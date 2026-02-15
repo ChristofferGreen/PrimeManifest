@@ -150,9 +150,9 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   if (batch.tileStream.enabled) return tileSize;
   uint32_t drawCount = counts.drawCount();
   bool circleMajority = drawCount > 0 && (counts.circle * 2 > drawCount);
-  if (!batch.reuseOptimized) return tileSize;
-  if (tileSize == 32u && circleMajority) {
-    return 16u;
+  bool circleOnly = circleMajority && counts.rect == 0 && counts.text == 0;
+  if (tileSize == 32u && circleOnly) {
+    return batch.reuseOptimized ? 16u : 64u;
   }
   return tileSize;
 }
