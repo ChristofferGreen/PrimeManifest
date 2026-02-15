@@ -627,6 +627,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
           ++opaqueCount;
         }
+      } else if (dstOpaque) {
+        uint8_t invA = static_cast<uint8_t>(255u - srcA);
+        dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pmR) + mul_div_255(dst[0], invA));
+        dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(pmG) + mul_div_255(dst[1], invA));
+        dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(pmB) + mul_div_255(dst[2], invA));
+        dst[3] = 255u;
       } else {
         blend_premultiplied(dst, pmR, pmG, pmB, srcA);
       }
