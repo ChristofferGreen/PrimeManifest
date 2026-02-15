@@ -909,9 +909,13 @@ auto optimize_batch(RenderTarget target,
           spanData[spanOffset + 2] = tx1;
           spanData[spanOffset + 3] = ty1;
 
-          for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-            for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-              tileCounts[ty * grid.tilesX + tx] += 1;
+          if (tx0 == tx1 && ty0 == ty1) {
+            tileCounts[ty0 * grid.tilesX + tx0] += 1;
+          } else {
+            for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+              for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+                tileCounts[ty * grid.tilesX + tx] += 1;
+              }
             }
           }
         }
@@ -929,11 +933,17 @@ auto optimize_batch(RenderTarget target,
           uint32_t ty0 = spanData[spanOffset + 1];
           uint32_t tx1 = spanData[spanOffset + 2];
           uint32_t ty1 = spanData[spanOffset + 3];
-          for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-            for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-              uint32_t tileIdx = ty * grid.tilesX + tx;
-              uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-              tileRefs[offset] = i;
+          if (tx0 == tx1 && ty0 == ty1) {
+            uint32_t tileIdx = ty0 * grid.tilesX + tx0;
+            uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
+            tileRefs[offset] = i;
+          } else {
+            for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+              for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+                uint32_t tileIdx = ty * grid.tilesX + tx;
+                uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
+                tileRefs[offset] = i;
+              }
             }
           }
         }
