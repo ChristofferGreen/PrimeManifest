@@ -300,6 +300,7 @@ Date: 2026-02-15
 | Skip zero-init of `tileRefs` (resize only) | Rejected | 10-run mean 81.34 FPS vs 83.01 baseline (regression). |
 | Store circle tile spans to avoid recompute | Rejected | 10-run mean 79.85 FPS vs 83.01 baseline (regression). |
 | Assume 32-bit alignment for opaque circle fills | Rejected | 10-run mean 82.01 FPS vs 83.01 baseline (regression). |
+| Half hardware threads for circle binning | Rejected | 10-run mean 62.60 FPS vs 83.01 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
 
 ## Next Steps
