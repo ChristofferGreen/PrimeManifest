@@ -248,6 +248,7 @@ Date: 2026-02-15
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-15 | 20 | 300 | 243.23 | 245.30 | 223.76 | 253.27 | 7.50 | `d67b42b` | Circle-only tiles use chunk size 1 in tile pool. |
 | 2026-02-15 | 20 | 300 | 239.84 | 241.70 | 229.71 | 245.01 | 4.35 | `9115b50` | Clipped opaque small-circle path uses edge list + span fill. |
 | 2026-02-15 | 5 | 300 | 208.45 | 208.93 | 192.40 | 218.53 | 9.13 | `cc6326b` | Baseline after blend lookup cache, tileSize auto=128. |
 | 2026-02-15 | 10 | 300 | 218.44 | 221.62 | 198.38 | 231.78 | 11.75 | `ea71015` | Cached edge premultiplied colors (2x5-run batches). |
@@ -261,6 +262,7 @@ Date: 2026-02-15
 | Change | Status | Evidence |
 | --- | --- | --- |
 | Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |
+| Circle-only tile pool chunk size override (`chunkSize=1`) | Kept | 20-run mean 243.23 FPS vs 239.84 current head (~1.4% win). |
 | Circle-only tileRefs fast path (skip command dispatch) | Rejected | 20-run mean 200.05 FPS vs 239.84 current head (regression). |
 | Palette-opaque circle path (reuse cached palette channels, skip alpha checks) | Rejected | 20-run mean 205.66 FPS vs 239.84 current head (regression). |
 | Pack circle edge X/cov into 16-bit entries | Rejected | 20-run mean 207.30 FPS vs 239.84 current head (regression, high variance). |
