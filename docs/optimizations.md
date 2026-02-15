@@ -254,6 +254,7 @@ Date: 2026-02-15
 | 2026-02-15 | 20 | 300 | 184.04 | 185.46 | 169.19 | 207.51 | 9.39 | `b8b149a` | 20-run baseline (current head). |
 | 2026-02-15 | 20 | 300 | 195.45 | 195.14 | 174.37 | 210.08 | 11.83 | `706f0f9` | 20-run baseline (repeat). |
 | 2026-02-15 | 40 | 300 | 189.75 | 188.58 | 169.19 | 210.08 | 12.11 | `706f0f9` | Pinned baseline (combined 2x20-run sets). |
+| 2026-02-15 | 40 | 300 | 201.68 | 205.99 | 180.68 | 216.05 | 10.73 | `5fd969d` | A/B baseline run (SIMD comparison). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -266,7 +267,7 @@ Date: 2026-02-15
 | Refactor masked circle render into shared lambda | Rejected | 137–200 FPS range (regression/noise). |
 | Small-count 32-bit fill helper (replace `std::fill` for short spans) | Rejected | Mean ~184 FPS (regression). |
 | Precompute full mask premultiplied table (per palette, per radius) | Rejected | Means ~206–220 FPS (no clear win). |
-| SIMD (NEON) blend for masked head/tail spans (dst-opaque path) | Rejected | Retry: 200.85 mean vs 210.40 baseline (10-run A/B, regression). |
+| SIMD (NEON) blend for masked head/tail spans (dst-opaque path) | Rejected | 40-run A/B: SIMD mean 200.95 vs baseline mean 201.68 (regression). |
 | Tile-stream default when circles are majority | Rejected | ~95 FPS (large regression). |
 | Tile size sweep (single-run) | Rejected | 96:210, 128:226, 160:215, 192:173, 224:191, 256:213 (128 best). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
