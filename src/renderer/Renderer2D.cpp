@@ -403,6 +403,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   auto const* circleCenterY = batch.circles.centerY.data();
   auto const* circleRadius = batch.circles.radius.data();
   auto const* circleColorIndex = batch.circles.colorIndex.data();
+  CircleMaskCache const* circleCache = nullptr;
+  if (prepared.commandTypeCounts.circle > 0) {
+    circleCache = &circle_mask_cache();
+  }
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -1113,7 +1117,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         if (cA == 0) continue;
 
         if (r <= MaxCircleMaskRadius) {
-          auto const& cache = circle_mask_cache();
+          auto const& cache = *circleCache;
           auto const& mask = cache.masks[static_cast<size_t>(r)];
           auto const& edgeOffset = cache.edgeOffset[static_cast<size_t>(r)];
           auto const& edgeX = cache.edgeX[static_cast<size_t>(r)];
