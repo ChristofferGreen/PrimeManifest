@@ -863,87 +863,125 @@ auto optimize_batch(RenderTarget target,
         auto const* radius = batch.circles.radius.data();
         int32_t maxX = static_cast<int32_t>(target.width);
         int32_t maxY = static_cast<int32_t>(target.height);
-        auto compute_span = [&](uint32_t i,
-                                uint32_t& tx0,
-                                uint32_t& ty0,
-                                uint32_t& tx1,
-                                uint32_t& ty1) -> bool {
-          if (!paletteOpaque) {
+        auto bin_circles = [&](auto&& compute_span) {
+          for (uint32_t i = 0; i < circleCount; ++i) {
+            uint32_t tx0 = 0;
+            uint32_t ty0 = 0;
+            uint32_t tx1 = 0;
+            uint32_t ty1 = 0;
+            if (!compute_span(i, tx0, ty0, tx1, ty1)) continue;
+            if (tx0 == tx1 && ty0 == ty1) {
+              tileCounts[ty0 * grid.tilesX + tx0] += 1;
+            } else {
+              for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+                for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+                  tileCounts[ty * grid.tilesX + tx] += 1;
+                }
+              }
+            }
+          }
+
+          tileOffsets.assign(tileCount + 1, 0);
+          for (uint32_t i = 0; i < tileCount; ++i) {
+            tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
+          }
+          tileRefs.assign(tileOffsets.back(), 0);
+          tileFill.assign(tileCount, 0);
+          for (uint32_t i = 0; i < circleCount; ++i) {
+            uint32_t tx0 = 0;
+            uint32_t ty0 = 0;
+            uint32_t tx1 = 0;
+            uint32_t ty1 = 0;
+            if (!compute_span(i, tx0, ty0, tx1, ty1)) continue;
+            if (tx0 == tx1 && ty0 == ty1) {
+              uint32_t tileIdx = ty0 * grid.tilesX + tx0;
+              uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
+              tileRefs[offset] = i;
+            } else {
+              for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+                for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+                  uint32_t tileIdx = ty * grid.tilesX + tx;
+                  uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
+                  tileRefs[offset] = i;
+                }
+              }
+            }
+          }
+        };
+
+        if (paletteOpaque) {
+          auto compute_span = [&](uint32_t i,
+                                  uint32_t& tx0,
+                                  uint32_t& ty0,
+                                  uint32_t& tx1,
+                                  uint32_t& ty1) -> bool {
+            int32_t cx = centerX[i];
+            int32_t cy = centerY[i];
+            int32_t r = static_cast<int32_t>(radius[i]);
+            int32_t x0 = cx - r;
+            int32_t y0 = cy - r;
+            int32_t x1 = cx + r + 1;
+            int32_t y1 = cy + r + 1;
+            if (x1 <= 0 || y1 <= 0) return false;
+            if (x0 >= maxX || y0 >= maxY) return false;
+            int32_t clampedX0 = std::max<int32_t>(x0, 0);
+            int32_t clampedY0 = std::max<int32_t>(y0, 0);
+            int32_t clampedX1 = std::min<int32_t>(x1, maxX);
+            int32_t clampedY1 = std::min<int32_t>(y1, maxY);
+            if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return false;
+
+            if (tilePow2) {
+              tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
+              ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
+              tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
+              ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
+            } else {
+              tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
+              ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
+              tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
+              ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
+            }
+            return true;
+          };
+          bin_circles(compute_span);
+        } else {
+          auto compute_span = [&](uint32_t i,
+                                  uint32_t& tx0,
+                                  uint32_t& ty0,
+                                  uint32_t& tx1,
+                                  uint32_t& ty1) -> bool {
             uint32_t color = fetch_color(batch.circles.colorIndex, i, 0u);
             uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
             if (cA == 0) return false;
-          }
-          int32_t cx = centerX[i];
-          int32_t cy = centerY[i];
-          int32_t r = static_cast<int32_t>(radius[i]);
-          int32_t x0 = cx - r;
-          int32_t y0 = cy - r;
-          int32_t x1 = cx + r + 1;
-          int32_t y1 = cy + r + 1;
-          if (x1 <= 0 || y1 <= 0) return false;
-          if (x0 >= maxX || y0 >= maxY) return false;
-          int32_t clampedX0 = std::max<int32_t>(x0, 0);
-          int32_t clampedY0 = std::max<int32_t>(y0, 0);
-          int32_t clampedX1 = std::min<int32_t>(x1, maxX);
-          int32_t clampedY1 = std::min<int32_t>(y1, maxY);
-          if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return false;
+            int32_t cx = centerX[i];
+            int32_t cy = centerY[i];
+            int32_t r = static_cast<int32_t>(radius[i]);
+            int32_t x0 = cx - r;
+            int32_t y0 = cy - r;
+            int32_t x1 = cx + r + 1;
+            int32_t y1 = cy + r + 1;
+            if (x1 <= 0 || y1 <= 0) return false;
+            if (x0 >= maxX || y0 >= maxY) return false;
+            int32_t clampedX0 = std::max<int32_t>(x0, 0);
+            int32_t clampedY0 = std::max<int32_t>(y0, 0);
+            int32_t clampedX1 = std::min<int32_t>(x1, maxX);
+            int32_t clampedY1 = std::min<int32_t>(y1, maxY);
+            if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return false;
 
-          if (tilePow2) {
-            tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
-            ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
-            tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
-            ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
-          } else {
-            tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
-            ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
-            tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
-            ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
-          }
-          return true;
-        };
-
-        for (uint32_t i = 0; i < circleCount; ++i) {
-          uint32_t tx0 = 0;
-          uint32_t ty0 = 0;
-          uint32_t tx1 = 0;
-          uint32_t ty1 = 0;
-          if (!compute_span(i, tx0, ty0, tx1, ty1)) continue;
-          if (tx0 == tx1 && ty0 == ty1) {
-            tileCounts[ty0 * grid.tilesX + tx0] += 1;
-          } else {
-            for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-              for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-                tileCounts[ty * grid.tilesX + tx] += 1;
-              }
+            if (tilePow2) {
+              tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
+              ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
+              tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
+              ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
+            } else {
+              tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
+              ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
+              tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
+              ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
             }
-          }
-        }
-
-        tileOffsets.assign(tileCount + 1, 0);
-        for (uint32_t i = 0; i < tileCount; ++i) {
-          tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
-        }
-        tileRefs.assign(tileOffsets.back(), 0);
-        tileFill.assign(tileCount, 0);
-        for (uint32_t i = 0; i < circleCount; ++i) {
-          uint32_t tx0 = 0;
-          uint32_t ty0 = 0;
-          uint32_t tx1 = 0;
-          uint32_t ty1 = 0;
-          if (!compute_span(i, tx0, ty0, tx1, ty1)) continue;
-          if (tx0 == tx1 && ty0 == ty1) {
-            uint32_t tileIdx = ty0 * grid.tilesX + tx0;
-            uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-            tileRefs[offset] = i;
-          } else {
-            for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-              for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-                uint32_t tileIdx = ty * grid.tilesX + tx;
-                uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-                tileRefs[offset] = i;
-              }
-            }
-          }
+            return true;
+          };
+          bin_circles(compute_span);
         }
       } else {
         cmdTiles.resize(batch.commands.size());
