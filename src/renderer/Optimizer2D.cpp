@@ -6,8 +6,6 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
-#include <functional>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -908,6 +906,107 @@ auto optimize_batch(RenderTarget target,
             }
           }
         };
+        auto bin_circles_parallel = [&](auto&& compute_span) {
+          constexpr size_t kParallelCircleThreshold = 50000u;
+          uint32_t threadCount =
+            std::min<uint32_t>(std::max(1u, std::thread::hardware_concurrency()),
+                               static_cast<uint32_t>(circleCount));
+          if (threadCount <= 1 || circleCount < kParallelCircleThreshold) {
+            bin_circles(compute_span);
+            return;
+          }
+          uint32_t chunk = static_cast<uint32_t>((circleCount + threadCount - 1u) / threadCount);
+          std::vector<std::vector<uint32_t>> localCounts;
+          localCounts.assign(threadCount, std::vector<uint32_t>(tileCount, 0));
+          auto count_worker = [&](uint32_t t) {
+            size_t start = static_cast<size_t>(t) * chunk;
+            size_t end = std::min(start + chunk, circleCount);
+            auto& counts = localCounts[t];
+            for (size_t i = start; i < end; ++i) {
+              uint32_t tx0 = 0;
+              uint32_t ty0 = 0;
+              uint32_t tx1 = 0;
+              uint32_t ty1 = 0;
+              if (!compute_span(static_cast<uint32_t>(i), tx0, ty0, tx1, ty1)) continue;
+              if (tx0 == tx1 && ty0 == ty1) {
+                counts[ty0 * grid.tilesX + tx0] += 1;
+              } else {
+                for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+                  for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+                    counts[ty * grid.tilesX + tx] += 1;
+                  }
+                }
+              }
+            }
+          };
+          std::vector<std::thread> threads;
+          threads.reserve(threadCount - 1u);
+          for (uint32_t t = 1; t < threadCount; ++t) {
+            threads.emplace_back(count_worker, t);
+          }
+          count_worker(0);
+          for (auto& t : threads) {
+            t.join();
+          }
+
+          tileCounts.assign(tileCount, 0);
+          for (uint32_t tile = 0; tile < tileCount; ++tile) {
+            uint32_t sum = 0;
+            for (uint32_t t = 0; t < threadCount; ++t) {
+              sum += localCounts[t][tile];
+            }
+            tileCounts[tile] = sum;
+          }
+
+          tileOffsets.assign(tileCount + 1, 0);
+          for (uint32_t i = 0; i < tileCount; ++i) {
+            tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
+          }
+          tileRefs.assign(tileOffsets.back(), 0);
+
+          std::vector<std::vector<uint32_t>> threadOffsets;
+          threadOffsets.assign(threadCount, std::vector<uint32_t>(tileCount, 0));
+          for (uint32_t tile = 0; tile < tileCount; ++tile) {
+            uint32_t offset = tileOffsets[tile];
+            for (uint32_t t = 0; t < threadCount; ++t) {
+              threadOffsets[t][tile] = offset;
+              offset += localCounts[t][tile];
+            }
+          }
+
+          auto fill_worker = [&](uint32_t t) {
+            size_t start = static_cast<size_t>(t) * chunk;
+            size_t end = std::min(start + chunk, circleCount);
+            auto& offsets = threadOffsets[t];
+            for (size_t i = start; i < end; ++i) {
+              uint32_t tx0 = 0;
+              uint32_t ty0 = 0;
+              uint32_t tx1 = 0;
+              uint32_t ty1 = 0;
+              if (!compute_span(static_cast<uint32_t>(i), tx0, ty0, tx1, ty1)) continue;
+              if (tx0 == tx1 && ty0 == ty1) {
+                uint32_t tileIdx = ty0 * grid.tilesX + tx0;
+                tileRefs[offsets[tileIdx]++] = static_cast<uint32_t>(i);
+              } else {
+                for (uint32_t ty = ty0; ty <= ty1; ++ty) {
+                  for (uint32_t tx = tx0; tx <= tx1; ++tx) {
+                    uint32_t tileIdx = ty * grid.tilesX + tx;
+                    tileRefs[offsets[tileIdx]++] = static_cast<uint32_t>(i);
+                  }
+                }
+              }
+            }
+          };
+          threads.clear();
+          threads.reserve(threadCount - 1u);
+          for (uint32_t t = 1; t < threadCount; ++t) {
+            threads.emplace_back(fill_worker, t);
+          }
+          fill_worker(0);
+          for (auto& t : threads) {
+            t.join();
+          }
+        };
 
         if (paletteOpaque) {
           auto compute_span = [&](uint32_t i,
@@ -943,7 +1042,7 @@ auto optimize_batch(RenderTarget target,
             }
             return true;
           };
-          bin_circles(compute_span);
+          bin_circles_parallel(compute_span);
         } else {
           auto compute_span = [&](uint32_t i,
                                   uint32_t& tx0,
@@ -981,7 +1080,7 @@ auto optimize_batch(RenderTarget target,
             }
             return true;
           };
-          bin_circles(compute_span);
+          bin_circles_parallel(compute_span);
         }
       } else {
         cmdTiles.resize(batch.commands.size());
