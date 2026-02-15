@@ -252,6 +252,8 @@ Date: 2026-02-15
 | 2026-02-15 | 10 | 300 | 218.44 | 221.62 | 198.38 | 231.78 | 11.75 | `ea71015` | Cached edge premultiplied colors (2x5-run batches). |
 | 2026-02-15 | 10 | 300 | 197.36 | 198.39 | 183.52 | 207.55 | 7.69 | `76abd6d` | High-quality baseline run set (current head). |
 | 2026-02-15 | 20 | 300 | 184.04 | 185.46 | 169.19 | 207.51 | 9.39 | `b8b149a` | 20-run baseline (current head). |
+| 2026-02-15 | 20 | 300 | 195.45 | 195.14 | 174.37 | 210.08 | 11.83 | `706f0f9` | 20-run baseline (repeat). |
+| 2026-02-15 | 40 | 300 | 189.75 | 188.58 | 169.19 | 210.08 | 12.11 | `706f0f9` | Pinned baseline (combined 2x20-run sets). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
