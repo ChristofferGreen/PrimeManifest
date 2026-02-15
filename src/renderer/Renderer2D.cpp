@@ -1113,14 +1113,6 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
         if (cA == 0) continue;
 
-        float fcX = static_cast<float>(cx);
-        float fcY = static_cast<float>(cy);
-        float fr = static_cast<float>(r);
-        float innerR = std::max(0.0f, fr - 0.5f);
-        float outerR = fr + 0.5f;
-        float innerR2 = innerR * innerR;
-        float outerR2 = outerR * outerR;
-
         if (r <= MaxCircleMaskRadius) {
           auto const& cache = circle_mask_cache();
           auto const& mask = cache.masks[static_cast<size_t>(r)];
@@ -1173,11 +1165,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             continue;
           }
           int32_t offsetX = rx0 - maskX0;
-          int32_t offsetY = ry0 - maskY0;
+          int32_t rowWidth = rx1 - rx0;
+          auto const* maskBase = mask.data();
           for (int32_t y = ry0; y < ry1; ++y) {
-            int32_t localY = offsetY + (y - ry0);
+            int32_t localY = y - maskY0;
             int32_t maskRow = localY * size + offsetX;
-            int32_t rowWidth = rx1 - rx0;
             int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]) - offsetX;
             int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]) - offsetX;
             if (opaqueEnd < 0 || opaqueStart >= rowWidth || opaqueStart > opaqueEnd) {
@@ -1188,9 +1180,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               opaqueEnd = std::min(opaqueEnd, rowWidth - 1);
             }
 
-            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
+            uint8_t* rowBase = row_ptr(y) + static_cast<size_t>(4u * rx0);
+            auto const* maskRowPtr = maskBase + maskRow;
+            uint8_t* row = rowBase;
             for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
-              uint8_t coverage = mask[static_cast<size_t>(maskRow + x)];
+              uint8_t coverage = maskRowPtr[x];
               if (coverage == 0) continue;
               uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
@@ -1211,7 +1205,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
 
             if (opaqueEnd >= opaqueStart && cA == 255) {
               uint32_t packed = color;
-              uint8_t* opaqueRow = row_ptr(y) + static_cast<size_t>(4u * (rx0 + opaqueStart));
+              uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
               int32_t count = opaqueEnd - opaqueStart + 1;
               if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
                 auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
@@ -1227,6 +1221,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             } else if (opaqueEnd >= opaqueStart) {
               uint32_t pmOpaque = pmTable[255u];
               uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
+              row = rowBase + static_cast<size_t>(4u * opaqueStart);
               for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
                 blend_px(row,
                          static_cast<uint8_t>(pmOpaque & 0xFFu),
@@ -1236,9 +1231,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               }
             }
 
-            row = row_ptr(y) + static_cast<size_t>(4u * (rx0 + std::max(opaqueEnd + 1, 0)));
-            for (int32_t x = std::max(opaqueEnd + 1, 0); x < rowWidth; ++x, row += 4) {
-              uint8_t coverage = mask[static_cast<size_t>(maskRow + x)];
+            int32_t tailStart = std::max(opaqueEnd + 1, 0);
+            row = rowBase + static_cast<size_t>(4u * tailStart);
+            for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
+              uint8_t coverage = maskRowPtr[x];
               if (coverage == 0) continue;
               uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
@@ -1258,6 +1254,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             }
           }
         } else {
+          float fcX = static_cast<float>(cx);
+          float fcY = static_cast<float>(cy);
+          float fr = static_cast<float>(r);
+          float innerR = std::max(0.0f, fr - 0.5f);
+          float outerR = fr + 0.5f;
+          float innerR2 = innerR * innerR;
+          float outerR2 = outerR * outerR;
           for (int32_t y = ry0; y < ry1; ++y) {
             float dy = (static_cast<float>(y) + 0.5f) - fcY;
             float dy2 = dy * dy;
