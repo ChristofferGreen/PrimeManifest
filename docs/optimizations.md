@@ -261,11 +261,13 @@ Date: 2026-02-15
 | 2026-02-15 | 40 | 300 | 201.68 | 205.99 | 180.68 | 216.05 | 10.73 | `5fd969d` | A/B baseline run (SIMD comparison). |
 | 2026-02-15 | 20 | 300 | 78.67 | 79.66 | 72.70 | 84.68 | 3.37 | Working tree | Baseline rerun after reuse-path changes (no reuse). |
 | 2026-02-15 | 20 | 300 | 88.53 | 91.39 | 62.86 | 94.76 | 7.14 | Working tree | `--reuse-optimized` with padded circle bounds (2x move step), tileSize=128. |
+| 2026-02-15 | 20 | 300 | 77.24 | 78.08 | 69.79 | 82.91 | 3.47 | Working tree | Baseline rerun after circle pad binning update (no reuse). |
+| 2026-02-15 | 20 | 300 | 90.45 | 90.31 | 77.06 | 97.72 | 5.67 | Working tree | `--reuse-optimized` with padded bounds + circle refs (auto tile-stream off). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
 | --- | --- | --- |
-| Reuse optimized batch for moving circles with padded bounds + cached command counts | Kept | 20-run mean 88.53 FPS vs 78.67 baseline (~12.5% win) using `--reuse-optimized`. |
+| Reuse optimized batch for moving circles with padded bounds + cached command counts | Kept | 20-run mean 90.45 FPS vs 77.24 baseline (~17.1% win) using `--reuse-optimized` (auto tile-stream off). |
 | Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |
 | Circle-only tile pool chunk size override (`chunkSize=1`) | Kept | 20-run mean 243.23 FPS vs 239.84 current head (~1.4% win). |
 | Circle-only tile pool chunk size override (`chunkSize=2`) | Rejected | 20-run mean 236.62 FPS vs 243.23 (regression). |

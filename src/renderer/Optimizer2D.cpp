@@ -670,7 +670,7 @@ auto optimize_batch(RenderTarget target,
   bool allowAutoTileStream = batch.autoTileStream && !useTileStream && grid.tileSize <= 256u;
   uint32_t drawCount = commandCounts.drawCount();
   bool circleMajority = drawCount > 0 && (commandCounts.circle * 2 > drawCount);
-  if (circleMajority && !batch.reuseOptimized) {
+  if (circleMajority) {
     allowAutoTileStream = false;
   }
   bool circleOnlyDraw = commandCounts.circle > 0 && commandCounts.rect == 0 && commandCounts.text == 0;
@@ -854,6 +854,7 @@ auto optimize_batch(RenderTarget target,
         auto const* centerX = batch.circles.centerX.data();
         auto const* centerY = batch.circles.centerY.data();
         auto const* radius = batch.circles.radius.data();
+        int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
         int32_t maxX = static_cast<int32_t>(target.width);
         int32_t maxY = static_cast<int32_t>(target.height);
         auto bin_circles = [&](auto&& compute_span) {
@@ -1012,10 +1013,10 @@ auto optimize_batch(RenderTarget target,
             int32_t cx = centerX[i];
             int32_t cy = centerY[i];
             int32_t r = static_cast<int32_t>(radius[i]);
-            int32_t x0 = cx - r;
-            int32_t y0 = cy - r;
-            int32_t x1 = cx + r + 1;
-            int32_t y1 = cy + r + 1;
+            int32_t x0 = cx - r - circlePad;
+            int32_t y0 = cy - r - circlePad;
+            int32_t x1 = cx + r + 1 + circlePad;
+            int32_t y1 = cy + r + 1 + circlePad;
             if (x1 <= 0 || y1 <= 0) return false;
             if (x0 >= maxX || y0 >= maxY) return false;
             int32_t clampedX0 = std::max<int32_t>(x0, 0);
@@ -1050,10 +1051,10 @@ auto optimize_batch(RenderTarget target,
             int32_t cx = centerX[i];
             int32_t cy = centerY[i];
             int32_t r = static_cast<int32_t>(radius[i]);
-            int32_t x0 = cx - r;
-            int32_t y0 = cy - r;
-            int32_t x1 = cx + r + 1;
-            int32_t y1 = cy + r + 1;
+            int32_t x0 = cx - r - circlePad;
+            int32_t y0 = cy - r - circlePad;
+            int32_t x1 = cx + r + 1 + circlePad;
+            int32_t y1 = cy + r + 1 + circlePad;
             if (x1 <= 0 || y1 <= 0) return false;
             if (x0 >= maxX || y0 >= maxY) return false;
             int32_t clampedX0 = std::max<int32_t>(x0, 0);
@@ -1145,10 +1146,11 @@ auto optimize_batch(RenderTarget target,
             int32_t cx = batch.circles.centerX[cmd.index];
             int32_t cy = batch.circles.centerY[cmd.index];
             int32_t r = static_cast<int32_t>(batch.circles.radius[cmd.index]);
-            x0 = cx - r;
-            y0 = cy - r;
-            x1 = cx + r + 1;
-            y1 = cy + r + 1;
+            int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
+            x0 = cx - r - circlePad;
+            y0 = cy - r - circlePad;
+            x1 = cx + r + 1 + circlePad;
+            y1 = cy + r + 1 + circlePad;
           } else if (cmd.type == CommandType::Text) {
             if (cmd.index >= batch.text.x.size() ||
                 cmd.index >= batch.text.y.size() ||
