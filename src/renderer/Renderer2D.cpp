@@ -1088,6 +1088,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         uint8_t paletteIndex = batch.circles.colorIndex[idx];
         if (paletteIndex >= batch.palette.size) continue;
         size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
+        uint32_t const* pmTable = palettePmCache.data() + pmOffset;
         uint32_t color = batch.palette.colorRGBA8[paletteIndex];
         uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
         uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
@@ -1131,7 +1132,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
               uint8_t coverage = mask[static_cast<size_t>(maskRow + x)];
               if (coverage == 0) continue;
-              uint32_t pm = palettePmCache[pmOffset + coverage];
+              uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
               if (srcA == 255) {
@@ -1164,7 +1165,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 }
               }
             } else if (opaqueEnd >= opaqueStart) {
-              uint32_t pmOpaque = palettePmCache[pmOffset + 255u];
+              uint32_t pmOpaque = pmTable[255u];
               uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
               for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
                 blend_px(row,
@@ -1179,7 +1180,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             for (int32_t x = std::max(opaqueEnd + 1, 0); x < rowWidth; ++x, row += 4) {
               uint8_t coverage = mask[static_cast<size_t>(maskRow + x)];
               if (coverage == 0) continue;
-              uint32_t pm = palettePmCache[pmOffset + coverage];
+              uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
               if (srcA == 255) {
@@ -1213,7 +1214,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 coverage = coverage_from_dist(dist);
                 if (coverage == 0) continue;
               }
-              uint32_t pm = palettePmCache[pmOffset + coverage];
+              uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
               if (srcA == 255) {
