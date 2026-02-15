@@ -1246,72 +1246,80 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             ++tileRects;
             tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
           }
-          int32_t offsetX = rx0 - maskX0;
-          int32_t rowWidth = rx1 - rx0;
-          auto const* maskBase = mask.data();
-          int32_t localY = ry0 - maskY0;
-          auto const* maskRowPtr = maskBase + localY * size + offsetX;
-          auto const* rowOpaqueStartPtr = rowOpaqueStart.data() + localY;
-          auto const* rowOpaqueEndPtr = rowOpaqueEnd.data() + localY;
-          uint8_t* rowBase = row_ptr(ry0) + static_cast<size_t>(4u * rx0);
-          for (int32_t y = ry0; y < ry1; ++y,
-               ++localY,
-               maskRowPtr += size,
-               ++rowOpaqueStartPtr,
-               ++rowOpaqueEndPtr,
-               rowBase += surfaceStride) {
-            int32_t opaqueStart = static_cast<int32_t>(*rowOpaqueStartPtr) - offsetX;
-            int32_t opaqueEnd = static_cast<int32_t>(*rowOpaqueEndPtr) - offsetX;
-            if (opaqueEnd < 0 || opaqueStart >= rowWidth || opaqueStart > opaqueEnd) {
-              opaqueStart = rowWidth;
-              opaqueEnd = -1;
-            } else {
-              opaqueStart = std::max(opaqueStart, 0);
-              opaqueEnd = std::min(opaqueEnd, rowWidth - 1);
-            }
-
-            auto const* maskRow = maskRowPtr;
-            uint8_t* row = rowBase;
-            if (cA == 255) {
-              for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
-                uint8_t coverage = maskRow[x];
-                if (coverage == 0) continue;
-                uint32_t pm = pmTable[coverage];
-                blend_px(row,
+          if (cA == 255) {
+            size_t edgeCount = edgeX.size();
+            auto const* edgePmRow =
+              edgeCount == 0
+                ? nullptr
+                : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
+            int32_t localY = ry0 - maskY0;
+            for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+              uint8_t* rowBase = row_ptr(y);
+              uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+              uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
+              for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
+                int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
+                if (x < rx0 || x >= rx1) continue;
+                uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
+                uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                blend_px(rowBase + static_cast<size_t>(4u * x),
                          static_cast<uint8_t>(pm & 0xFFu),
                          static_cast<uint8_t>((pm >> 8) & 0xFFu),
                          static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         coverage);
+                         cov);
               }
-              if (opaqueEnd >= opaqueStart) {
-                uint32_t packed = color;
-                uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
-                int32_t count = opaqueEnd - opaqueStart + 1;
-                if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                  auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                  std::fill(row32, row32 + count, packed);
-                } else {
-                  for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                    opaqueRow[0] = cR;
-                    opaqueRow[1] = cG;
-                    opaqueRow[2] = cB;
-                    opaqueRow[3] = 255u;
+
+              int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+              int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+              if (rowEnd >= rowStart) {
+                int32_t spanStart = maskX0 + rowStart;
+                int32_t spanEnd = maskX0 + rowEnd;
+                if (spanEnd >= rx0 && spanStart < rx1) {
+                  spanStart = std::max(spanStart, rx0);
+                  spanEnd = std::min(spanEnd, rx1 - 1);
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                  int32_t count = spanEnd - spanStart + 1;
+                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                    std::fill(row32, row32 + count, color);
+                  } else {
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      opaqueRow[0] = cR;
+                      opaqueRow[1] = cG;
+                      opaqueRow[2] = cB;
+                      opaqueRow[3] = 255u;
+                    }
                   }
                 }
               }
-              int32_t tailStart = std::max(opaqueEnd + 1, 0);
-              row = rowBase + static_cast<size_t>(4u * tailStart);
-              for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
-                uint8_t coverage = maskRow[x];
-                if (coverage == 0) continue;
-                uint32_t pm = pmTable[coverage];
-                blend_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         coverage);
+            }
+          } else {
+            int32_t offsetX = rx0 - maskX0;
+            int32_t rowWidth = rx1 - rx0;
+            auto const* maskBase = mask.data();
+            int32_t localY = ry0 - maskY0;
+            auto const* maskRowPtr = maskBase + localY * size + offsetX;
+            auto const* rowOpaqueStartPtr = rowOpaqueStart.data() + localY;
+            auto const* rowOpaqueEndPtr = rowOpaqueEnd.data() + localY;
+            uint8_t* rowBase = row_ptr(ry0) + static_cast<size_t>(4u * rx0);
+            for (int32_t y = ry0; y < ry1; ++y,
+                 ++localY,
+                 maskRowPtr += size,
+                 ++rowOpaqueStartPtr,
+                 ++rowOpaqueEndPtr,
+                 rowBase += surfaceStride) {
+              int32_t opaqueStart = static_cast<int32_t>(*rowOpaqueStartPtr) - offsetX;
+              int32_t opaqueEnd = static_cast<int32_t>(*rowOpaqueEndPtr) - offsetX;
+              if (opaqueEnd < 0 || opaqueStart >= rowWidth || opaqueStart > opaqueEnd) {
+                opaqueStart = rowWidth;
+                opaqueEnd = -1;
+              } else {
+                opaqueStart = std::max(opaqueStart, 0);
+                opaqueEnd = std::min(opaqueEnd, rowWidth - 1);
               }
-            } else {
+
+              auto const* maskRow = maskRowPtr;
+              uint8_t* row = rowBase;
               for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
                 uint8_t coverage = maskRow[x];
                 if (coverage == 0) continue;
