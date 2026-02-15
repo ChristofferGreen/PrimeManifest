@@ -33,6 +33,22 @@ auto coverage_from_dist(float dist) -> uint8_t {
   return static_cast<uint8_t>(cov * 255.0f + 0.5f);
 }
 
+auto make_mul_table() -> std::array<std::array<uint8_t, 256>, 256> {
+  std::array<std::array<uint8_t, 256>, 256> table{};
+  for (uint32_t a = 0; a < 256; ++a) {
+    for (uint32_t v = 0; v < 256; ++v) {
+      table[a][v] = static_cast<uint8_t>((v * a + 127u) / 255u);
+    }
+  }
+  return table;
+}
+
+auto const kMulTable = make_mul_table();
+
+inline auto mul_div_255(uint8_t v, uint8_t a) -> uint8_t {
+  return kMulTable[a][v];
+}
+
 struct CircleMaskCache {
   std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> masks{};
   std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> edgeX{};
@@ -587,43 +603,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         uint8_t dstA = dst[3];
         if (dstA >= OpaqueAlphaCutoff) return;
         uint8_t invA = static_cast<uint8_t>(255u - dstA);
-        auto const& mulRow = kMulTable[invA];
-        dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) + mulRow[pmR]);
-        dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) + mulRow[pmG]);
-        dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) + mulRow[pmB]);
-        uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[srcA]);
-        dst[3] = newA;
-        if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
-          ++opaqueCount;
-        }
-      } else if (dstOpaque) {
-        uint8_t invA = static_cast<uint8_t>(255u - srcA);
-        auto const& mulRow = kMulTable[invA];
-        dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pmR) + mulRow[dst[0]]);
-        dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(pmG) + mulRow[dst[1]]);
-        dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(pmB) + mulRow[dst[2]]);
-        dst[3] = 255u;
-      } else {
-        blend_premultiplied(dst, pmR, pmG, pmB, srcA);
-      }
-    };
-    auto blend_rgba = [&](uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB, uint8_t srcA) {
-      if (srcA == 0) return;
-      uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(srcR) * srcA + 127u) / 255u);
-      uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(srcG) * srcA + 127u) / 255u);
-      uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(srcB) * srcA + 127u) / 255u);
-      if (frontToBack) {
-        uint8_t dstA = dst[3];
-        if (dstA >= OpaqueAlphaCutoff) return;
-        uint16_t invA = static_cast<uint16_t>(255u - dstA);
-        dst[0] = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dst[0]) + (static_cast<uint16_t>(pmR) * invA + 127u) / 255u) & 0xFFu);
-        dst[1] = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dst[1]) + (static_cast<uint16_t>(pmG) * invA + 127u) / 255u) & 0xFFu);
-        dst[2] = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dst[2]) + (static_cast<uint16_t>(pmB) * invA + 127u) / 255u) & 0xFFu);
-        uint8_t newA = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dstA) + (static_cast<uint16_t>(srcA) * invA + 127u) / 255u) & 0xFFu);
+        dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) + mul_div_255(pmR, invA));
+        dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) + mul_div_255(pmG, invA));
+        dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) + mul_div_255(pmB, invA));
+        uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mul_div_255(srcA, invA));
         dst[3] = newA;
         if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
           ++opaqueCount;
