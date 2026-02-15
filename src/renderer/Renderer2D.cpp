@@ -1131,10 +1131,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               ++tileRects;
               tileRectPixels += static_cast<uint64_t>(size) * static_cast<uint64_t>(size);
             }
-            for (int32_t localY = 0; localY < size; ++localY) {
+            uint8_t* rowBase = row_ptr(maskY0) + static_cast<size_t>(4u * maskX0);
+            for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
               int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
               int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-              uint8_t* rowBase = row_ptr(maskY0 + localY) + static_cast<size_t>(4u * maskX0);
               if (opaqueEnd >= opaqueStart) {
                 uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
                 int32_t count = opaqueEnd - opaqueStart + 1;
@@ -1184,11 +1184,19 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           int32_t offsetX = rx0 - maskX0;
           int32_t rowWidth = rx1 - rx0;
           auto const* maskBase = mask.data();
-          for (int32_t y = ry0; y < ry1; ++y) {
-            int32_t localY = y - maskY0;
-            int32_t maskRow = localY * size + offsetX;
-            int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]) - offsetX;
-            int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]) - offsetX;
+          int32_t localY = ry0 - maskY0;
+          auto const* maskRowPtr = maskBase + localY * size + offsetX;
+          auto const* rowOpaqueStartPtr = rowOpaqueStart.data() + localY;
+          auto const* rowOpaqueEndPtr = rowOpaqueEnd.data() + localY;
+          uint8_t* rowBase = row_ptr(ry0) + static_cast<size_t>(4u * rx0);
+          for (int32_t y = ry0; y < ry1; ++y,
+               ++localY,
+               maskRowPtr += size,
+               ++rowOpaqueStartPtr,
+               ++rowOpaqueEndPtr,
+               rowBase += surfaceStride) {
+            int32_t opaqueStart = static_cast<int32_t>(*rowOpaqueStartPtr) - offsetX;
+            int32_t opaqueEnd = static_cast<int32_t>(*rowOpaqueEndPtr) - offsetX;
             if (opaqueEnd < 0 || opaqueStart >= rowWidth || opaqueStart > opaqueEnd) {
               opaqueStart = rowWidth;
               opaqueEnd = -1;
@@ -1197,11 +1205,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               opaqueEnd = std::min(opaqueEnd, rowWidth - 1);
             }
 
-            uint8_t* rowBase = row_ptr(y) + static_cast<size_t>(4u * rx0);
-            auto const* maskRowPtr = maskBase + maskRow;
+            auto const* maskRow = maskRowPtr;
             uint8_t* row = rowBase;
             for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
-              uint8_t coverage = maskRowPtr[x];
+              uint8_t coverage = maskRow[x];
               if (coverage == 0) continue;
               uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
@@ -1244,7 +1251,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             int32_t tailStart = std::max(opaqueEnd + 1, 0);
             row = rowBase + static_cast<size_t>(4u * tailStart);
             for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
-              uint8_t coverage = maskRowPtr[x];
+              uint8_t coverage = maskRow[x];
               if (coverage == 0) continue;
               uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
