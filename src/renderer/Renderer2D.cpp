@@ -1100,21 +1100,6 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         int32_t x1 = cx + r + 1;
         int32_t y1 = cy + r + 1;
 
-        int32_t drawX0 = hasLocalBounds ? localX0 : x0;
-        int32_t drawY0 = hasLocalBounds ? localY0 : y0;
-        int32_t drawX1 = hasLocalBounds ? localX1 : x1;
-        int32_t drawY1 = hasLocalBounds ? localY1 : y1;
-
-        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
-        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
-        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
-        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
-        if (rx1 <= rx0 || ry1 <= ry0) continue;
-        if (profile) {
-          ++tileRects;
-          tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
-        }
-
         uint8_t paletteIndex = batch.circles.colorIndex[idx];
         if (!paletteFull && paletteIndex >= batch.palette.size) continue;
         size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
@@ -1142,6 +1127,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                             (maskX0 + size) <= static_cast<int32_t>(tx1) &&
                             (maskY0 + size) <= static_cast<int32_t>(ty1);
           if (fullInside && cA == 255) {
+            if (profile) {
+              ++tileRects;
+              tileRectPixels += static_cast<uint64_t>(size) * static_cast<uint64_t>(size);
+            }
             for (int32_t localY = 0; localY < size; ++localY) {
               int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
               int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
@@ -1176,6 +1165,21 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               }
             }
             continue;
+          }
+
+          int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+          int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+          int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+          int32_t drawY1 = hasLocalBounds ? localY1 : y1;
+
+          int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+          int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+          int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+          int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+          if (rx1 <= rx0 || ry1 <= ry0) continue;
+          if (profile) {
+            ++tileRects;
+            tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
           }
           int32_t offsetX = rx0 - maskX0;
           int32_t rowWidth = rx1 - rx0;
@@ -1253,6 +1257,20 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             }
           }
         } else {
+          int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+          int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+          int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+          int32_t drawY1 = hasLocalBounds ? localY1 : y1;
+
+          int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+          int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+          int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+          int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+          if (rx1 <= rx0 || ry1 <= ry0) continue;
+          if (profile) {
+            ++tileRects;
+            tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
+          }
           float fcX = static_cast<float>(cx);
           float fcY = static_cast<float>(cy);
           float fr = static_cast<float>(r);
