@@ -861,6 +861,11 @@ auto optimize_batch(RenderTarget target,
         auto const* centerX = batch.circles.centerX.data();
         auto const* centerY = batch.circles.centerY.data();
         auto const* radius = batch.circles.radius.data();
+        constexpr uint32_t InvalidSpan = 0xFFFFFFFFu;
+        std::vector<uint32_t> circleSpans;
+        circleSpans.resize(circleCount * 4u, InvalidSpan);
+        auto* spanData = circleSpans.data();
+
         for (uint32_t i = 0; i < circleCount; ++i) {
           if (!paletteOpaque) {
             uint32_t color = fetch_color(batch.circles.colorIndex, i, 0u);
@@ -897,6 +902,12 @@ auto optimize_batch(RenderTarget target,
             tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
             ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
           }
+
+          size_t spanOffset = static_cast<size_t>(i) * 4u;
+          spanData[spanOffset + 0] = tx0;
+          spanData[spanOffset + 1] = ty0;
+          spanData[spanOffset + 2] = tx1;
+          spanData[spanOffset + 3] = ty1;
 
           for (uint32_t ty = ty0; ty <= ty1; ++ty) {
             for (uint32_t tx = tx0; tx <= tx1; ++tx) {
@@ -912,42 +923,12 @@ auto optimize_batch(RenderTarget target,
         tileRefs.assign(tileOffsets.back(), 0);
         tileFill.assign(tileCount, 0);
         for (uint32_t i = 0; i < circleCount; ++i) {
-          if (!paletteOpaque) {
-            uint32_t color = fetch_color(batch.circles.colorIndex, i, 0u);
-            uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-            if (cA == 0) continue;
-          }
-          int32_t cx = centerX[i];
-          int32_t cy = centerY[i];
-          int32_t r = static_cast<int32_t>(radius[i]);
-          int32_t x0 = cx - r;
-          int32_t y0 = cy - r;
-          int32_t x1 = cx + r + 1;
-          int32_t y1 = cy + r + 1;
-          if (x1 <= 0 || y1 <= 0) continue;
-          if (x0 >= static_cast<int32_t>(target.width) || y0 >= static_cast<int32_t>(target.height)) continue;
-          int32_t clampedX0 = std::max<int32_t>(x0, 0);
-          int32_t clampedY0 = std::max<int32_t>(y0, 0);
-          int32_t clampedX1 = std::min<int32_t>(x1, static_cast<int32_t>(target.width));
-          int32_t clampedY1 = std::min<int32_t>(y1, static_cast<int32_t>(target.height));
-          if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) continue;
-
-          uint32_t tx0 = 0;
-          uint32_t ty0 = 0;
-          uint32_t tx1 = 0;
-          uint32_t ty1 = 0;
-          if (tilePow2) {
-            tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
-            ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
-            tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
-            ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
-          } else {
-            tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
-            ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
-            tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
-            ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
-          }
-
+          size_t spanOffset = static_cast<size_t>(i) * 4u;
+          uint32_t tx0 = spanData[spanOffset + 0];
+          if (tx0 == InvalidSpan) continue;
+          uint32_t ty0 = spanData[spanOffset + 1];
+          uint32_t tx1 = spanData[spanOffset + 2];
+          uint32_t ty1 = spanData[spanOffset + 3];
           for (uint32_t ty = ty0; ty <= ty1; ++ty) {
             for (uint32_t tx = tx0; tx <= tx1; ++tx) {
               uint32_t tileIdx = ty * grid.tilesX + tx;
