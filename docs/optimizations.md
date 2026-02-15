@@ -266,7 +266,7 @@ Date: 2026-02-15
 | Refactor masked circle render into shared lambda | Rejected | 137–200 FPS range (regression/noise). |
 | Small-count 32-bit fill helper (replace `std::fill` for short spans) | Rejected | Mean ~184 FPS (regression). |
 | Precompute full mask premultiplied table (per palette, per radius) | Rejected | Means ~206–220 FPS (no clear win). |
-| SIMD (NEON) blend for masked head/tail spans (dst-opaque path) | Rejected | 175–195 FPS range (regression). |
+| SIMD (NEON) blend for masked head/tail spans (dst-opaque path) | Rejected | Retry: 200.85 mean vs 210.40 baseline (10-run A/B, regression). |
 | Tile-stream default when circles are majority | Rejected | ~95 FPS (large regression). |
 | Tile size sweep (single-run) | Rejected | 96:210, 128:226, 160:215, 192:173, 224:191, 256:213 (128 best). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
