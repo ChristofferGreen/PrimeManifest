@@ -365,7 +365,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     uint64_t hash = 0;
     uint16_t size = 0;
   };
+  struct CircleEdgePmCache {
+    std::array<std::vector<uint32_t>, MaxCircleMaskRadius + 1> edgePm{};
+    uint64_t hash = 0;
+    uint16_t size = 0;
+  };
   static PalettePmCache palettePm;
+  static CircleEdgePmCache circleEdgePm;
   size_t paletteSize = static_cast<size_t>(batch.palette.size);
   uint64_t paletteHash = 1469598103934665603ull;
   for (size_t i = 0; i < paletteSize; ++i) {
@@ -409,6 +415,26 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           (static_cast<uint32_t>(pmG) << 8) |
           (static_cast<uint32_t>(pmB) << 16) |
           (static_cast<uint32_t>(srcA) << 24);
+      }
+    }
+  }
+  if (circleEdgePm.size != batch.palette.size || circleEdgePm.hash != paletteHash) {
+    circleEdgePm.size = batch.palette.size;
+    circleEdgePm.hash = paletteHash;
+    auto const& maskCache = circle_mask_cache();
+    for (int32_t r = 0; r <= MaxCircleMaskRadius; ++r) {
+      auto const& edgeCov = maskCache.edgeCov[static_cast<size_t>(r)];
+      size_t edgeCount = edgeCov.size();
+      circleEdgePm.edgePm[static_cast<size_t>(r)].assign(paletteSize * edgeCount, 0u);
+      if (edgeCount == 0) continue;
+      auto* dst = circleEdgePm.edgePm[static_cast<size_t>(r)].data();
+      for (size_t p = 0; p < paletteSize; ++p) {
+        size_t base = p * edgeCount;
+        size_t pmBase = p * 256u;
+        for (size_t i = 0; i < edgeCount; ++i) {
+          uint8_t cov = edgeCov[i];
+          dst[base + i] = palettePm.table[pmBase + cov];
+        }
       }
     }
   }
@@ -1166,6 +1192,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               ++tileRects;
               tileRectPixels += static_cast<uint64_t>(size) * static_cast<uint64_t>(size);
             }
+            size_t edgeCount = edgeX.size();
+            auto const* edgePmRow =
+              edgeCount == 0
+                ? nullptr
+                : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
             uint8_t* rowBase = row_ptr(maskY0) + static_cast<size_t>(4u * maskX0);
             for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
               int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
@@ -1189,8 +1220,8 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
               for (uint16_t i = start; i < end; ++i) {
                 uint8_t x = edgeX[i];
-                uint8_t cov = edgeCov[i];
-                uint32_t pm = pmTable[cov];
+                uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
+                uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
                 blend_px(rowBase + static_cast<size_t>(4u * x),
                          static_cast<uint8_t>(pm & 0xFFu),
                          static_cast<uint8_t>((pm >> 8) & 0xFFu),
