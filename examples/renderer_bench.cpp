@@ -862,6 +862,7 @@ int main(int argc, char** argv) {
   add_clear(batch, clearIndex);
 
   std::vector<int16_t> circleBaseY;
+  int32_t circleMoveStep = 0;
 
   if (cfg.rectCount > 0) {
     batch.rects.x0.reserve(cfg.rectCount);
@@ -903,6 +904,7 @@ int main(int argc, char** argv) {
     batch.circles.radius.reserve(cfg.circleCount);
     batch.circles.colorIndex.reserve(cfg.circleCount);
     circleBaseY.reserve(cfg.circleCount);
+    circleMoveStep = std::max<int32_t>(2, static_cast<int32_t>(cfg.circleRadius) / 2);
     for (uint32_t i = 0; i < cfg.circleCount; ++i) {
       int32_t cx = xDist(rng);
       int32_t cy = yDist(rng);
@@ -953,7 +955,7 @@ int main(int argc, char** argv) {
   auto start = std::chrono::steady_clock::now();
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
     if (dynamicCircles) {
-      int32_t delta = (frame & 1u) == 0u ? -1 : 1;
+      int32_t delta = (frame & 1u) == 0u ? -circleMoveStep : circleMoveStep;
       int32_t maxY = static_cast<int32_t>(cfg.height);
       for (size_t i = 0; i < circleBaseY.size(); ++i) {
         int32_t y = static_cast<int32_t>(circleBaseY[i]) + delta;
@@ -984,7 +986,11 @@ int main(int argc, char** argv) {
             << " Circles: " << cfg.circleCount
             << " Texts: " << (cfg.enableText ? cfg.textCount : 0)
             << " Frames: " << cfg.frames << "\n";
-  std::cout << "CircleMotion: " << (dynamicCircles ? "Enabled" : "Disabled") << "\n";
+  if (dynamicCircles) {
+    std::cout << "CircleMotion: Enabled (Step " << circleMoveStep << "px)\n";
+  } else {
+    std::cout << "CircleMotion: Disabled\n";
+  }
   uint32_t reportedTileSize = optimized.valid ? optimized.tileSize : cfg.tileSize;
   std::cout << "TileSize: " << reportedTileSize;
   if (optimized.valid && optimized.tileSize != cfg.tileSize) {
