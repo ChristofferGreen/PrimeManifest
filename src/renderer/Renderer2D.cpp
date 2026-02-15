@@ -388,6 +388,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     }
   }
   auto const& palettePmCache = palettePm.table;
+  bool paletteFull = batch.palette.size >= 256;
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -1103,7 +1104,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         }
 
         uint8_t paletteIndex = batch.circles.colorIndex[idx];
-        if (paletteIndex >= batch.palette.size) continue;
+        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
         size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
         uint32_t const* pmTable = palettePmCache.data() + pmOffset;
         uint32_t color = batch.palette.colorRGBA8[paletteIndex];
