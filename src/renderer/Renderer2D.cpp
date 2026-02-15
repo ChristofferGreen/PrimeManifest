@@ -1189,18 +1189,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
-              if (srcA == 255) {
-                write_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
-              } else {
-                blend_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         srcA);
-              }
+              blend_px(row,
+                       static_cast<uint8_t>(pm & 0xFFu),
+                       static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                       static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                       srcA);
             }
 
             if (opaqueEnd >= opaqueStart && cA == 255) {
@@ -1239,18 +1232,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               uint32_t pm = pmTable[coverage];
               uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
-              if (srcA == 255) {
-                write_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
-              } else {
-                blend_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         srcA);
-              }
+              blend_px(row,
+                       static_cast<uint8_t>(pm & 0xFFu),
+                       static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                       static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                       srcA);
             }
           }
         } else {
