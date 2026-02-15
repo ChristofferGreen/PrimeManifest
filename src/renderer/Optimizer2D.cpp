@@ -862,8 +862,8 @@ auto optimize_batch(RenderTarget target,
         auto const* centerY = batch.circles.centerY.data();
         auto const* radius = batch.circles.radius.data();
         constexpr uint32_t InvalidSpan = 0xFFFFFFFFu;
-        std::vector<uint32_t> circleSpans;
-        circleSpans.resize(circleCount * 4u, InvalidSpan);
+        auto& circleSpans = prepared.circleTileSpans;
+        circleSpans.assign(circleCount * 4u, InvalidSpan);
         auto* spanData = circleSpans.data();
 
         for (uint32_t i = 0; i < circleCount; ++i) {
