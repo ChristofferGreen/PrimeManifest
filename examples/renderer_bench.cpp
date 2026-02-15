@@ -905,6 +905,13 @@ int main(int argc, char** argv) {
     batch.circles.colorIndex.reserve(cfg.circleCount);
     circleBaseY.reserve(cfg.circleCount);
     circleMoveStep = std::max<int32_t>(2, static_cast<int32_t>(cfg.circleRadius) / 2);
+    if (cfg.reuseOptimized) {
+      uint32_t pad = static_cast<uint32_t>(circleMoveStep) * 2u;
+      if (pad > std::numeric_limits<uint16_t>::max()) {
+        pad = std::numeric_limits<uint16_t>::max();
+      }
+      batch.circleBoundsPad = static_cast<uint16_t>(pad);
+    }
     for (uint32_t i = 0; i < cfg.circleCount; ++i) {
       int32_t cx = xDist(rng);
       int32_t cy = yDist(rng);
@@ -963,7 +970,9 @@ int main(int argc, char** argv) {
         if (y > maxY) y = maxY;
         batch.circles.centerY[i] = static_cast<int16_t>(y);
       }
-      batch.revision += 1;
+      if (!batch.reuseOptimized) {
+        batch.revision += 1;
+      }
     }
     if (cfg.useTileStream && dynamicCircles) {
       batch.tileStream.clear();

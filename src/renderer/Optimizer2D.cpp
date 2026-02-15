@@ -149,7 +149,7 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   uint32_t drawCount = counts.drawCount();
   bool circleMajority = drawCount > 0 && (counts.circle * 2 > drawCount);
   if (tileSize == 32u && circleMajority) {
-    return batch.reuseOptimized ? 16u : 128u;
+    return 128u;
   }
   return tileSize;
 }
@@ -230,6 +230,7 @@ auto premerge_tile_stream(RenderBatch const& batch,
   }
 
   std::vector<CommandBounds> circleBounds(batch.circles.centerX.size());
+  int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
   for (uint32_t i = 0; i < batch.circles.centerX.size(); ++i) {
     CommandBounds b{};
     if (i >= batch.circles.centerY.size() ||
@@ -241,10 +242,10 @@ auto premerge_tile_stream(RenderBatch const& batch,
     int32_t cx = batch.circles.centerX[i];
     int32_t cy = batch.circles.centerY[i];
     int32_t r = static_cast<int32_t>(batch.circles.radius[i]);
-    b.x0 = cx - r;
-    b.y0 = cy - r;
-    b.x1 = cx + r + 1;
-    b.y1 = cy + r + 1;
+    b.x0 = cx - r - circlePad;
+    b.y0 = cy - r - circlePad;
+    b.x1 = cx + r + 1 + circlePad;
+    b.y1 = cy + r + 1 + circlePad;
     b.x0 = std::max(b.x0, 0);
     b.y0 = std::max(b.y0, 0);
     b.x1 = std::min(b.x1, static_cast<int32_t>(width));
@@ -1488,15 +1489,25 @@ auto optimize_batch(RenderTarget target,
 } // namespace
 
 void OptimizeRenderBatch(RenderTarget target, RenderBatch const& batch, OptimizedBatch& optimized) {
+  bool canReuse = batch.reuseOptimized &&
+                  optimized.valid &&
+                  optimized.sourceRevision == batch.revision &&
+                  optimized.targetWidth == target.width &&
+                  optimized.targetHeight == target.height;
+  if (canReuse) {
+    CommandTypeCounts const& cachedCounts = optimized.commandTypeCounts;
+    if (cachedCounts.drawCount() > 0 || batch.commands.empty()) {
+      uint32_t cachedTileSize = choose_tile_size(batch, cachedCounts);
+      if (optimized.tileSize == cachedTileSize) {
+        return;
+      }
+    }
+  }
+
   CommandTypeCounts commandCounts = count_command_types(batch);
   uint32_t tileSizeOverride = choose_tile_size(batch, commandCounts);
-  if (batch.reuseOptimized && optimized.valid) {
-    if (optimized.sourceRevision == batch.revision &&
-        optimized.targetWidth == target.width &&
-        optimized.targetHeight == target.height &&
-        optimized.tileSize == tileSizeOverride) {
-      return;
-    }
+  if (canReuse && optimized.tileSize == tileSizeOverride) {
+    return;
   }
   optimize_batch(target, batch, optimized, tileSizeOverride, commandCounts);
   if (optimized.valid) {
