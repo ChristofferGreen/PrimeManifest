@@ -33,70 +33,22 @@ auto coverage_from_dist(float dist) -> uint8_t {
   return static_cast<uint8_t>(cov * 255.0f + 0.5f);
 }
 
-auto make_mul_table() -> std::array<std::array<uint8_t, 256>, 256> {
-  std::array<std::array<uint8_t, 256>, 256> table{};
-  for (uint32_t a = 0; a < 256; ++a) {
-    for (uint32_t v = 0; v < 256; ++v) {
-      table[a][v] = static_cast<uint8_t>((v * a + 127u) / 255u);
-    }
-  }
-  return table;
-}
-
-auto const kMulTable = make_mul_table();
-
-inline auto mul_div_255(uint8_t v, uint8_t a) -> uint8_t {
-  return kMulTable[a][v];
-}
-
 struct CircleMaskCache {
   std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> masks{};
-  std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> edgeX{};
-  std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> edgeCov{};
-  std::array<std::vector<uint16_t>, MaxCircleMaskRadius + 1> edgeOffset{};
-  std::array<std::vector<int8_t>, MaxCircleMaskRadius + 1> opaqueStart{};
-  std::array<std::vector<int8_t>, MaxCircleMaskRadius + 1> opaqueEnd{};
 
   CircleMaskCache() {
     for (int32_t r = 0; r <= MaxCircleMaskRadius; ++r) {
       int32_t size = r * 2 + 1;
       std::vector<uint8_t> mask(static_cast<size_t>(size) * size, 0u);
-      std::vector<uint16_t> rowOffset(static_cast<size_t>(size + 1), 0u);
-      std::vector<uint8_t> rowEdgeX;
-      std::vector<uint8_t> rowEdgeCov;
-      std::vector<int8_t> rowStart(static_cast<size_t>(size), static_cast<int8_t>(size));
-      std::vector<int8_t> rowEnd(static_cast<size_t>(size), static_cast<int8_t>(-1));
-      uint16_t cursor = 0;
       for (int32_t y = 0; y < size; ++y) {
-        rowOffset[static_cast<size_t>(y)] = cursor;
         float fy = static_cast<float>(y - r) + 0.5f;
         for (int32_t x = 0; x < size; ++x) {
           float fx = static_cast<float>(x - r) + 0.5f;
           float dist = std::sqrt(fx * fx + fy * fy) - static_cast<float>(r);
-          uint8_t coverage = coverage_from_dist(dist);
-          mask[static_cast<size_t>(y) * size + x] = coverage;
-          if (coverage != 0 && coverage != 255) {
-            rowEdgeX.push_back(static_cast<uint8_t>(x));
-            rowEdgeCov.push_back(coverage);
-            ++cursor;
-          }
-          if (coverage == 255) {
-            if (x < rowStart[static_cast<size_t>(y)]) {
-              rowStart[static_cast<size_t>(y)] = static_cast<int8_t>(x);
-            }
-            if (x > rowEnd[static_cast<size_t>(y)]) {
-              rowEnd[static_cast<size_t>(y)] = static_cast<int8_t>(x);
-            }
-          }
+          mask[static_cast<size_t>(y) * size + x] = coverage_from_dist(dist);
         }
-        rowOffset[static_cast<size_t>(y + 1)] = cursor;
       }
       masks[static_cast<size_t>(r)] = std::move(mask);
-      edgeX[static_cast<size_t>(r)] = std::move(rowEdgeX);
-      edgeCov[static_cast<size_t>(r)] = std::move(rowEdgeCov);
-      edgeOffset[static_cast<size_t>(r)] = std::move(rowOffset);
-      opaqueStart[static_cast<size_t>(r)] = std::move(rowStart);
-      opaqueEnd[static_cast<size_t>(r)] = std::move(rowEnd);
     }
   }
 };
@@ -1215,31 +1167,62 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         float innerR2 = innerR * innerR;
         float outerR2 = outerR * outerR;
 
-        for (int32_t y = ry0; y < ry1; ++y) {
-          float dy = (static_cast<float>(y) + 0.5f) - fcY;
-          float dy2 = dy * dy;
-          uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
-          for (int32_t x = rx0; x < rx1; ++x, row += 4) {
-            float dx = (static_cast<float>(x) + 0.5f) - fcX;
-            float dist2 = dx * dx + dy2;
-            if (dist2 >= outerR2) continue;
-            uint8_t coverage = 0;
-            if (dist2 <= innerR2) {
-              coverage = 255;
-            } else {
-              float dist = std::sqrt(dist2) - fr;
-              coverage = coverage_from_dist(dist);
+        if (r <= MaxCircleMaskRadius) {
+          auto const& mask = circle_mask_cache().masks[static_cast<size_t>(r)];
+          int32_t size = r * 2 + 1;
+          int32_t maskX0 = cx - r;
+          int32_t maskY0 = cy - r;
+          int32_t offsetX = rx0 - maskX0;
+          int32_t offsetY = ry0 - maskY0;
+          if (offsetX < 0 || offsetY < 0) {
+            offsetX = std::max(offsetX, 0);
+            offsetY = std::max(offsetY, 0);
+          }
+          for (int32_t y = ry0; y < ry1; ++y) {
+            int32_t maskRow = (offsetY + (y - ry0)) * size + offsetX;
+            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
+            for (int32_t x = rx0; x < rx1; ++x, row += 4) {
+              uint8_t coverage = mask[static_cast<size_t>(maskRow++)];
               if (coverage == 0) continue;
+              uint8_t srcA = apply_coverage(cA, coverage);
+              if (srcA == 0) continue;
+              if (srcA == 255) {
+                write_px(row, cR, cG, cB);
+              } else {
+                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
+                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
+                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
+                blend_px(row, pmR, pmG, pmB, srcA);
+              }
             }
-            uint8_t srcA = apply_coverage(cA, coverage);
-            if (srcA == 0) continue;
-            if (srcA == 255) {
-              write_px(row, cR, cG, cB);
-            } else {
-              uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
-              uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
-              uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
-              blend_px(row, pmR, pmG, pmB, srcA);
+          }
+        } else {
+          for (int32_t y = ry0; y < ry1; ++y) {
+            float dy = (static_cast<float>(y) + 0.5f) - fcY;
+            float dy2 = dy * dy;
+            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
+            for (int32_t x = rx0; x < rx1; ++x, row += 4) {
+              float dx = (static_cast<float>(x) + 0.5f) - fcX;
+              float dist2 = dx * dx + dy2;
+              if (dist2 >= outerR2) continue;
+              uint8_t coverage = 0;
+              if (dist2 <= innerR2) {
+                coverage = 255;
+              } else {
+                float dist = std::sqrt(dist2) - fr;
+                coverage = coverage_from_dist(dist);
+                if (coverage == 0) continue;
+              }
+              uint8_t srcA = apply_coverage(cA, coverage);
+              if (srcA == 0) continue;
+              if (srcA == 255) {
+                write_px(row, cR, cG, cB);
+              } else {
+                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
+                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
+                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
+                blend_px(row, pmR, pmG, pmB, srcA);
+              }
             }
           }
         }

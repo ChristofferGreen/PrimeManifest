@@ -124,7 +124,7 @@ struct OptimizedBatch {
     debugFlags = 0;
     valid = false;
     sourceRevision = 0;
-    commandTypeCounts.clear();
+    commandTypeCounts.reset();
     mergedTileStream.clear();
     generatedTileStream.clear();
     tileStream = nullptr;

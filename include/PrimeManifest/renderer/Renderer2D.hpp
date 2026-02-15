@@ -39,15 +39,15 @@ enum class CommandType : uint8_t {
 };
 
 struct CommandTypeCounts {
-  uint32_t clear = 0;
+  uint32_t clearCount = 0;
   uint32_t rect = 0;
   uint32_t circle = 0;
   uint32_t text = 0;
   uint32_t debugTiles = 0;
   uint32_t clearPattern = 0;
 
-  void clear() {
-    clear = 0;
+  void reset() {
+    clearCount = 0;
     rect = 0;
     circle = 0;
     text = 0;

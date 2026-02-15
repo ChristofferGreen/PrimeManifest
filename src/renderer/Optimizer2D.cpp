@@ -122,7 +122,7 @@ auto count_command_types(RenderBatch const& batch) -> CommandTypeCounts {
   for (auto const& cmd : batch.commands) {
     switch (cmd.type) {
       case CommandType::Clear:
-        counts.clear += 1;
+        counts.clearCount += 1;
         break;
       case CommandType::Rect:
         counts.rect += 1;
@@ -149,7 +149,9 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   if (!batch.autoTileStream) return tileSize;
   if (batch.tileStream.enabled) return tileSize;
   uint32_t drawCount = counts.drawCount();
-  if (tileSize == 32u && drawCount > 0 && (counts.circle * 2 > drawCount)) {
+  bool circleMajority = drawCount > 0 && (counts.circle * 2 > drawCount);
+  if (!batch.reuseOptimized) return tileSize;
+  if (tileSize == 32u && circleMajority) {
     return 16u;
   }
   return tileSize;
@@ -668,13 +670,8 @@ auto optimize_batch(RenderTarget target,
   bool allowAutoTileStream = batch.autoTileStream && !useTileStream && grid.tileSize <= 256u;
   uint32_t drawCount = commandCounts.drawCount();
   bool circleMajority = drawCount > 0 && (commandCounts.circle * 2 > drawCount);
-  if (circleMajority) {
+  if (circleMajority && !batch.reuseOptimized) {
     allowAutoTileStream = false;
-  }
-  bool circleOnlyDraw = commandCounts.circle > 0 && commandCounts.rect == 0 && commandCounts.text == 0;
-  bool useCircleRefs = circleOnlyDraw && !useTileStream && !allowAutoTileStream;
-  if (!useTileBuffer && circleOnlyDraw && hasClear && batch.assumeFrontToBack) {
-    useTileBuffer = true;
   }
 
   bool hasDraw = false;
