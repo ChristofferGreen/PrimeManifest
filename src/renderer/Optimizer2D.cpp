@@ -679,14 +679,7 @@ auto optimize_batch(RenderTarget target,
   if (useTileStream) {
     hasDraw = !tileStream->commands.empty();
   } else {
-    for (auto const& cmd : batch.commands) {
-      if (cmd.type == CommandType::Rect ||
-          cmd.type == CommandType::Circle ||
-          cmd.type == CommandType::Text) {
-        hasDraw = true;
-        break;
-      }
-    }
+    hasDraw = commandCounts.drawCount() > 0;
   }
   if (useTileBuffer && hasClear) {
     hasDraw = true;
