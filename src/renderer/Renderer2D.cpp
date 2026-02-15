@@ -389,6 +389,16 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   }
   auto const& palettePmCache = palettePm.table;
   bool paletteFull = batch.palette.size >= 256;
+  bool circleOnly =
+    prepared.commandTypeCounts.circle > 0 &&
+    prepared.commandTypeCounts.rect == 0 &&
+    prepared.commandTypeCounts.text == 0;
+  bool circleArraysPacked =
+    circleOnly &&
+    batch.circles.centerX.size() == batch.circles.centerY.size() &&
+    batch.circles.centerX.size() == batch.circles.radius.size() &&
+    batch.circles.centerX.size() == batch.circles.colorIndex.size() &&
+    batch.circles.centerX.size() == prepared.commandTypeCounts.circle;
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -1074,11 +1084,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         }
         render_sdf_region(region.x0, region.y0, region.x1, region.y1);
       } else if (type == CommandType::Circle) {
-        if (idx >= batch.circles.centerX.size() ||
-            idx >= batch.circles.centerY.size() ||
-            idx >= batch.circles.radius.size() ||
-            idx >= batch.circles.colorIndex.size()) {
-          continue;
+        if (!circleArraysPacked) {
+          if (idx >= batch.circles.centerX.size() ||
+              idx >= batch.circles.centerY.size() ||
+              idx >= batch.circles.radius.size() ||
+              idx >= batch.circles.colorIndex.size()) {
+            continue;
+          }
         }
         int32_t cx = batch.circles.centerX[idx];
         int32_t cy = batch.circles.centerY[idx];
