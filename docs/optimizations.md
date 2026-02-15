@@ -295,6 +295,7 @@ Date: 2026-02-15
 | Tile size sweep (single-run) | Rejected | 96:210, 128:226, 160:215, 192:173, 224:191, 256:213 (128 best). |
 | Tile size sweep (10-run, 750k) | Rejected | 64:78.04, 96:77.89, 128:80.95, 160:76.00 (128 best). |
 | Uniform-opaque circle fast path (skip palette/alpha branches) | Rejected | 10-run mean 67.58 FPS vs 83.01 baseline (regression). |
+| Skip alpha store in dst-opaque blend | Rejected | 10-run mean 79.34 FPS vs 83.01 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
 
 ## Next Steps
