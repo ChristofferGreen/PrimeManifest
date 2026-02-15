@@ -251,6 +251,7 @@ Date: 2026-02-15
 | 2026-02-15 | 5 | 300 | 208.45 | 208.93 | 192.40 | 218.53 | 9.13 | `cc6326b` | Baseline after blend lookup cache, tileSize auto=128. |
 | 2026-02-15 | 10 | 300 | 218.44 | 221.62 | 198.38 | 231.78 | 11.75 | `ea71015` | Cached edge premultiplied colors (2x5-run batches). |
 | 2026-02-15 | 10 | 300 | 197.36 | 198.39 | 183.52 | 207.55 | 7.69 | `76abd6d` | High-quality baseline run set (current head). |
+| 2026-02-15 | 20 | 300 | 184.04 | 185.46 | 169.19 | 207.51 | 9.39 | `b8b149a` | 20-run baseline (current head). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
