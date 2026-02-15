@@ -399,6 +399,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     batch.circles.centerX.size() == batch.circles.radius.size() &&
     batch.circles.centerX.size() == batch.circles.colorIndex.size() &&
     batch.circles.centerX.size() == prepared.commandTypeCounts.circle;
+  auto const* circleCenterX = batch.circles.centerX.data();
+  auto const* circleCenterY = batch.circles.centerY.data();
+  auto const* circleRadius = batch.circles.radius.data();
+  auto const* circleColorIndex = batch.circles.colorIndex.data();
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -1092,15 +1096,15 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             continue;
           }
         }
-        int32_t cx = batch.circles.centerX[idx];
-        int32_t cy = batch.circles.centerY[idx];
-        int32_t r = static_cast<int32_t>(batch.circles.radius[idx]);
+        int32_t cx = circleCenterX[idx];
+        int32_t cy = circleCenterY[idx];
+        int32_t r = static_cast<int32_t>(circleRadius[idx]);
         int32_t x0 = cx - r;
         int32_t y0 = cy - r;
         int32_t x1 = cx + r + 1;
         int32_t y1 = cy + r + 1;
 
-        uint8_t paletteIndex = batch.circles.colorIndex[idx];
+        uint8_t paletteIndex = circleColorIndex[idx];
         if (!paletteFull && paletteIndex >= batch.palette.size) continue;
         size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
         uint32_t const* pmTable = palettePmCache.data() + pmOffset;
