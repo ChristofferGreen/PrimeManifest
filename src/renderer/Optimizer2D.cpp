@@ -1326,13 +1326,9 @@ auto optimize_batch(RenderTarget target,
         profile->optRenderTilesNs += to_ns(renderTilesStart, std::chrono::steady_clock::now());
       }
       if (useCircleRefs && renderTiles.size() > 1) {
-        // Sorting tiles by load helps when there are few tiles, but for large
-        // tile sets the sort cost outweighs the minor ordering benefit.
-        if (renderTiles.size() <= 256) {
-          std::sort(renderTiles.begin(), renderTiles.end(), [&](uint32_t a, uint32_t b) {
-            return tileCounts[a] > tileCounts[b];
-          });
-        }
+        std::sort(renderTiles.begin(), renderTiles.end(), [&](uint32_t a, uint32_t b) {
+          return tileCounts[a] > tileCounts[b];
+        });
       }
     }
 
