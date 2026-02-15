@@ -261,6 +261,7 @@ Date: 2026-02-15
 | Change | Status | Evidence |
 | --- | --- | --- |
 | Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |
+| Circle-only tileRefs fast path (skip command dispatch) | Rejected | 20-run mean 200.05 FPS vs 239.84 current head (regression). |
 | Cache per-radius edge premultiplied colors (per palette) | Kept | Mean 218.44 FPS vs 208.45 baseline (~4.8% win). |
 | Pointer-increment mask row traversal for partial circles | Rejected | Mean ~197 FPS vs ~204 baseline (regression). |
 | Use `pmTable[255]` for circle color (skip palette load) | Rejected | Mean ~165 FPS (regression). |
