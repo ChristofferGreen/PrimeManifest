@@ -1109,10 +1109,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
         uint32_t const* pmTable = palettePmCache.data() + pmOffset;
         uint32_t color = batch.palette.colorRGBA8[paletteIndex];
-        uint8_t cR = paletteR[paletteIndex];
-        uint8_t cG = paletteG[paletteIndex];
-        uint8_t cB = paletteB[paletteIndex];
-        uint8_t cA = paletteA[paletteIndex];
+        uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
+        uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
+        uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
+        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
         if (cA == 0) continue;
 
         if (r <= MaxCircleMaskRadius) {
