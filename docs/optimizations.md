@@ -272,6 +272,8 @@ Date: 2026-02-15
 | Sort renderTiles by per-tile circle counts (`chunkSize=1`) | Kept | 20-run mean 244.25 FPS vs 243.23 current head (~0.4% win). |
 | Circle-majority tile size 256 for >=500k circles | Rejected | 20-run mean 67.90 FPS vs 83.01 baseline (regression, high variance). |
 | Reorder `blend_px` (dst-opaque first) | Rejected | 20-run mean 80.08 FPS vs 83.01 baseline (regression). |
+| Dst-opaque edge blend specialization (use premultiplied `pm` directly) | Rejected | 10-run mean 75.53 FPS vs 83.01 baseline (regression). |
+| Precompute edge byte offsets + opaque span counts (fullInside circles) | Rejected | 10-run mean 82.04 FPS vs 83.01 baseline (regression/noise). |
 | Relax tile pool atomics (`fetch_add` relaxed) | Rejected | 20-run mean 75.58 FPS vs 83.01 baseline (regression). |
 | Reuse circle binning buffers (packed thread counts) | Rejected | 20-run mean 73.67 FPS vs 83.01 baseline (regression). |
 | Circle-only tileRefs fast path (skip command dispatch) | Rejected | 20-run mean 200.05 FPS vs 239.84 current head (regression). |
