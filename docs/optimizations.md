@@ -269,6 +269,7 @@ Date: 2026-02-15
 | Hoist clipped-row `row_ptr` base (opaque circles) | Rejected | 20-run mean 219.03 FPS vs 243.23 current head (regression). |
 | Use `edgeCov` directly as src alpha in opaque edge blends | Rejected | 20-run mean 237.35 FPS vs 243.23 current head (regression). |
 | Sort renderTiles by per-tile circle counts (`chunkSize=1`) | Kept | 20-run mean 244.25 FPS vs 243.23 current head (~0.4% win). |
+| Circle-majority tile size 256 for >=500k circles | Rejected | 20-run mean 67.90 FPS vs 83.01 baseline (regression, high variance). |
 | Circle-only tileRefs fast path (skip command dispatch) | Rejected | 20-run mean 200.05 FPS vs 239.84 current head (regression). |
 | Palette-opaque circle path (reuse cached palette channels, skip alpha checks) | Rejected | 20-run mean 205.66 FPS vs 239.84 current head (regression). |
 | Pack circle edge X/cov into 16-bit entries | Rejected | 20-run mean 207.30 FPS vs 239.84 current head (regression, high variance). |
