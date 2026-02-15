@@ -963,6 +963,10 @@ int main(int argc, char** argv) {
       }
       batch.revision += 1;
     }
+    if (cfg.useTileStream && dynamicCircles) {
+      batch.tileStream.clear();
+      build_tile_stream(batch, cfg.width, cfg.height);
+    }
     if (renderOnly) {
       RenderOptimized(target, batch, optimized);
       continue;
