@@ -862,6 +862,7 @@ int main(int argc, char** argv) {
   add_clear(batch, clearIndex);
 
   std::vector<int16_t> circleBaseY;
+  std::vector<uint32_t> circleEdgeIndices;
   int32_t circleMoveStep = 0;
 
   if (cfg.rectCount > 0) {
@@ -904,6 +905,7 @@ int main(int argc, char** argv) {
     batch.circles.radius.reserve(cfg.circleCount);
     batch.circles.colorIndex.reserve(cfg.circleCount);
     circleBaseY.reserve(cfg.circleCount);
+    circleEdgeIndices.reserve(cfg.circleCount / 8);
     circleMoveStep = std::max<int32_t>(2, static_cast<int32_t>(cfg.circleRadius) / 2);
     if (cfg.reuseOptimized) {
       uint32_t pad = static_cast<uint32_t>(circleMoveStep) * 2u;
@@ -918,6 +920,15 @@ int main(int argc, char** argv) {
       uint8_t colorIndex = static_cast<uint8_t>(idxDist(rng));
       add_circle(batch, cx, cy, cfg.circleRadius, colorIndex);
       circleBaseY.push_back(static_cast<int16_t>(cy));
+    }
+    int32_t maxY = static_cast<int32_t>(cfg.height);
+    int32_t safeMin = circleMoveStep;
+    int32_t safeMax = maxY - circleMoveStep;
+    for (uint32_t i = 0; i < circleBaseY.size(); ++i) {
+      int32_t base = static_cast<int32_t>(circleBaseY[i]);
+      if (base < safeMin || base > safeMax) {
+        circleEdgeIndices.push_back(i);
+      }
     }
   }
 
@@ -963,12 +974,18 @@ int main(int argc, char** argv) {
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
     if (dynamicCircles) {
       int32_t delta = (frame & 1u) == 0u ? -circleMoveStep : circleMoveStep;
-      int32_t maxY = static_cast<int32_t>(cfg.height);
       for (size_t i = 0; i < circleBaseY.size(); ++i) {
         int32_t y = static_cast<int32_t>(circleBaseY[i]) + delta;
-        if (y < 0) y = 0;
-        if (y > maxY) y = maxY;
         batch.circles.centerY[i] = static_cast<int16_t>(y);
+      }
+      if (!circleEdgeIndices.empty()) {
+        int32_t maxY = static_cast<int32_t>(cfg.height);
+        for (uint32_t idx : circleEdgeIndices) {
+          int32_t y = static_cast<int32_t>(circleBaseY[idx]) + delta;
+          if (y < 0) y = 0;
+          if (y > maxY) y = maxY;
+          batch.circles.centerY[idx] = static_cast<int16_t>(y);
+        }
       }
       if (!batch.reuseOptimized) {
         batch.revision += 1;
