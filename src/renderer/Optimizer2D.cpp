@@ -851,34 +851,8 @@ auto optimize_batch(RenderTarget target,
     } else {
       auto binStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       tileCounts.assign(tileCount, 0);
-      if (useCircleRefs) {
-        size_t circleCount = std::min({batch.circles.centerX.size(),
-                                       batch.circles.centerY.size(),
-                                       batch.circles.radius.size(),
-                                       batch.circles.colorIndex.size()});
-        auto const* centerX = batch.circles.centerX.data();
-        auto const* centerY = batch.circles.centerY.data();
-        auto const* radius = batch.circles.radius.data();
-        int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
-        int32_t maxX = static_cast<int32_t>(target.width);
-        int32_t maxY = static_cast<int32_t>(target.height);
-        auto bin_circles = [&](auto&& compute_span) {
-          for (uint32_t i = 0; i < circleCount; ++i) {
-            uint32_t tx0 = 0;
-            uint32_t ty0 = 0;
-            uint32_t tx1 = 0;
-            uint32_t ty1 = 0;
-            if (!compute_span(i, tx0, ty0, tx1, ty1)) continue;
-            if (tx0 == tx1 && ty0 == ty1) {
-              tileCounts[ty0 * grid.tilesX + tx0] += 1;
-            } else {
-              for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-                for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-                  tileCounts[ty * grid.tilesX + tx] += 1;
-                }
-              }
-            }
-          }
+      cmdTiles.resize(batch.commands.size());
+      cmdActive.assign(batch.commands.size(), 0);
 
           tileOffsets.assign(tileCount + 1, 0);
           for (uint32_t i = 0; i < tileCount; ++i) {
