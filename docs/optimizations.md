@@ -248,6 +248,7 @@ Date: 2026-02-15
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-15 | 20 | 300 | 239.84 | 241.70 | 229.71 | 245.01 | 4.35 | `9115b50` | Clipped opaque small-circle path uses edge list + span fill. |
 | 2026-02-15 | 5 | 300 | 208.45 | 208.93 | 192.40 | 218.53 | 9.13 | `cc6326b` | Baseline after blend lookup cache, tileSize auto=128. |
 | 2026-02-15 | 10 | 300 | 218.44 | 221.62 | 198.38 | 231.78 | 11.75 | `ea71015` | Cached edge premultiplied colors (2x5-run batches). |
 | 2026-02-15 | 10 | 300 | 197.36 | 198.39 | 183.52 | 207.55 | 7.69 | `76abd6d` | High-quality baseline run set (current head). |
@@ -259,6 +260,7 @@ Date: 2026-02-15
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
 | --- | --- | --- |
+| Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |
 | Cache per-radius edge premultiplied colors (per palette) | Kept | Mean 218.44 FPS vs 208.45 baseline (~4.8% win). |
 | Pointer-increment mask row traversal for partial circles | Rejected | Mean ~197 FPS vs ~204 baseline (regression). |
 | Use `pmTable[255]` for circle color (skip palette load) | Rejected | Mean ~165 FPS (regression). |
