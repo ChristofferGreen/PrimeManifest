@@ -328,20 +328,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   };
   struct PalettePmCache {
     std::vector<uint32_t> table;
-    std::vector<uint8_t> colorR;
-    std::vector<uint8_t> colorG;
-    std::vector<uint8_t> colorB;
-    std::vector<uint8_t> colorA;
-    uint64_t hash = 0;
-    uint16_t size = 0;
-  };
-  struct CircleEdgePmCache {
-    std::array<std::vector<uint32_t>, MaxCircleMaskRadius + 1> edgePm{};
     uint64_t hash = 0;
     uint16_t size = 0;
   };
   static PalettePmCache palettePm;
-  static CircleEdgePmCache circleEdgePm;
   size_t paletteSize = static_cast<size_t>(batch.palette.size);
   uint64_t paletteHash = 1469598103934665603ull;
   for (size_t i = 0; i < paletteSize; ++i) {
@@ -352,20 +342,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     palettePm.size = batch.palette.size;
     palettePm.hash = paletteHash;
     palettePm.table.assign(paletteSize * 256u, 0u);
-    palettePm.colorR.assign(paletteSize, 0u);
-    palettePm.colorG.assign(paletteSize, 0u);
-    palettePm.colorB.assign(paletteSize, 0u);
-    palettePm.colorA.assign(paletteSize, 0u);
     for (size_t i = 0; i < paletteSize; ++i) {
       uint32_t color = batch.palette.colorRGBA8[i];
       uint8_t r = static_cast<uint8_t>(color & 0xFFu);
       uint8_t g = static_cast<uint8_t>((color >> 8) & 0xFFu);
       uint8_t b = static_cast<uint8_t>((color >> 16) & 0xFFu);
       uint8_t a = static_cast<uint8_t>((color >> 24) & 0xFFu);
-      palettePm.colorR[i] = r;
-      palettePm.colorG[i] = g;
-      palettePm.colorB[i] = b;
-      palettePm.colorA[i] = a;
       size_t base = i * 256u;
       if (a == 0) {
         continue;
@@ -388,71 +370,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       }
     }
   }
-  if (circleEdgePm.size != batch.palette.size || circleEdgePm.hash != paletteHash) {
-    circleEdgePm.size = batch.palette.size;
-    circleEdgePm.hash = paletteHash;
-    auto const& maskCache = circle_mask_cache();
-    for (int32_t r = 0; r <= MaxCircleMaskRadius; ++r) {
-      auto const& edgeCov = maskCache.edgeCov[static_cast<size_t>(r)];
-      size_t edgeCount = edgeCov.size();
-      circleEdgePm.edgePm[static_cast<size_t>(r)].assign(paletteSize * edgeCount, 0u);
-      if (edgeCount == 0) continue;
-      auto* dst = circleEdgePm.edgePm[static_cast<size_t>(r)].data();
-      for (size_t p = 0; p < paletteSize; ++p) {
-        size_t base = p * edgeCount;
-        size_t pmBase = p * 256u;
-        for (size_t i = 0; i < edgeCount; ++i) {
-          uint8_t cov = edgeCov[i];
-          dst[base + i] = palettePm.table[pmBase + cov];
-        }
-      }
-    }
-  }
   auto const& palettePmCache = palettePm.table;
-  auto const& paletteR = palettePm.colorR;
-  auto const& paletteG = palettePm.colorG;
-  auto const& paletteB = palettePm.colorB;
-  auto const& paletteA = palettePm.colorA;
-  bool paletteFull = batch.palette.size >= 256;
-  bool circleOnly =
-    prepared.commandTypeCounts.circle > 0 &&
-    prepared.commandTypeCounts.rect == 0 &&
-    prepared.commandTypeCounts.text == 0;
-  bool circleArraysPacked =
-    circleOnly &&
-    batch.circles.centerX.size() == batch.circles.centerY.size() &&
-    batch.circles.centerX.size() == batch.circles.radius.size() &&
-    batch.circles.centerX.size() == batch.circles.colorIndex.size() &&
-    batch.circles.centerX.size() == prepared.commandTypeCounts.circle;
-  auto const* circleCenterX = batch.circles.centerX.data();
-  auto const* circleCenterY = batch.circles.centerY.data();
-  auto const* circleRadius = batch.circles.radius.data();
-  auto const* circleColorIndex = batch.circles.colorIndex.data();
-  CircleMaskCache const* circleCache = nullptr;
-  if (prepared.commandTypeCounts.circle > 0) {
-    circleCache = &circle_mask_cache();
-  }
-  bool circleRadiusUniform = prepared.circleRadiusUniform;
-  int32_t uniformCircleRadius = static_cast<int32_t>(prepared.circleRadiusValue);
-  bool uniformCircleMask = circleRadiusUniform && uniformCircleRadius <= MaxCircleMaskRadius;
-  auto const* uniformMask = static_cast<std::vector<uint8_t> const*>(nullptr);
-  auto const* uniformEdgeOffset = static_cast<std::vector<uint16_t> const*>(nullptr);
-  auto const* uniformEdgeX = static_cast<std::vector<uint8_t> const*>(nullptr);
-  auto const* uniformEdgeCov = static_cast<std::vector<uint8_t> const*>(nullptr);
-  auto const* uniformOpaqueStart = static_cast<std::vector<int8_t> const*>(nullptr);
-  auto const* uniformOpaqueEnd = static_cast<std::vector<int8_t> const*>(nullptr);
-  int32_t uniformMaskSize = 0;
-  if (uniformCircleMask && circleCache) {
-    size_t rIndex = static_cast<size_t>(uniformCircleRadius);
-    auto const& cache = *circleCache;
-    uniformMask = &cache.masks[rIndex];
-    uniformEdgeOffset = &cache.edgeOffset[rIndex];
-    uniformEdgeX = &cache.edgeX[rIndex];
-    uniformEdgeCov = &cache.edgeCov[rIndex];
-    uniformOpaqueStart = &cache.opaqueStart[rIndex];
-    uniformOpaqueEnd = &cache.opaqueEnd[rIndex];
-    uniformMaskSize = uniformCircleRadius * 2 + 1;
-  }
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -1167,7 +1085,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
         }
 
-        uint32_t color = fetch_color(batch.circles.colorIndex, idx, 0u);
+        uint8_t paletteIndex = batch.circles.colorIndex[idx];
+        if (paletteIndex >= batch.palette.size) continue;
+        size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
+        uint32_t color = batch.palette.colorRGBA8[paletteIndex];
         uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
         uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
         uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
@@ -1210,15 +1131,20 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
               uint8_t coverage = mask[static_cast<size_t>(maskRow + x)];
               if (coverage == 0) continue;
-              uint8_t srcA = apply_coverage(cA, coverage);
+              uint32_t pm = palettePmCache[pmOffset + coverage];
+              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
               if (srcA == 255) {
-                write_px(row, cR, cG, cB);
+                write_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
               } else {
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, srcA);
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
               }
             }
 
@@ -1238,12 +1164,14 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 }
               }
             } else if (opaqueEnd >= opaqueStart) {
+              uint32_t pmOpaque = palettePmCache[pmOffset + 255u];
+              uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
               for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
-                uint8_t srcA = cA;
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, srcA);
+                blend_px(row,
+                         static_cast<uint8_t>(pmOpaque & 0xFFu),
+                         static_cast<uint8_t>((pmOpaque >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pmOpaque >> 16) & 0xFFu),
+                         srcA);
               }
             }
 
@@ -1251,15 +1179,20 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             for (int32_t x = std::max(opaqueEnd + 1, 0); x < rowWidth; ++x, row += 4) {
               uint8_t coverage = mask[static_cast<size_t>(maskRow + x)];
               if (coverage == 0) continue;
-              uint8_t srcA = apply_coverage(cA, coverage);
+              uint32_t pm = palettePmCache[pmOffset + coverage];
+              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
               if (srcA == 255) {
-                write_px(row, cR, cG, cB);
+                write_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
               } else {
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, srcA);
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
               }
             }
           }
@@ -1280,15 +1213,20 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 coverage = coverage_from_dist(dist);
                 if (coverage == 0) continue;
               }
-              uint8_t srcA = apply_coverage(cA, coverage);
+              uint32_t pm = palettePmCache[pmOffset + coverage];
+              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
               if (srcA == 0) continue;
               if (srcA == 255) {
-                write_px(row, cR, cG, cB);
+                write_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
               } else {
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, srcA);
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
               }
             }
           }

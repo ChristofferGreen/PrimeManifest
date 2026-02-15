@@ -884,187 +884,25 @@ auto optimize_batch(RenderTarget target,
           for (uint32_t i = 0; i < tileCount; ++i) {
             tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
           }
-          tileRefs.assign(tileOffsets.back(), 0);
-          tileFill.assign(tileCount, 0);
-          for (uint32_t i = 0; i < circleCount; ++i) {
-            uint32_t tx0 = 0;
-            uint32_t ty0 = 0;
-            uint32_t tx1 = 0;
-            uint32_t ty1 = 0;
-            if (!compute_span(i, tx0, ty0, tx1, ty1)) continue;
-            if (tx0 == tx1 && ty0 == ty1) {
-              uint32_t tileIdx = ty0 * grid.tilesX + tx0;
-              uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-              tileRefs[offset] = i;
+          uint8_t flags = cmd.index < batch.rects.flags.size() ? batch.rects.flags[cmd.index] : 0u;
+          uint8_t opacity = cmd.index < batch.rects.opacity.size() ? batch.rects.opacity[cmd.index] : 255u;
+          if (opacity == 0) continue;
+          bool hasGradient = (flags & RectFlagGradient) != 0u;
+          if (hasGradient && cmd.index >= batch.rects.gradientColor1Index.size()) continue;
+          if (!paletteOpaque) {
+            uint32_t color = fetch_color(batch.rects.colorIndex, cmd.index, 0u);
+            uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+            if (opacity != 255u) {
+              uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
+              if ((combinedA + 127u) / 255u == 0u) continue;
+            }
+            if (!hasGradient) {
+              if (cA == 0) continue;
             } else {
-              for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-                for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-                  uint32_t tileIdx = ty * grid.tilesX + tx;
-                  uint32_t offset = tileOffsets[tileIdx] + tileFill[tileIdx]++;
-                  tileRefs[offset] = i;
-                }
-              }
+              uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, cmd.index, 0u);
+              uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
+              if (cA == 0 && gA == 0) continue;
             }
-          }
-        };
-        auto bin_circles_parallel = [&](auto&& compute_span) {
-          constexpr size_t kParallelCircleThreshold = 50000u;
-          auto& pool = binning_pool();
-          uint32_t threadCount =
-            std::min<uint32_t>(std::max(1u, pool.thread_count()),
-                               static_cast<uint32_t>(circleCount));
-          if (threadCount <= 1 || circleCount < kParallelCircleThreshold) {
-            bin_circles(compute_span);
-            return;
-          }
-          uint32_t chunk = static_cast<uint32_t>((circleCount + threadCount - 1u) / threadCount);
-          std::vector<std::vector<uint32_t>> localCounts;
-          localCounts.assign(threadCount, std::vector<uint32_t>(tileCount, 0));
-          auto count_worker = [&](uint32_t t) {
-            size_t start = static_cast<size_t>(t) * chunk;
-            size_t end = std::min(start + chunk, circleCount);
-            auto& counts = localCounts[t];
-            for (size_t i = start; i < end; ++i) {
-              uint32_t tx0 = 0;
-              uint32_t ty0 = 0;
-              uint32_t tx1 = 0;
-              uint32_t ty1 = 0;
-              if (!compute_span(static_cast<uint32_t>(i), tx0, ty0, tx1, ty1)) continue;
-              if (tx0 == tx1 && ty0 == ty1) {
-                counts[ty0 * grid.tilesX + tx0] += 1;
-              } else {
-                for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-                  for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-                    counts[ty * grid.tilesX + tx] += 1;
-                  }
-                }
-              }
-            }
-          };
-          pool.run([&](uint32_t t) {
-            if (t >= threadCount) return;
-            count_worker(t);
-          });
-
-          tileCounts.assign(tileCount, 0);
-          for (uint32_t tile = 0; tile < tileCount; ++tile) {
-            uint32_t sum = 0;
-            for (uint32_t t = 0; t < threadCount; ++t) {
-              sum += localCounts[t][tile];
-            }
-            tileCounts[tile] = sum;
-          }
-
-          tileOffsets.assign(tileCount + 1, 0);
-          for (uint32_t i = 0; i < tileCount; ++i) {
-            tileOffsets[i + 1] = tileOffsets[i] + tileCounts[i];
-          }
-          tileRefs.assign(tileOffsets.back(), 0);
-
-          std::vector<std::vector<uint32_t>> threadOffsets;
-          threadOffsets.assign(threadCount, std::vector<uint32_t>(tileCount, 0));
-          for (uint32_t tile = 0; tile < tileCount; ++tile) {
-            uint32_t offset = tileOffsets[tile];
-            for (uint32_t t = 0; t < threadCount; ++t) {
-              threadOffsets[t][tile] = offset;
-              offset += localCounts[t][tile];
-            }
-          }
-
-          auto fill_worker = [&](uint32_t t) {
-            size_t start = static_cast<size_t>(t) * chunk;
-            size_t end = std::min(start + chunk, circleCount);
-            auto& offsets = threadOffsets[t];
-            for (size_t i = start; i < end; ++i) {
-              uint32_t tx0 = 0;
-              uint32_t ty0 = 0;
-              uint32_t tx1 = 0;
-              uint32_t ty1 = 0;
-              if (!compute_span(static_cast<uint32_t>(i), tx0, ty0, tx1, ty1)) continue;
-              if (tx0 == tx1 && ty0 == ty1) {
-                uint32_t tileIdx = ty0 * grid.tilesX + tx0;
-                tileRefs[offsets[tileIdx]++] = static_cast<uint32_t>(i);
-              } else {
-                for (uint32_t ty = ty0; ty <= ty1; ++ty) {
-                  for (uint32_t tx = tx0; tx <= tx1; ++tx) {
-                    uint32_t tileIdx = ty * grid.tilesX + tx;
-                    tileRefs[offsets[tileIdx]++] = static_cast<uint32_t>(i);
-                  }
-                }
-              }
-            }
-          };
-          pool.run([&](uint32_t t) {
-            if (t >= threadCount) return;
-            fill_worker(t);
-          });
-        };
-
-        if (paletteOpaque) {
-          if (circleRadiusUniform) {
-            int32_t r = static_cast<int32_t>(circleRadiusValue);
-            int32_t rPad = r + circlePad;
-            int32_t rPadPlus = rPad + 1;
-            if (tilePow2) {
-              auto compute_span = [&](uint32_t i,
-                                      uint32_t& tx0,
-                                      uint32_t& ty0,
-                                      uint32_t& tx1,
-                                      uint32_t& ty1) -> bool {
-                int32_t cx = centerX[i];
-                int32_t cy = centerY[i];
-                int32_t x0 = cx - rPad;
-                int32_t y0 = cy - rPad;
-                int32_t x1 = cx + rPadPlus;
-                int32_t y1 = cy + rPadPlus;
-                if (x1 <= 0 || y1 <= 0) return false;
-                if (x0 >= maxX || y0 >= maxY) return false;
-                int32_t clampedX0 = std::max<int32_t>(x0, 0);
-                int32_t clampedY0 = std::max<int32_t>(y0, 0);
-                int32_t clampedX1 = std::min<int32_t>(x1, maxX);
-                int32_t clampedY1 = std::min<int32_t>(y1, maxY);
-                if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return false;
-
-                tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
-                ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
-                tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
-                ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
-                return true;
-              };
-              bin_circles_parallel(compute_span);
-            } else {
-              auto compute_span = [&](uint32_t i,
-                                      uint32_t& tx0,
-                                      uint32_t& ty0,
-                                      uint32_t& tx1,
-                                      uint32_t& ty1) -> bool {
-                int32_t cx = centerX[i];
-                int32_t cy = centerY[i];
-                int32_t x0 = cx - rPad;
-                int32_t y0 = cy - rPad;
-                int32_t x1 = cx + rPadPlus;
-                int32_t y1 = cy + rPadPlus;
-                if (x1 <= 0 || y1 <= 0) return false;
-                if (x0 >= maxX || y0 >= maxY) return false;
-                int32_t clampedX0 = std::max<int32_t>(x0, 0);
-                int32_t clampedY0 = std::max<int32_t>(y0, 0);
-                int32_t clampedX1 = std::min<int32_t>(x1, maxX);
-                int32_t clampedY1 = std::min<int32_t>(y1, maxY);
-                if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return false;
-
-                tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
-                ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
-                tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
-                ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
-                return true;
-              };
-              bin_circles_parallel(compute_span);
-            }
-          } else {
-            if (cmd.index >= batch.rects.gradientColor1Index.size()) continue;
-            uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, cmd.index, 0u);
-            uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
-            if (cA == 0 && gA == 0) continue;
           }
           x0 = batch.rects.x0[cmd.index];
           y0 = batch.rects.y0[cmd.index];
@@ -1088,9 +926,11 @@ auto optimize_batch(RenderTarget target,
               cmd.index >= batch.circles.colorIndex.size()) {
             continue;
           }
-          uint32_t color = fetch_color(batch.circles.colorIndex, cmd.index, 0u);
-          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-          if (cA == 0) continue;
+          if (!paletteOpaque) {
+            uint32_t color = fetch_color(batch.circles.colorIndex, cmd.index, 0u);
+            uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+            if (cA == 0) continue;
+          }
           int32_t cx = batch.circles.centerX[cmd.index];
           int32_t cy = batch.circles.centerY[cmd.index];
           int32_t r = static_cast<int32_t>(batch.circles.radius[cmd.index]);
@@ -1109,13 +949,15 @@ auto optimize_batch(RenderTarget target,
           }
           uint8_t opacity = batch.text.opacity[cmd.index];
           if (opacity == 0) continue;
-          uint32_t color = fetch_color(batch.text.colorIndex, cmd.index, 0u);
-          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-          if (opacity != 255u) {
-            uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
-            if ((combinedA + 127u) / 255u == 0u) continue;
-          } else if (cA == 0) {
-            continue;
+          if (!paletteOpaque) {
+            uint32_t color = fetch_color(batch.text.colorIndex, cmd.index, 0u);
+            uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+            if (opacity != 255u) {
+              uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
+              if ((combinedA + 127u) / 255u == 0u) continue;
+            } else if (cA == 0) {
+              continue;
+            }
           }
           x0 = batch.text.x[cmd.index];
           y0 = batch.text.y[cmd.index];
