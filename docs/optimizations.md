@@ -268,6 +268,7 @@ Date: 2026-02-15
 | Small-count 32-bit fill helper (replace `std::fill` for short spans) | Rejected | Mean ~184 FPS (regression). |
 | Precompute full mask premultiplied table (per palette, per radius) | Rejected | Means ~206–220 FPS (no clear win). |
 | SIMD (NEON) blend for masked head/tail spans (dst-opaque path) | Rejected | 40-run A/B: SIMD mean 200.95 vs baseline mean 201.68 (regression). |
+| Arithmetic `mul_div_255` (avoid lookup table) in dst-opaque blend | Rejected | 10-run A/B: 206.14 mean vs 205.51 baseline (no clear win). |
 | Tile-stream default when circles are majority | Rejected | ~95 FPS (large regression). |
 | Tile size sweep (single-run) | Rejected | 96:210, 128:226, 160:215, 192:173, 224:191, 256:213 (128 best). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
