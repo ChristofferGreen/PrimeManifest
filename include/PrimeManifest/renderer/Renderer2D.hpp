@@ -38,28 +38,6 @@ enum class CommandType : uint8_t {
   Circle = 5,
 };
 
-struct CommandTypeCounts {
-  uint32_t clearCount = 0;
-  uint32_t rect = 0;
-  uint32_t circle = 0;
-  uint32_t text = 0;
-  uint32_t debugTiles = 0;
-  uint32_t clearPattern = 0;
-
-  void reset() {
-    clearCount = 0;
-    rect = 0;
-    circle = 0;
-    text = 0;
-    debugTiles = 0;
-    clearPattern = 0;
-  }
-
-  uint32_t drawCount() const {
-    return rect + circle + text;
-  }
-};
-
 struct RenderCommand {
   CommandType type{CommandType::Rect};
   uint32_t index = 0;

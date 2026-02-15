@@ -1171,490 +1171,75 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         }
         render_sdf_region(region.x0, region.y0, region.x1, region.y1);
       } else if (type == CommandType::Circle) {
-        if (!circleArraysPacked) {
-          if (idx >= batch.circles.centerX.size() ||
-              idx >= batch.circles.centerY.size() ||
-              idx >= batch.circles.radius.size() ||
-              idx >= batch.circles.colorIndex.size()) {
-            continue;
-          }
+        if (idx >= batch.circles.centerX.size() ||
+            idx >= batch.circles.centerY.size() ||
+            idx >= batch.circles.radius.size() ||
+            idx >= batch.circles.colorIndex.size()) {
+          continue;
         }
-        int32_t cx = circleCenterX[idx];
-        int32_t cy = circleCenterY[idx];
-        int32_t r = circleRadiusUniform ? uniformCircleRadius : static_cast<int32_t>(circleRadius[idx]);
+        int32_t cx = batch.circles.centerX[idx];
+        int32_t cy = batch.circles.centerY[idx];
+        int32_t r = static_cast<int32_t>(batch.circles.radius[idx]);
         int32_t x0 = cx - r;
         int32_t y0 = cy - r;
         int32_t x1 = cx + r + 1;
         int32_t y1 = cy + r + 1;
 
-        uint8_t paletteIndex = circleColorIndex[idx];
-        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
-        size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
-        uint32_t const* pmTable = palettePmCache.data() + pmOffset;
-        uint8_t cR = paletteR[paletteIndex];
-        uint8_t cG = paletteG[paletteIndex];
-        uint8_t cB = paletteB[paletteIndex];
-        uint8_t cA = paletteA[paletteIndex];
-        if (cA == 0) continue;
-        uint32_t color = 0u;
-        if (!frontToBack) {
-          color = batch.palette.colorRGBA8[paletteIndex];
+        int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+        int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+        int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+        int32_t drawY1 = hasLocalBounds ? localY1 : y1;
+
+        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+        if (rx1 <= rx0 || ry1 <= ry0) continue;
+        if (profile) {
+          ++tileRects;
+          tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
         }
 
-        if (r <= MaxCircleMaskRadius) {
-          auto const& cache = *circleCache;
-          auto const& mask = uniformCircleMask ? *uniformMask : cache.masks[static_cast<size_t>(r)];
-          auto const& edgeOffset = uniformCircleMask ? *uniformEdgeOffset : cache.edgeOffset[static_cast<size_t>(r)];
-          auto const& edgeX = uniformCircleMask ? *uniformEdgeX : cache.edgeX[static_cast<size_t>(r)];
-          auto const& edgeCov = uniformCircleMask ? *uniformEdgeCov : cache.edgeCov[static_cast<size_t>(r)];
-          auto const& rowOpaqueStart =
-            uniformCircleMask ? *uniformOpaqueStart : cache.opaqueStart[static_cast<size_t>(r)];
-          auto const& rowOpaqueEnd =
-            uniformCircleMask ? *uniformOpaqueEnd : cache.opaqueEnd[static_cast<size_t>(r)];
-          int32_t size = uniformCircleMask ? uniformMaskSize : (r * 2 + 1);
-          int32_t maskX0 = cx - r;
-          int32_t maskY0 = cy - r;
-          bool fullInside = maskX0 >= static_cast<int32_t>(tx0) &&
-                            maskY0 >= static_cast<int32_t>(ty0) &&
-                            (maskX0 + size) <= static_cast<int32_t>(tx1) &&
-                            (maskY0 + size) <= static_cast<int32_t>(ty1);
-          if (fullInside && cA == 255) {
-            if (profile) {
-              ++tileRects;
-              tileRectPixels += static_cast<uint64_t>(size) * static_cast<uint64_t>(size);
-            }
-            size_t edgeCount = edgeX.size();
-            auto const* edgePmRow =
-              edgeCount == 0
-                ? nullptr
-                : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
-            uint8_t* rowBase = row_ptr(maskY0) + static_cast<size_t>(4u * maskX0);
-            if (frontToBack) {
-              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
-                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-                if (opaqueEnd >= opaqueStart) {
-                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
-                  int32_t count = opaqueEnd - opaqueStart + 1;
-                  for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                    write_px(opaqueRow, cR, cG, cB);
-                  }
-                }
-                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
-                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-                if (edgePmRow) {
-                  for (uint16_t i = start; i < end; ++i) {
-                    uint8_t x = edgeX[i];
-                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                    uint8_t dstA = dst[3];
-                    if (dstA >= OpaqueAlphaCutoff) continue;
-                    uint32_t pm = edgePmRow[i];
-                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                    uint8_t invA = static_cast<uint8_t>(255u - dstA);
-                    auto const& mulRow = kMulTable[invA];
-                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) +
-                                                  mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
-                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
-                                                  mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
-                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
-                                                  mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
-                    uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
-                    dst[3] = newA;
-                    if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
-                      ++opaqueCount;
-                    }
-                  }
-                } else {
-                  for (uint16_t i = start; i < end; ++i) {
-                    uint8_t x = edgeX[i];
-                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                    uint8_t dstA = dst[3];
-                    if (dstA >= OpaqueAlphaCutoff) continue;
-                    uint32_t pm = pmTable[edgeCov[i]];
-                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                    uint8_t invA = static_cast<uint8_t>(255u - dstA);
-                    auto const& mulRow = kMulTable[invA];
-                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) +
-                                                  mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
-                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
-                                                  mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
-                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
-                                                  mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
-                    uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
-                    dst[3] = newA;
-                    if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
-                      ++opaqueCount;
-                    }
-                  }
-                }
-              }
-            } else if (dstOpaque) {
-              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
-                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-                if (opaqueEnd >= opaqueStart) {
-                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
-                  int32_t count = opaqueEnd - opaqueStart + 1;
-                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                    std::fill(row32, row32 + count, color);
-                  } else {
-                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                      opaqueRow[0] = cR;
-                      opaqueRow[1] = cG;
-                      opaqueRow[2] = cB;
-                      opaqueRow[3] = 255u;
-                    }
-                  }
-                }
-                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
-                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-                if (edgePmRow) {
-                  for (uint16_t i = start; i < end; ++i) {
-                    uint8_t x = edgeX[i];
-                    uint32_t pm = edgePmRow[i];
-                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                    uint8_t invA = static_cast<uint8_t>(255u - cov);
-                    auto const& mulRow = kMulTable[invA];
-                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
-                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
-                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
-                    dst[3] = 255u;
-                  }
-                } else {
-                  for (uint16_t i = start; i < end; ++i) {
-                    uint8_t x = edgeX[i];
-                    uint32_t pm = pmTable[edgeCov[i]];
-                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                    uint8_t invA = static_cast<uint8_t>(255u - cov);
-                    auto const& mulRow = kMulTable[invA];
-                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
-                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
-                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
-                    dst[3] = 255u;
-                  }
-                }
-              }
+        uint32_t color = fetch_color(batch.circles.colorIndex, idx, 0u);
+        uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
+        uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
+        uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
+        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+        if (cA == 0) continue;
+
+        float fcX = static_cast<float>(cx);
+        float fcY = static_cast<float>(cy);
+        float fr = static_cast<float>(r);
+        float innerR = std::max(0.0f, fr - 0.5f);
+        float outerR = fr + 0.5f;
+        float innerR2 = innerR * innerR;
+        float outerR2 = outerR * outerR;
+
+        for (int32_t y = ry0; y < ry1; ++y) {
+          float dy = (static_cast<float>(y) + 0.5f) - fcY;
+          float dy2 = dy * dy;
+          uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
+          for (int32_t x = rx0; x < rx1; ++x, row += 4) {
+            float dx = (static_cast<float>(x) + 0.5f) - fcX;
+            float dist2 = dx * dx + dy2;
+            if (dist2 >= outerR2) continue;
+            uint8_t coverage = 0;
+            if (dist2 <= innerR2) {
+              coverage = 255;
             } else {
-              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
-                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-                if (opaqueEnd >= opaqueStart) {
-                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
-                  int32_t count = opaqueEnd - opaqueStart + 1;
-                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                    std::fill(row32, row32 + count, color);
-                  } else {
-                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                      opaqueRow[0] = cR;
-                      opaqueRow[1] = cG;
-                      opaqueRow[2] = cB;
-                      opaqueRow[3] = 255u;
-                    }
-                  }
-                }
-                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
-                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-                if (edgePmRow) {
-                  for (uint16_t i = start; i < end; ++i) {
-                    uint8_t x = edgeX[i];
-                    uint32_t pm = edgePmRow[i];
-                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                    blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
-                                        static_cast<uint8_t>(pm & 0xFFu),
-                                        static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                                        static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                                        cov);
-                  }
-                } else {
-                  for (uint16_t i = start; i < end; ++i) {
-                    uint8_t x = edgeX[i];
-                    uint32_t pm = pmTable[edgeCov[i]];
-                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                    blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
-                                        static_cast<uint8_t>(pm & 0xFFu),
-                                        static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                                        static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                                        cov);
-                  }
-                }
-              }
+              float dist = std::sqrt(dist2) - fr;
+              coverage = coverage_from_dist(dist);
+              if (coverage == 0) continue;
             }
-            continue;
-          }
-
-          int32_t drawX0 = hasLocalBounds ? localX0 : x0;
-          int32_t drawY0 = hasLocalBounds ? localY0 : y0;
-          int32_t drawX1 = hasLocalBounds ? localX1 : x1;
-          int32_t drawY1 = hasLocalBounds ? localY1 : y1;
-
-          int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
-          int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
-          int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
-          int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
-          if (rx1 <= rx0 || ry1 <= ry0) continue;
-          if (profile) {
-            ++tileRects;
-            tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
-          }
-          if (cA == 255) {
-            size_t edgeCount = edgeX.size();
-            auto const* edgePmRow =
-              edgeCount == 0
-                ? nullptr
-                : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
-            int32_t localY = ry0 - maskY0;
-            if (frontToBack) {
-              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
-                uint8_t* rowBase = row_ptr(y);
-                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
-                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
-                for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
-                  int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
-                  if (x < rx0 || x >= rx1) continue;
-                  uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                  uint8_t dstA = dst[3];
-                  if (dstA >= OpaqueAlphaCutoff) continue;
-                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
-                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                  uint8_t invA = static_cast<uint8_t>(255u - dstA);
-                  auto const& mulRow = kMulTable[invA];
-                  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) + mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
-                  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
-                                                mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
-                  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
-                                                mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
-                  uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
-                  dst[3] = newA;
-                  if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
-                    ++opaqueCount;
-                  }
-                }
-
-                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-                if (rowEnd >= rowStart) {
-                  int32_t spanStart = maskX0 + rowStart;
-                  int32_t spanEnd = maskX0 + rowEnd;
-                  if (spanEnd >= rx0 && spanStart < rx1) {
-                    spanStart = std::max(spanStart, rx0);
-                    spanEnd = std::min(spanEnd, rx1 - 1);
-                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
-                    int32_t count = spanEnd - spanStart + 1;
-                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                      write_px(opaqueRow, cR, cG, cB);
-                    }
-                  }
-                }
-              }
-            } else if (dstOpaque) {
-              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
-                uint8_t* rowBase = row_ptr(y);
-                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
-                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
-                for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
-                  int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
-                  if (x < rx0 || x >= rx1) continue;
-                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
-                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                  uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                  uint8_t invA = static_cast<uint8_t>(255u - cov);
-                  auto const& mulRow = kMulTable[invA];
-                  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
-                  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
-                  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
-                  dst[3] = 255u;
-                }
-
-                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-                if (rowEnd >= rowStart) {
-                  int32_t spanStart = maskX0 + rowStart;
-                  int32_t spanEnd = maskX0 + rowEnd;
-                  if (spanEnd >= rx0 && spanStart < rx1) {
-                    spanStart = std::max(spanStart, rx0);
-                    spanEnd = std::min(spanEnd, rx1 - 1);
-                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
-                    int32_t count = spanEnd - spanStart + 1;
-                    if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                      auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                      std::fill(row32, row32 + count, color);
-                    } else {
-                      for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                        opaqueRow[0] = cR;
-                        opaqueRow[1] = cG;
-                        opaqueRow[2] = cB;
-                        opaqueRow[3] = 255u;
-                      }
-                    }
-                  }
-                }
-              }
+            uint8_t srcA = apply_coverage(cA, coverage);
+            if (srcA == 0) continue;
+            if (srcA == 255) {
+              write_px(row, cR, cG, cB);
             } else {
-              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
-                uint8_t* rowBase = row_ptr(y);
-                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
-                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
-                for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
-                  int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
-                  if (x < rx0 || x >= rx1) continue;
-                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
-                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                  blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
-                                      static_cast<uint8_t>(pm & 0xFFu),
-                                      static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                                      static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                                      cov);
-                }
-
-                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-                if (rowEnd >= rowStart) {
-                  int32_t spanStart = maskX0 + rowStart;
-                  int32_t spanEnd = maskX0 + rowEnd;
-                  if (spanEnd >= rx0 && spanStart < rx1) {
-                    spanStart = std::max(spanStart, rx0);
-                    spanEnd = std::min(spanEnd, rx1 - 1);
-                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
-                    int32_t count = spanEnd - spanStart + 1;
-                    if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                      auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                      std::fill(row32, row32 + count, color);
-                    } else {
-                      for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                        opaqueRow[0] = cR;
-                        opaqueRow[1] = cG;
-                        opaqueRow[2] = cB;
-                        opaqueRow[3] = 255u;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            int32_t offsetX = rx0 - maskX0;
-            int32_t rowWidth = rx1 - rx0;
-            auto const* maskBase = mask.data();
-            int32_t localY = ry0 - maskY0;
-            auto const* maskRowPtr = maskBase + localY * size + offsetX;
-            auto const* rowOpaqueStartPtr = rowOpaqueStart.data() + localY;
-            auto const* rowOpaqueEndPtr = rowOpaqueEnd.data() + localY;
-            uint8_t* rowBase = row_ptr(ry0) + static_cast<size_t>(4u * rx0);
-            for (int32_t y = ry0; y < ry1; ++y,
-                 ++localY,
-                 maskRowPtr += size,
-                 ++rowOpaqueStartPtr,
-                 ++rowOpaqueEndPtr,
-                 rowBase += surfaceStride) {
-              int32_t opaqueStart = static_cast<int32_t>(*rowOpaqueStartPtr) - offsetX;
-              int32_t opaqueEnd = static_cast<int32_t>(*rowOpaqueEndPtr) - offsetX;
-              if (opaqueEnd < 0 || opaqueStart >= rowWidth || opaqueStart > opaqueEnd) {
-                opaqueStart = rowWidth;
-                opaqueEnd = -1;
-              } else {
-                opaqueStart = std::max(opaqueStart, 0);
-                opaqueEnd = std::min(opaqueEnd, rowWidth - 1);
-              }
-
-              auto const* maskRow = maskRowPtr;
-              uint8_t* row = rowBase;
-              for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
-                uint8_t coverage = maskRow[x];
-                if (coverage == 0) continue;
-                uint32_t pm = pmTable[coverage];
-                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                if (srcA == 0) continue;
-                blend_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         srcA);
-              }
-              if (opaqueEnd >= opaqueStart) {
-                uint32_t pmOpaque = pmTable[255u];
-                uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
-                row = rowBase + static_cast<size_t>(4u * opaqueStart);
-                for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
-                  blend_px(row,
-                           static_cast<uint8_t>(pmOpaque & 0xFFu),
-                           static_cast<uint8_t>((pmOpaque >> 8) & 0xFFu),
-                           static_cast<uint8_t>((pmOpaque >> 16) & 0xFFu),
-                           srcA);
-                }
-              }
-              int32_t tailStart = std::max(opaqueEnd + 1, 0);
-              row = rowBase + static_cast<size_t>(4u * tailStart);
-              for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
-                uint8_t coverage = maskRow[x];
-                if (coverage == 0) continue;
-                uint32_t pm = pmTable[coverage];
-                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                if (srcA == 0) continue;
-                blend_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         srcA);
-              }
-            }
-          }
-        } else {
-          int32_t drawX0 = hasLocalBounds ? localX0 : x0;
-          int32_t drawY0 = hasLocalBounds ? localY0 : y0;
-          int32_t drawX1 = hasLocalBounds ? localX1 : x1;
-          int32_t drawY1 = hasLocalBounds ? localY1 : y1;
-
-          int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
-          int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
-          int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
-          int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
-          if (rx1 <= rx0 || ry1 <= ry0) continue;
-          if (profile) {
-            ++tileRects;
-            tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
-          }
-          float fcX = static_cast<float>(cx);
-          float fcY = static_cast<float>(cy);
-          float fr = static_cast<float>(r);
-          float innerR = std::max(0.0f, fr - 0.5f);
-          float outerR = fr + 0.5f;
-          float innerR2 = innerR * innerR;
-          float outerR2 = outerR * outerR;
-          for (int32_t y = ry0; y < ry1; ++y) {
-            float dy = (static_cast<float>(y) + 0.5f) - fcY;
-            float dy2 = dy * dy;
-            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
-            for (int32_t x = rx0; x < rx1; ++x, row += 4) {
-              float dx = (static_cast<float>(x) + 0.5f) - fcX;
-              float dist2 = dx * dx + dy2;
-              if (dist2 >= outerR2) continue;
-              uint8_t coverage = 0;
-              if (dist2 <= innerR2) {
-                coverage = 255;
-              } else {
-                float dist = std::sqrt(dist2) - fr;
-                coverage = coverage_from_dist(dist);
-                if (coverage == 0) continue;
-              }
-              uint32_t pm = pmTable[coverage];
-              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-              if (srcA == 0) continue;
-              if (srcA == 255) {
-                write_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
-              } else {
-                blend_px(row,
-                         static_cast<uint8_t>(pm & 0xFFu),
-                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                         srcA);
-              }
+              uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * srcA + 127u) / 255u);
+              uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * srcA + 127u) / 255u);
+              uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * srcA + 127u) / 255u);
+              blend_px(row, pmR, pmG, pmB, srcA);
             }
           }
         }

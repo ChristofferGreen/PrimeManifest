@@ -232,7 +232,6 @@ auto premerge_tile_stream(RenderBatch const& batch,
   }
 
   std::vector<CommandBounds> circleBounds(batch.circles.centerX.size());
-  int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
   for (uint32_t i = 0; i < batch.circles.centerX.size(); ++i) {
     CommandBounds b{};
     if (i >= batch.circles.centerY.size() ||
@@ -244,10 +243,10 @@ auto premerge_tile_stream(RenderBatch const& batch,
     int32_t cx = batch.circles.centerX[i];
     int32_t cy = batch.circles.centerY[i];
     int32_t r = static_cast<int32_t>(batch.circles.radius[i]);
-    b.x0 = cx - r - circlePad;
-    b.y0 = cy - r - circlePad;
-    b.x1 = cx + r + 1 + circlePad;
-    b.y1 = cy + r + 1 + circlePad;
+    b.x0 = cx - r;
+    b.y0 = cy - r;
+    b.x1 = cx + r + 1;
+    b.y1 = cy + r + 1;
     b.x0 = std::max(b.x0, 0);
     b.y0 = std::max(b.y0, 0);
     b.x1 = std::min(b.x1, static_cast<int32_t>(width));
@@ -683,7 +682,14 @@ auto optimize_batch(RenderTarget target,
   if (useTileStream) {
     hasDraw = !tileStream->commands.empty();
   } else {
-    hasDraw = commandCounts.drawCount() > 0;
+    for (auto const& cmd : batch.commands) {
+      if (cmd.type == CommandType::Rect ||
+          cmd.type == CommandType::Circle ||
+          cmd.type == CommandType::Text) {
+        hasDraw = true;
+        break;
+      }
+    }
   }
   if (useTileBuffer && hasClear) {
     hasDraw = true;
@@ -1059,40 +1065,77 @@ auto optimize_batch(RenderTarget target,
               bin_circles_parallel(compute_span);
             }
           } else {
-            auto compute_span = [&](uint32_t i,
-                                    uint32_t& tx0,
-                                    uint32_t& ty0,
-                                    uint32_t& tx1,
-                                    uint32_t& ty1) -> bool {
-              int32_t cx = centerX[i];
-              int32_t cy = centerY[i];
-              int32_t r = static_cast<int32_t>(radius[i]);
-              int32_t x0 = cx - r - circlePad;
-              int32_t y0 = cy - r - circlePad;
-              int32_t x1 = cx + r + 1 + circlePad;
-              int32_t y1 = cy + r + 1 + circlePad;
-              if (x1 <= 0 || y1 <= 0) return false;
-              if (x0 >= maxX || y0 >= maxY) return false;
-              int32_t clampedX0 = std::max<int32_t>(x0, 0);
-              int32_t clampedY0 = std::max<int32_t>(y0, 0);
-              int32_t clampedX1 = std::min<int32_t>(x1, maxX);
-              int32_t clampedY1 = std::min<int32_t>(y1, maxY);
-              if (clampedX1 <= clampedX0 || clampedY1 <= clampedY0) return false;
-
-              if (tilePow2) {
-                tx0 = static_cast<uint32_t>(clampedX0) >> tileShift;
-                ty0 = static_cast<uint32_t>(clampedY0) >> tileShift;
-                tx1 = static_cast<uint32_t>(clampedX1 - 1) >> tileShift;
-                ty1 = static_cast<uint32_t>(clampedY1 - 1) >> tileShift;
-              } else {
-                tx0 = static_cast<uint32_t>(clampedX0) / grid.tileSize;
-                ty0 = static_cast<uint32_t>(clampedY0) / grid.tileSize;
-                tx1 = static_cast<uint32_t>(clampedX1 - 1) / grid.tileSize;
-                ty1 = static_cast<uint32_t>(clampedY1 - 1) / grid.tileSize;
-              }
-              return true;
-            };
-            bin_circles_parallel(compute_span);
+            if (cmd.index >= batch.rects.gradientColor1Index.size()) continue;
+            uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, cmd.index, 0u);
+            uint8_t gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
+            if (cA == 0 && gA == 0) continue;
+          }
+          x0 = batch.rects.x0[cmd.index];
+          y0 = batch.rects.y0[cmd.index];
+          x1 = batch.rects.x1[cmd.index];
+          y1 = batch.rects.y1[cmd.index];
+          if ((flags & RectFlagClip) != 0u &&
+              cmd.index < batch.rects.clipX0.size() &&
+              cmd.index < batch.rects.clipY0.size() &&
+              cmd.index < batch.rects.clipX1.size() &&
+              cmd.index < batch.rects.clipY1.size()) {
+            x0 = std::max(x0, static_cast<int32_t>(batch.rects.clipX0[cmd.index]));
+            y0 = std::max(y0, static_cast<int32_t>(batch.rects.clipY0[cmd.index]));
+            x1 = std::min(x1, static_cast<int32_t>(batch.rects.clipX1[cmd.index]));
+            y1 = std::min(y1, static_cast<int32_t>(batch.rects.clipY1[cmd.index]));
+            if (x1 <= x0 || y1 <= y0) continue;
+          }
+        } else if (cmd.type == CommandType::Circle) {
+          if (cmd.index >= batch.circles.centerX.size() ||
+              cmd.index >= batch.circles.centerY.size() ||
+              cmd.index >= batch.circles.radius.size() ||
+              cmd.index >= batch.circles.colorIndex.size()) {
+            continue;
+          }
+          uint32_t color = fetch_color(batch.circles.colorIndex, cmd.index, 0u);
+          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+          if (cA == 0) continue;
+          int32_t cx = batch.circles.centerX[cmd.index];
+          int32_t cy = batch.circles.centerY[cmd.index];
+          int32_t r = static_cast<int32_t>(batch.circles.radius[cmd.index]);
+          x0 = cx - r;
+          y0 = cy - r;
+          x1 = cx + r + 1;
+          y1 = cy + r + 1;
+        } else if (cmd.type == CommandType::Text) {
+          if (cmd.index >= batch.text.x.size() ||
+              cmd.index >= batch.text.y.size() ||
+              cmd.index >= batch.text.width.size() ||
+              cmd.index >= batch.text.height.size() ||
+              cmd.index >= batch.text.colorIndex.size() ||
+              cmd.index >= batch.text.opacity.size()) {
+            continue;
+          }
+          uint8_t opacity = batch.text.opacity[cmd.index];
+          if (opacity == 0) continue;
+          uint32_t color = fetch_color(batch.text.colorIndex, cmd.index, 0u);
+          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+          if (opacity != 255u) {
+            uint16_t combinedA = static_cast<uint16_t>(cA) * static_cast<uint16_t>(opacity);
+            if ((combinedA + 127u) / 255u == 0u) continue;
+          } else if (cA == 0) {
+            continue;
+          }
+          x0 = batch.text.x[cmd.index];
+          y0 = batch.text.y[cmd.index];
+          x1 = x0 + batch.text.width[cmd.index];
+          y1 = y0 + batch.text.height[cmd.index];
+          uint8_t flags = cmd.index < batch.text.flags.size() ? batch.text.flags[cmd.index] : 0u;
+          if ((flags & TextFlagClip) != 0u &&
+              cmd.index < batch.text.clipX0.size() &&
+              cmd.index < batch.text.clipY0.size() &&
+              cmd.index < batch.text.clipX1.size() &&
+              cmd.index < batch.text.clipY1.size()) {
+            x0 = std::max(x0, static_cast<int32_t>(batch.text.clipX0[cmd.index]));
+            y0 = std::max(y0, static_cast<int32_t>(batch.text.clipY0[cmd.index]));
+            x1 = std::min(x1, static_cast<int32_t>(batch.text.clipX1[cmd.index]));
+            y1 = std::min(y1, static_cast<int32_t>(batch.text.clipY1[cmd.index]));
+            if (x1 <= x0 || y1 <= y0) continue;
           }
         } else {
           if (circleRadiusUniform) {

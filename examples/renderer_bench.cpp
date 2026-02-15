@@ -87,14 +87,13 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.width = 1920;
       cfg.height = 1080;
       cfg.rectCount = 0;
-      cfg.circleCount = 1000000;
+      cfg.circleCount = 250000;
       cfg.textCount = 0;
       cfg.frames = 300;
       cfg.tileSize = 32;
       cfg.rectRadius = 0;
       cfg.circleRadius = 4;
       cfg.enableText = false;
-      cfg.reuseOptimized = true;
     } else if (arg == "--no-text") {
       cfg.enableText = false;
     } else if (arg == "--debug-tiles") {
@@ -862,10 +861,6 @@ int main(int argc, char** argv) {
   uint8_t clearIndex = 192;
   add_clear(batch, clearIndex);
 
-  std::vector<int32_t> circleBaseY;
-  std::vector<uint32_t> circleEdgeIndices;
-  int32_t circleMoveStep = 0;
-
   if (cfg.rectCount > 0) {
     batch.rects.x0.reserve(cfg.rectCount);
     batch.rects.y0.reserve(cfg.rectCount);
@@ -905,31 +900,11 @@ int main(int argc, char** argv) {
     batch.circles.centerY.reserve(cfg.circleCount);
     batch.circles.radius.reserve(cfg.circleCount);
     batch.circles.colorIndex.reserve(cfg.circleCount);
-    circleBaseY.reserve(cfg.circleCount);
-    circleEdgeIndices.reserve(cfg.circleCount / 8);
-    circleMoveStep = std::max<int32_t>(2, static_cast<int32_t>(cfg.circleRadius) / 2);
-    if (cfg.reuseOptimized) {
-      uint32_t pad = static_cast<uint32_t>(circleMoveStep);
-      if (pad > std::numeric_limits<uint16_t>::max()) {
-        pad = std::numeric_limits<uint16_t>::max();
-      }
-      batch.circleBoundsPad = static_cast<uint16_t>(pad);
-    }
     for (uint32_t i = 0; i < cfg.circleCount; ++i) {
       int32_t cx = xDist(rng);
       int32_t cy = yDist(rng);
       uint8_t colorIndex = static_cast<uint8_t>(idxDist(rng));
       add_circle(batch, cx, cy, cfg.circleRadius, colorIndex);
-      circleBaseY.push_back(cy);
-    }
-    int32_t maxY = static_cast<int32_t>(cfg.height);
-    int32_t safeMin = circleMoveStep;
-    int32_t safeMax = maxY - circleMoveStep;
-    for (uint32_t i = 0; i < circleBaseY.size(); ++i) {
-      int32_t base = circleBaseY[i];
-      if (base < safeMin || base > safeMax) {
-        circleEdgeIndices.push_back(i);
-      }
     }
   }
 
