@@ -861,6 +861,8 @@ int main(int argc, char** argv) {
   uint8_t clearIndex = 192;
   add_clear(batch, clearIndex);
 
+  std::vector<int16_t> circleBaseY;
+
   if (cfg.rectCount > 0) {
     batch.rects.x0.reserve(cfg.rectCount);
     batch.rects.y0.reserve(cfg.rectCount);
@@ -900,11 +902,13 @@ int main(int argc, char** argv) {
     batch.circles.centerY.reserve(cfg.circleCount);
     batch.circles.radius.reserve(cfg.circleCount);
     batch.circles.colorIndex.reserve(cfg.circleCount);
+    circleBaseY.reserve(cfg.circleCount);
     for (uint32_t i = 0; i < cfg.circleCount; ++i) {
       int32_t cx = xDist(rng);
       int32_t cy = yDist(rng);
       uint8_t colorIndex = static_cast<uint8_t>(idxDist(rng));
       add_circle(batch, cx, cy, cfg.circleRadius, colorIndex);
+      circleBaseY.push_back(static_cast<int16_t>(cy));
     }
   }
 
@@ -949,68 +953,21 @@ int main(int argc, char** argv) {
   auto start = std::chrono::steady_clock::now();
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
     if (dynamicCircles) {
-      int32_t delta = (frame & 1u) == 0u ? -circleMoveStep : circleMoveStep;
-      auto* __restrict baseY = circleBaseY.data();
-      auto* __restrict dstY = batch.circles.centerY.data();
-      size_t count = circleBaseY.size();
-      size_t i = 0;
-#if defined(__ARM_NEON)
-      {
-        int32x4_t delta4 = vdupq_n_s32(delta);
-        for (; i + 8 <= count; i += 8) {
-          int32x4_t a0 = vld1q_s32(baseY + i);
-          int32x4_t a1 = vld1q_s32(baseY + i + 4);
-          int32x4_t s0 = vaddq_s32(a0, delta4);
-          int32x4_t s1 = vaddq_s32(a1, delta4);
-          int16x4_t n0 = vqmovn_s32(s0);
-          int16x4_t n1 = vqmovn_s32(s1);
-          int16x8_t out = vcombine_s16(n0, n1);
-          vst1q_s16(reinterpret_cast<int16_t*>(dstY + i), out);
-        }
+      int32_t delta = (frame & 1u) == 0u ? -1 : 1;
+      int32_t maxY = static_cast<int32_t>(cfg.height);
+      for (size_t i = 0; i < circleBaseY.size(); ++i) {
+        int32_t y = static_cast<int32_t>(circleBaseY[i]) + delta;
+        if (y < 0) y = 0;
+        if (y > maxY) y = maxY;
+        batch.circles.centerY[i] = static_cast<int16_t>(y);
       }
-#elif defined(__SSE2__)
-      {
-        __m128i delta4 = _mm_set1_epi32(delta);
-        for (; i + 8 <= count; i += 8) {
-          __m128i a0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(baseY + i));
-          __m128i a1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(baseY + i + 4));
-          __m128i s0 = _mm_add_epi32(a0, delta4);
-          __m128i s1 = _mm_add_epi32(a1, delta4);
-          __m128i packed = _mm_packs_epi32(s0, s1);
-          _mm_storeu_si128(reinterpret_cast<__m128i*>(dstY + i), packed);
-        }
-      }
-#endif
-#if defined(__clang__)
-#pragma clang loop vectorize(enable)
-#endif
-      for (; i < count; ++i) {
-        dstY[i] = static_cast<int16_t>(baseY[i] + delta);
-      }
-      if (!circleEdgeIndices.empty()) {
-        int32_t maxY = static_cast<int32_t>(cfg.height);
-        for (uint32_t idx : circleEdgeIndices) {
-          int32_t y = baseY[idx] + delta;
-          if (y < 0) y = 0;
-          if (y > maxY) y = maxY;
-          dstY[idx] = static_cast<int16_t>(y);
-        }
-      }
-      if (!batch.reuseOptimized) {
-        batch.revision += 1;
-      }
-    }
-    if (cfg.useTileStream && dynamicCircles) {
-      batch.tileStream.clear();
-      build_tile_stream(batch, cfg.width, cfg.height);
+      batch.revision += 1;
     }
     if (renderOnly) {
       RenderOptimized(target, batch, optimized);
       continue;
     }
-    if (!canReuseOptimized()) {
-      OptimizeRenderBatch(target, batch, optimized);
-    }
+    OptimizeRenderBatch(target, batch, optimized);
     RenderOptimized(target, batch, optimized);
   }
   auto end = std::chrono::steady_clock::now();
@@ -1023,11 +980,7 @@ int main(int argc, char** argv) {
             << " Circles: " << cfg.circleCount
             << " Texts: " << (cfg.enableText ? cfg.textCount : 0)
             << " Frames: " << cfg.frames << "\n";
-  if (dynamicCircles) {
-    std::cout << "CircleMotion: Enabled (Step " << circleMoveStep << "px)\n";
-  } else {
-    std::cout << "CircleMotion: Disabled\n";
-  }
+  std::cout << "CircleMotion: " << (dynamicCircles ? "Enabled" : "Disabled") << "\n";
   uint32_t reportedTileSize = optimized.valid ? optimized.tileSize : cfg.tileSize;
   std::cout << "TileSize: " << reportedTileSize;
   if (optimized.valid && optimized.tileSize != cfg.tileSize) {

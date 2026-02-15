@@ -122,7 +122,7 @@ auto count_command_types(RenderBatch const& batch) -> CommandTypeCounts {
   for (auto const& cmd : batch.commands) {
     switch (cmd.type) {
       case CommandType::Clear:
-        counts.clearCount += 1;
+        counts.clear += 1;
         break;
       case CommandType::Rect:
         counts.rect += 1;
@@ -149,9 +149,8 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   if (!batch.autoTileStream) return tileSize;
   if (batch.tileStream.enabled) return tileSize;
   uint32_t drawCount = counts.drawCount();
-  bool circleMajority = drawCount > 0 && (counts.circle * 2 > drawCount);
-  if (tileSize == 32u && circleMajority) {
-    return 64u;
+  if (tileSize == 32u && drawCount > 0 && (counts.circle * 2 > drawCount)) {
+    return 16u;
   }
   return tileSize;
 }
@@ -1635,33 +1634,15 @@ auto optimize_batch(RenderTarget target,
 } // namespace
 
 void OptimizeRenderBatch(RenderTarget target, RenderBatch const& batch, OptimizedBatch& optimized) {
-  bool canReuse = batch.reuseOptimized &&
-                  optimized.valid &&
-                  optimized.sourceRevision == batch.revision &&
-                  optimized.targetWidth == target.width &&
-                  optimized.targetHeight == target.height;
-  if (canReuse) {
-    CommandTypeCounts const& cachedCounts = optimized.commandTypeCounts;
-    if (cachedCounts.drawCount() > 0 || batch.commands.empty()) {
-      uint32_t cachedTileSize = choose_tile_size(batch, cachedCounts);
-      if (optimized.tileSize == cachedTileSize) {
-        return;
-      }
-    }
-  }
-
-  CommandTypeCounts commandCounts{};
-  bool reuseCounts = batch.useCommandRevision &&
-                     optimized.valid &&
-                     optimized.commandCountsRevision == batch.commandRevision;
-  if (reuseCounts) {
-    commandCounts = optimized.commandTypeCounts;
-  } else {
-    commandCounts = count_command_types(batch);
-  }
+  CommandTypeCounts commandCounts = count_command_types(batch);
   uint32_t tileSizeOverride = choose_tile_size(batch, commandCounts);
-  if (canReuse && optimized.tileSize == tileSizeOverride) {
-    return;
+  if (batch.reuseOptimized && optimized.valid) {
+    if (optimized.sourceRevision == batch.revision &&
+        optimized.targetWidth == target.width &&
+        optimized.targetHeight == target.height &&
+        optimized.tileSize == tileSizeOverride) {
+      return;
+    }
   }
   optimize_batch(target, batch, optimized, tileSizeOverride, commandCounts);
   if (optimized.valid) {
