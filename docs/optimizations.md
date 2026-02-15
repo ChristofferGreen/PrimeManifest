@@ -264,6 +264,7 @@ Date: 2026-02-15
 | Circle-only tileRefs fast path (skip command dispatch) | Rejected | 20-run mean 200.05 FPS vs 239.84 current head (regression). |
 | Palette-opaque circle path (reuse cached palette channels, skip alpha checks) | Rejected | 20-run mean 205.66 FPS vs 239.84 current head (regression). |
 | Pack circle edge X/cov into 16-bit entries | Rejected | 20-run mean 207.30 FPS vs 239.84 current head (regression, high variance). |
+| Sort renderTiles by per-tile circle counts | Rejected | 20-run mean 235.79 FPS vs 239.84 current head (slight regression). |
 | Cache per-radius edge premultiplied colors (per palette) | Kept | Mean 218.44 FPS vs 208.45 baseline (~4.8% win). |
 | Pointer-increment mask row traversal for partial circles | Rejected | Mean ~197 FPS vs ~204 baseline (regression). |
 | Use `pmTable[255]` for circle color (skip palette load) | Rejected | Mean ~165 FPS (regression). |
