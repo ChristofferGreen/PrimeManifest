@@ -304,7 +304,7 @@ struct TilePool {
     for (;;) {
       uint32_t idx = nextWork.fetch_add(chunkSize);
       if (idx >= count) break;
-      uint32_t end = std::min(idx + chunkSize, count);
+      uint32_t end = std::min(idx + ChunkSize, count);
       if (localProfile) {
         auto start = std::chrono::steady_clock::now();
         for (uint32_t i = idx; i < end; ++i) {
