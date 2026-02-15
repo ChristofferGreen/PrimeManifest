@@ -294,17 +294,14 @@ struct TilePool {
 
   void do_work(uint32_t workerIndex) {
     uint32_t count = workCount;
-    uint32_t chunkSize = chunkSizeOverride;
-    if (chunkSize == 0) {
-      chunkSize = count / (static_cast<uint32_t>(workers.size()) * 4u);
-      if (chunkSize < 1u) chunkSize = 1u;
-      if (chunkSize > 8u) chunkSize = 8u;
-    }
+    uint32_t chunkSize = count / (static_cast<uint32_t>(workers.size()) * 4u);
+    if (chunkSize < 1u) chunkSize = 1u;
+    if (chunkSize > 8u) chunkSize = 8u;
     Profile* localProfile = profile;
     for (;;) {
       uint32_t idx = nextWork.fetch_add(chunkSize);
       if (idx >= count) break;
-      uint32_t end = std::min(idx + ChunkSize, count);
+      uint32_t end = std::min(idx + chunkSize, count);
       if (localProfile) {
         auto start = std::chrono::steady_clock::now();
         for (uint32_t i = idx; i < end; ++i) {
