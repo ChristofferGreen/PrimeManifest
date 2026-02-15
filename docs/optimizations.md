@@ -235,11 +235,11 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy (combined, reuse on) | 557.77 | Median of 3 runs, `--reuse-optimized`. |
 | 2026-02-14 | Heavy (render-only) | 457.07 | Median of 3 runs, `--optimized`. |
 
-## Circle Benchmark Protocol (1080p, 250k circles)
+## Circle Benchmark Protocol (1080p, 750k circles)
 Date: 2026-02-15
 
 - Benchmark: `./build-release/renderer_bench --circle-bench --profile`
-- Scene: 1920x1080, 250000 circles, radius 4, palette-indexed colors.
+- Scene: 1920x1080, 750000 circles, radius 4, palette-indexed colors.
 - Motion: circle Y positions alternate up/down each frame (step 2px). Random distribution is precomputed; no RNG in the loop.
 - Frames: 300 (default).
 - Tile size: requested 32, auto tile size picks 128 for circle-majority batches.
@@ -248,6 +248,7 @@ Date: 2026-02-15
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-15 | 20 | 300 | 83.01 | 83.31 | 78.81 | 84.33 | 1.21 | `a0c0eb3` | New baseline with 750k circles. |
 | 2026-02-15 | 20 | 300 | 244.25 | 245.59 | 216.49 | 250.62 | 6.95 | `3336535` | Circle-only tiles sorted by load + chunkSize=1. |
 | 2026-02-15 | 20 | 300 | 243.23 | 245.30 | 223.76 | 253.27 | 7.50 | `d67b42b` | Circle-only tiles use chunk size 1 in tile pool. |
 | 2026-02-15 | 20 | 300 | 239.84 | 241.70 | 229.71 | 245.01 | 4.35 | `9115b50` | Clipped opaque small-circle path uses edge list + span fill. |
