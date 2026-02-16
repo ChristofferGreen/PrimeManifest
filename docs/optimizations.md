@@ -324,6 +324,8 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 81.73 | 80.86 | 71.68 | 95.71 | 5.97 | Working tree | Uniform-radius binning: fast path for circles fully inside a tile. |
 | 2026-02-16 | 20 | 300 | 95.87 | 97.16 | 82.09 | 104.62 | 5.73 | Working tree | Baseline rerun (no reuse), A/B for packed binning buffers. |
 | 2026-02-16 | 0 | 300 | 0 | 0 | 0 | 0 | 0 | Working tree | Packed binning buffers (contiguous) crashed (SIGSEGV). |
+| 2026-02-16 | 20 | 300 | 103.36 | 104.08 | 90.92 | 109.54 | 4.74 | Working tree | Baseline rerun (no reuse), A/B for row-base tile indexing. |
+| 2026-02-16 | 20 | 300 | 96.79 | 98.16 | 89.91 | 102.71 | 3.55 | Working tree | Binning: cache row base for multi-tile spans. |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -377,6 +379,7 @@ Date: 2026-02-15
 | Parallel circle binning uses thread-local worker pool | Kept | 20-run mean 98.60 FPS vs 96.01 baseline (~2.7% win). |
 | Uniform-radius binning: fast path for circles fully inside a tile | Rejected | 20-run mean 81.73 FPS vs 98.69 baseline (regression). |
 | Packed binning buffers (contiguous, thread-local) | Rejected | Crashed in circle bench (SIGSEGV). |
+| Binning: cache row base for multi-tile spans | Rejected | 20-run mean 96.79 FPS vs 103.36 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
 | Hoist edge premultiplied lookup branch out of edge loops | Rejected | 20-run mean 70.28 FPS vs 73.76 baseline (regression). |
 | Hoist row pointer increment for clipped opaque circles | Rejected | 20-run mean 89.36 FPS vs 91.93 baseline (regression). |
