@@ -298,6 +298,13 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 118.04 | 121.31 | 88.06 | 129.07 | 12.20 | Working tree | Baseline rerun after in-bounds fast path revert. |
 | 2026-02-16 | 20 | 300 | 114.45 | 116.47 | 103.21 | 120.51 | 4.89 | Working tree | Circle-major auto tile size = 64. |
 | 2026-02-16 | 20 | 300 | 109.90 | 110.42 | 101.87 | 113.33 | 2.54 | Working tree | Circle-major auto tile size = 128 (baseline). |
+| 2026-02-16 | 20 | 300 | 122.42 | 123.27 | 88.17 | 134.32 | 11.10 | Working tree | Circle-major auto tile size = 96. |
+| 2026-02-16 | 20 | 300 | 117.82 | 119.11 | 105.03 | 122.35 | 3.80 | Working tree | Skip sorting circle tiles by load. |
+| 2026-02-16 | 20 | 300 | 114.86 | 115.50 | 105.16 | 119.12 | 3.48 | Working tree | Circle-only tile pool chunk size override = 2. |
+| 2026-02-16 | 20 | 300 | 115.93 | 115.59 | 109.76 | 120.22 | 3.67 | Working tree | Allow auto tile-stream when tile size = 64 (circle-major). |
+| 2026-02-16 | 20 | 300 | 115.82 | 116.46 | 109.45 | 119.15 | 2.60 | Working tree | Edge blend loop uses edgePmRow branch split. |
+| 2026-02-16 | 20 | 300 | 68.47 | 68.65 | 65.88 | 70.51 | 1.28 | Working tree | Edge blend skips opaque-count update. |
+| 2026-02-16 | 20 | 300 | 101.01 | 101.26 | 70.58 | 110.19 | 9.33 | Working tree | Cache per-circle colors in optimizer. |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -388,6 +395,13 @@ Date: 2026-02-15
 | Uniform-radius circle binning (use constant `r` in span computation) | Kept | 20-run mean 98.24 FPS vs 89.47 baseline (~9.8% win). |
 | Uniform-radius binning in-bounds fast path | Rejected | 20-run mean 104.60 FPS vs 118.04 baseline (regression). |
 | Circle-major auto tile size = 64 | Kept | 20-run mean 114.45 FPS vs 109.90 baseline (~4.1% win). |
+| Circle-major auto tile size = 96 | Rejected | 20-run mean 122.42 FPS vs 130.21 baseline (regression). |
+| Skip sorting circle tiles by load | Rejected | 20-run mean 117.82 FPS vs 130.21 baseline (regression). |
+| Circle-only tile pool chunk size override = 2 | Rejected | 20-run mean 114.86 FPS vs 130.21 baseline (regression). |
+| Allow auto tile-stream with tile size 64 | Rejected | 20-run mean 115.93 FPS vs 130.21 baseline (regression). |
+| Edge blend split (edgePmRow branch) | Rejected | 20-run mean 115.82 FPS vs 130.21 baseline (regression). |
+| Edge blend skip opaque-count update | Rejected | 20-run mean 68.47 FPS vs 130.21 baseline (large regression). |
+| Cache per-circle colors in optimizer | Rejected | 20-run mean 101.01 FPS vs 130.21 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
