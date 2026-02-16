@@ -396,6 +396,7 @@ Date: 2026-02-15
 | Hoist edge premultiplied lookup branch out of edge loops | Rejected | 20-run mean 70.28 FPS vs 73.76 baseline (regression). |
 | Hoist row pointer increment for clipped opaque circles | Rejected | 20-run mean 89.36 FPS vs 91.93 baseline (regression). |
 | Tile size 96 vs 128 (A/B 20-run, 750k) | Rejected | Tile 128 mean 79.03 FPS vs tile 96 mean 77.54 FPS (high variance). |
+| Circle-major auto tile size 96 (A/B vs 64) | Rejected | 10-run mean 94.30 FPS vs 97.30 baseline (regression). |
 | Skip render tile sorting for >=500k circles | Rejected | 20-run mean 83.26 FPS vs 87.43 baseline (regression). |
 | In-place circle Y update + reduced bounds pad | Rejected | 20-run mean 71.98 FPS vs 81.78 baseline (regression). |
 | Precompute palette/edge PM row pointers | Rejected | 20-run mean 76.66 FPS vs 89.81 baseline (regression). |
