@@ -413,6 +413,10 @@ Date: 2026-02-15
 | Edge blend loop specialized by front-to-back/dst-opaque | Kept | 20-run mean 141.97 FPS vs 135.87 baseline (~4.5% win). |
 | Front-to-back tile-first direct edge/opaque writes | Rejected | 20-run mean 137.28 FPS vs 141.97 baseline (regression). |
 | Front-to-back edge blend: skip PM lookup when dst already opaque | Kept | 20-run mean 143.74 FPS vs 141.97 baseline (~1.3% win). |
+| Front-to-back edge blend uses aligned packed 32-bit read/write | Rejected | 20-run mean 140.50 FPS vs 143.74 baseline (regression). |
+| Lazy `pmTable` pointer (only needed paths) | Rejected | 20-run mean 139.35 FPS vs 143.74 baseline (regression). |
+| Force tile size 32 (disable auto tile size) | Rejected | 10-run mean 136.67 FPS vs 143.74 baseline (regression). |
+| Disable front-to-back (no tile buffer) | Rejected | 10-run mean 86.53 FPS vs 143.74 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
