@@ -334,6 +334,7 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 98.24 | 99.27 | 92.39 | 100.98 | 2.39 | Working tree | Circle colors from cached palette arrays (avoid shifts). |
 | 2026-02-16 | 20 | 300 | 98.20 | 102.51 | 71.50 | 110.74 | 12.59 | Working tree | Baseline rerun (no reuse), A/B for contiguous binning buffers. |
 | 2026-02-16 | 20 | 300 | 89.71 | 90.29 | 75.61 | 97.08 | 6.44 | Working tree | Binning: use contiguous per-thread buffers instead of vector-of-vectors. |
+| 2026-02-16 | 20 | 300 | 107.59 | 107.86 | 90.49 | 118.48 | 7.11 | `c1de8b9` | Specialize circle edge blends by mode (front-to-back/dst-opaque). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -400,6 +401,7 @@ Date: 2026-02-15
 | Skip render tile sorting for >=500k circles | Rejected | 20-run mean 83.26 FPS vs 87.43 baseline (regression). |
 | Skip sorting circle tiles by load (A/B 10-run) | Rejected | Mean 81.70 FPS vs 97.30 baseline (regression). |
 | Circle-only tile pool chunk size = 2 (A/B 10-run) | Rejected | Mean 95.78 FPS vs 97.30 baseline (regression). |
+| Specialize circle edge blends by mode (front-to-back/dst-opaque) | Kept | 20-run mean 107.59 FPS vs 97.30 baseline (~10.6% win). |
 | In-place circle Y update + reduced bounds pad | Rejected | 20-run mean 71.98 FPS vs 81.78 baseline (regression). |
 | Precompute palette/edge PM row pointers | Rejected | 20-run mean 76.66 FPS vs 89.81 baseline (regression). |
 | Reduce circle bounds pad to move step | Kept | 20-run mean 78.19 FPS vs 65.53 baseline (~19.3% win) using `--reuse-optimized` (pad = step). |
