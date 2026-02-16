@@ -1843,7 +1843,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 }
                 a = apply_opacity(a, opacity);
                 if (a == 0) continue;
-                blend_rgba(row, r, g, b, a);
+                uint8_t pmR = mul_div_255(r, a);
+                uint8_t pmG = mul_div_255(g, a);
+                uint8_t pmB = mul_div_255(b, a);
+                blend_px(row, pmR, pmG, pmB, a);
               }
             }
             continue;
