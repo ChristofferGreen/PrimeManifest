@@ -279,6 +279,13 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 102.08 | 102.12 | 87.86 | 109.88 | 5.99 | Working tree | Tile buffer clear blend uses mul table lookups. |
 | 2026-02-16 | 20 | 300 | 101.13 | 100.54 | 90.94 | 108.29 | 5.46 | Working tree | Circle-only tile pool chunk size override = 2 (with tile buffer). |
 | 2026-02-16 | 20 | 300 | 108.89 | 110.84 | 99.78 | 116.22 | 5.63 | Working tree | Front-to-back opaque circle spans use `write_px` (updates opaque count). |
+| 2026-02-16 | 20 | 300 | 107.96 | 109.72 | 94.52 | 114.22 | 6.00 | Working tree | Front-to-back row loop break when tile opaque. |
+| 2026-02-16 | 20 | 300 | 108.39 | 109.69 | 97.79 | 115.50 | 6.04 | Working tree | Tile buffer clear fast path for opaque black. |
+| 2026-02-16 | 20 | 300 | 104.75 | 106.38 | 76.24 | 120.82 | 11.94 | Working tree | Circle-only tile pool chunk override disabled (default chunking). |
+| 2026-02-16 | 20 | 300 | 102.33 | 101.68 | 77.20 | 113.43 | 8.71 | Working tree | Front-to-back blend fast path when dst alpha is zero. |
+| 2026-02-16 | 20 | 300 | 108.40 | 107.39 | 70.71 | 127.46 | 12.87 | Working tree | Edge premultiplied table always used in opaque circle edge blend. |
+| 2026-02-16 | 20 | 300 | 104.27 | 108.14 | 83.01 | 114.69 | 9.55 | Working tree | Skip per-edge bounds checks when row fully inside X clip. |
+| 2026-02-16 | 20 | 300 | 118.46 | 120.16 | 91.85 | 130.24 | 10.06 | Working tree | Pointer-based circle Y update loop. |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -355,6 +362,13 @@ Date: 2026-02-15
 | Tile buffer clear blend uses mul table lookups | Rejected | 20-run mean 102.08 FPS vs 101.84 baseline (noise). |
 | Circle-only tile pool chunk size override = 2 (tile buffer) | Rejected | 20-run mean 101.13 FPS vs 101.84 baseline (regression). |
 | Front-to-back opaque circle spans use `write_px` | Kept | 20-run mean 108.89 FPS vs 101.84 baseline (~6.9% win). |
+| Front-to-back row loop break when tile opaque | Rejected | 20-run mean 107.96 FPS vs 108.89 baseline (regression). |
+| Tile buffer clear fast path for opaque black | Rejected | 20-run mean 108.39 FPS vs 108.89 baseline (regression). |
+| Circle-only tile pool chunk override disabled | Rejected | 20-run mean 104.75 FPS vs 108.89 baseline (regression, high variance). |
+| Front-to-back blend fast path when dst alpha is zero | Rejected | 20-run mean 102.33 FPS vs 108.89 baseline (regression). |
+| Edge premultiplied table always used in opaque circle edge blend | Rejected | 20-run mean 108.40 FPS vs 108.89 baseline (regression, high variance). |
+| Skip per-edge bounds checks when row fully inside X clip | Rejected | 20-run mean 104.27 FPS vs 108.89 baseline (regression). |
+| Pointer-based circle Y update loop | Kept | 20-run mean 118.46 FPS vs 108.89 baseline (~8.8% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

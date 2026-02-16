@@ -974,17 +974,19 @@ int main(int argc, char** argv) {
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
     if (dynamicCircles) {
       int32_t delta = (frame & 1u) == 0u ? -circleMoveStep : circleMoveStep;
-      for (size_t i = 0; i < circleBaseY.size(); ++i) {
-        int32_t y = static_cast<int32_t>(circleBaseY[i]) + delta;
-        batch.circles.centerY[i] = static_cast<int16_t>(y);
+      auto* baseY = circleBaseY.data();
+      auto* dstY = batch.circles.centerY.data();
+      size_t count = circleBaseY.size();
+      for (size_t i = 0; i < count; ++i) {
+        dstY[i] = static_cast<int16_t>(static_cast<int32_t>(baseY[i]) + delta);
       }
       if (!circleEdgeIndices.empty()) {
         int32_t maxY = static_cast<int32_t>(cfg.height);
         for (uint32_t idx : circleEdgeIndices) {
-          int32_t y = static_cast<int32_t>(circleBaseY[idx]) + delta;
+          int32_t y = static_cast<int32_t>(baseY[idx]) + delta;
           if (y < 0) y = 0;
           if (y > maxY) y = maxY;
-          batch.circles.centerY[idx] = static_cast<int16_t>(y);
+          dstY[idx] = static_cast<int16_t>(y);
         }
       }
       if (!batch.reuseOptimized) {
