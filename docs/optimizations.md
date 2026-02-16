@@ -248,7 +248,8 @@ Date: 2026-02-15
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-02-16 | 20 | 300 | 156.66 | 159.54 | 142.55 | 165.03 | 6.53 | Working tree | Circle-bench default enables reuse-optimized (padded bounds), skips optimize after first frame. |
+| 2026-02-16 | 20 | 300 | 160.36 | 161.48 | 144.52 | 165.05 | 4.78 | Working tree | Skip `OptimizeRenderBatch` call when reuse is valid (reuse-optimized default). |
+| 2026-02-16 | 20 | 300 | 156.66 | 159.54 | 142.55 | 165.03 | 6.53 | `5823005` | Circle-bench default enables reuse-optimized (padded bounds), skips optimize after first frame. |
 | 2026-02-15 | 20 | 300 | 83.01 | 83.31 | 78.81 | 84.33 | 1.21 | `a0c0eb3` | New baseline with 750k circles. |
 | 2026-02-15 | 20 | 300 | 244.25 | 245.59 | 216.49 | 250.62 | 6.95 | `3336535` | Circle-only tiles sorted by load + chunkSize=1. |
 | 2026-02-15 | 20 | 300 | 243.23 | 245.30 | 223.76 | 253.27 | 7.50 | `d67b42b` | Circle-only tiles use chunk size 1 in tile pool. |
@@ -341,6 +342,7 @@ Date: 2026-02-15
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
 | --- | --- | --- |
+| Skip `OptimizeRenderBatch` call when reuse is valid (bench) | Kept | 20-run mean 160.36 FPS vs 156.66 baseline (~2.4% win). |
 | Circle-bench defaults enable reuse-optimized (padded bounds) | Kept | 20-run mean 156.66 FPS (optimize skipped after first frame). |
 | Branchless circle motion update (precomputed edge clamp indices) | Kept | 20-run mean 92.59 FPS vs 80.64 baseline (~14.8% win) using `--reuse-optimized`. |
 | Reuse optimized batch for moving circles with padded bounds + cached command counts | Kept | 20-run mean 90.45 FPS vs 77.24 baseline (~17.1% win) using `--reuse-optimized` (auto tile-stream off). |

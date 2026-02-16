@@ -1005,7 +1005,9 @@ int main(int argc, char** argv) {
       RenderOptimized(target, batch, optimized);
       continue;
     }
-    OptimizeRenderBatch(target, batch, optimized);
+    if (!canReuseOptimized()) {
+      OptimizeRenderBatch(target, batch, optimized);
+    }
     RenderOptimized(target, batch, optimized);
   }
   auto end = std::chrono::steady_clock::now();
