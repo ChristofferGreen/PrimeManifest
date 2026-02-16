@@ -419,6 +419,7 @@ Date: 2026-02-15
 | Disable front-to-back (no tile buffer) | Rejected | 10-run mean 86.53 FPS vs 143.74 baseline (regression). |
 | Tile pool chunk cap = 4 | Rejected | 20-run mean 137.79 FPS vs 143.74 baseline (regression). |
 | Circle-only loop specialization (skip command dispatch) | Rejected | 20-run mean 143.79 FPS vs 143.74 baseline (no clear win; high variance). |
+| Tile pool worker threads = hardware-1 (main thread helps) | Kept | 20-run mean 144.69 FPS vs 142.77 baseline (~1.3% win, A/B). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
