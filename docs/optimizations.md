@@ -249,6 +249,7 @@ Date: 2026-02-16
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 172.16 | 173.11 | 163.78 | 174.08 | 2.50 | Working tree | Circle colors read from palette channel arrays; skip packed color load for front-to-back. |
 | 2026-02-16 | 20 | 300 | 169.96 | 170.69 | 161.68 | 172.96 | 2.93 | Working tree | Split edgePmRow branch in fullInside circle edge loops (1,000,000 circles). |
 | 2026-02-16 | 20 | 300 | 166.83 | 168.63 | 155.16 | 171.63 | 5.01 | Working tree | Skip circle tile load sort when renderTiles > 256 (1,000,000 circles). |
 | 2026-02-16 | 20 | 300 | 164.18 | 167.52 | 144.86 | 169.87 | 6.91 | Working tree | SIMD circle Y update loop (NEON/SSE), 1,000,000 circles. |
@@ -349,7 +350,7 @@ Date: 2026-02-16
 | Change | Status | Evidence |
 | --- | --- | --- |
 | Circle base Y stored as int32 in bench update loop | Kept | 20-run mean 170.02 FPS vs 160.36 baseline (~6.0% win). |
-| Palette opaque flag + cached palette arrays in circle render | Rejected | 20-run mean 153.66 FPS vs 170.02 baseline (regression). |
+| Palette opaque flag + cached palette arrays in circle render | Mixed | Full change regressed at 750k (153.66 vs 170.02). For 1M, using palette channel arrays and skipping packed color load in front-to-back is a win (172.16 vs 169.96). |
 | Clear tile buffer once per frame when all tiles rendered | Rejected | 20-run mean 151.86 FPS vs 170.02 baseline (regression). |
 | Unroll pragma on circle Y update loop | Rejected | 20-run mean 144.18 FPS vs 170.02 baseline (regression). |
 | Circle delta applied in renderer + edge-only centerY updates | Rejected | 20-run mean 146.57 FPS vs 170.02 baseline (regression). |
