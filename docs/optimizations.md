@@ -249,6 +249,7 @@ Date: 2026-02-16
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 170.36 | 171.76 | 159.32 | 173.56 | 3.24 | Root repo | 1M circles benchmark on root after merge. |
 | 2026-02-16 | 20 | 300 | 172.16 | 173.11 | 163.78 | 174.08 | 2.50 | Working tree | Circle colors read from palette channel arrays; skip packed color load for front-to-back. |
 | 2026-02-16 | 20 | 300 | 169.96 | 170.69 | 161.68 | 172.96 | 2.93 | Working tree | Split edgePmRow branch in fullInside circle edge loops (1,000,000 circles). |
 | 2026-02-16 | 20 | 300 | 166.83 | 168.63 | 155.16 | 171.63 | 5.01 | Working tree | Skip circle tile load sort when renderTiles > 256 (1,000,000 circles). |
