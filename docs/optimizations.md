@@ -320,6 +320,8 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 89.55 | 91.07 | 76.32 | 96.45 | 6.35 | Working tree | Cache circle binning buffers (thread-local localCounts/threadOffsets). |
 | 2026-02-16 | 20 | 300 | 96.01 | 95.50 | 83.97 | 108.14 | 6.29 | Working tree | Baseline rerun (no reuse), A/B for binning thread pool. |
 | 2026-02-16 | 20 | 300 | 98.60 | 99.39 | 90.18 | 101.50 | 2.88 | Working tree | Parallel circle binning uses thread-local worker pool. |
+| 2026-02-16 | 20 | 300 | 98.69 | 99.34 | 93.33 | 101.55 | 2.27 | Working tree | Baseline rerun (no reuse), A/B for in-tile fast path. |
+| 2026-02-16 | 20 | 300 | 81.73 | 80.86 | 71.68 | 95.71 | 5.97 | Working tree | Uniform-radius binning: fast path for circles fully inside a tile. |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -371,6 +373,7 @@ Date: 2026-02-15
 | Disable parallel circle binning (threshold 1,000,000) | Rejected | 20-run mean 66.04 FPS vs 97.32 baseline (regression). |
 | Cache circle binning buffers (thread-local localCounts/threadOffsets) | Rejected | 20-run mean 89.55 FPS vs 92.61 baseline (regression). |
 | Parallel circle binning uses thread-local worker pool | Kept | 20-run mean 98.60 FPS vs 96.01 baseline (~2.7% win). |
+| Uniform-radius binning: fast path for circles fully inside a tile | Rejected | 20-run mean 81.73 FPS vs 98.69 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
 | Hoist edge premultiplied lookup branch out of edge loops | Rejected | 20-run mean 70.28 FPS vs 73.76 baseline (regression). |
 | Hoist row pointer increment for clipped opaque circles | Rejected | 20-run mean 89.36 FPS vs 91.93 baseline (regression). |
