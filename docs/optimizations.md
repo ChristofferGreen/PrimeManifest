@@ -428,6 +428,7 @@ Date: 2026-02-15
 | Clipped opaque circle rows use stride increment | Rejected | 40-run mean 144.77 FPS vs 144.88 baseline (no clear win). |
 | Pre-optimize once for moving circles (render-only reuse) | Rejected | 20-run mean 126.45 FPS vs 144.88 baseline (regression). |
 | FullInside edge/opaque pointers (avoid row indexing) | Rejected | 20-run mean 88.02 FPS vs 144.88 baseline (regression). |
+| Packed edge (x+cov) array for circles | Rejected | 20-run mean 80.12 FPS vs 144.88 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
