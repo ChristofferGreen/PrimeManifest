@@ -235,19 +235,21 @@ Date: 2026-02-14
 | 2026-02-14 | Heavy (combined, reuse on) | 557.77 | Median of 3 runs, `--reuse-optimized`. |
 | 2026-02-14 | Heavy (render-only) | 457.07 | Median of 3 runs, `--optimized`. |
 
-## Circle Benchmark Protocol (1080p, 750k circles)
-Date: 2026-02-15
+## Circle Benchmark Protocol (1080p, 1,000,000 circles)
+Date: 2026-02-16
 
 - Benchmark: `./build-release/renderer_bench --circle-bench --profile`
-- Scene: 1920x1080, 750000 circles, radius 4, palette-indexed colors.
+- Scene: 1920x1080, 1000000 circles, radius 4, palette-indexed colors.
 - Motion: circle Y positions alternate up/down each frame (step 2px). Random distribution is precomputed; no RNG in the loop.
 - Frames: 300 (default).
 - Tile size: requested 32, auto tile size picks 64 for circle-majority batches.
 - Optimizer: reuse-optimized enabled by default; optimizer runs once, subsequent frames reuse the cached batch.
+- Note: Measurements dated 2026-02-15 used 750k circles.
 
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 160.79 | 163.23 | 129.45 | 172.38 | 9.59 | Working tree | New baseline with 1,000,000 circles. |
 | 2026-02-16 | 20 | 300 | 170.02 | 171.68 | 158.38 | 177.32 | 5.36 | Working tree | Store circle base Y as int32 in bench update loop. |
 | 2026-02-16 | 20 | 300 | 160.36 | 161.48 | 144.52 | 165.05 | 4.78 | Working tree | Skip `OptimizeRenderBatch` call when reuse is valid (reuse-optimized default). |
 | 2026-02-16 | 20 | 300 | 156.66 | 159.54 | 142.55 | 165.03 | 6.53 | `5823005` | Circle-bench default enables reuse-optimized (padded bounds), skips optimize after first frame. |
