@@ -1201,31 +1201,19 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 ? nullptr
                 : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
             uint8_t* rowBase = row_ptr(maskY0) + static_cast<size_t>(4u * maskX0);
-            for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
-              int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-              int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-              if (opaqueEnd >= opaqueStart) {
-                uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
-                int32_t count = opaqueEnd - opaqueStart + 1;
-                if (frontToBack) {
+            if (frontToBack) {
+              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
+                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (opaqueEnd >= opaqueStart) {
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                  int32_t count = opaqueEnd - opaqueStart + 1;
                   for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
                     write_px(opaqueRow, cR, cG, cB);
                   }
-                } else if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                  auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                  std::fill(row32, row32 + count, color);
-                } else {
-                  for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                    opaqueRow[0] = cR;
-                    opaqueRow[1] = cG;
-                    opaqueRow[2] = cB;
-                    opaqueRow[3] = 255u;
-                  }
                 }
-              }
-              uint16_t start = edgeOffset[static_cast<size_t>(localY)];
-              uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-              if (frontToBack) {
+                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
                 for (uint16_t i = start; i < end; ++i) {
                   uint8_t x = edgeX[i];
                   uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
@@ -1246,7 +1234,28 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                     ++opaqueCount;
                   }
                 }
-              } else if (dstOpaque) {
+              }
+            } else if (dstOpaque) {
+              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
+                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (opaqueEnd >= opaqueStart) {
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                  int32_t count = opaqueEnd - opaqueStart + 1;
+                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                    std::fill(row32, row32 + count, color);
+                  } else {
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      opaqueRow[0] = cR;
+                      opaqueRow[1] = cG;
+                      opaqueRow[2] = cB;
+                      opaqueRow[3] = 255u;
+                    }
+                  }
+                }
+                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
                 for (uint16_t i = start; i < end; ++i) {
                   uint8_t x = edgeX[i];
                   uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
@@ -1259,7 +1268,28 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                   dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
                   dst[3] = 255u;
                 }
-              } else {
+              }
+            } else {
+              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
+                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (opaqueEnd >= opaqueStart) {
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                  int32_t count = opaqueEnd - opaqueStart + 1;
+                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                    std::fill(row32, row32 + count, color);
+                  } else {
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      opaqueRow[0] = cR;
+                      opaqueRow[1] = cG;
+                      opaqueRow[2] = cB;
+                      opaqueRow[3] = 255u;
+                    }
+                  }
+                }
+                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
                 for (uint16_t i = start; i < end; ++i) {
                   uint8_t x = edgeX[i];
                   uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
@@ -1296,11 +1326,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 ? nullptr
                 : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
             int32_t localY = ry0 - maskY0;
-            for (int32_t y = ry0; y < ry1; ++y, ++localY) {
-              uint8_t* rowBase = row_ptr(y);
-              uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
-              uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
-              if (frontToBack) {
+            if (frontToBack) {
+              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+                uint8_t* rowBase = row_ptr(y);
+                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
                 for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
                   int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
                   if (x < rx0 || x >= rx1) continue;
@@ -1322,7 +1352,28 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                     ++opaqueCount;
                   }
                 }
-              } else if (dstOpaque) {
+
+                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (rowEnd >= rowStart) {
+                  int32_t spanStart = maskX0 + rowStart;
+                  int32_t spanEnd = maskX0 + rowEnd;
+                  if (spanEnd >= rx0 && spanStart < rx1) {
+                    spanStart = std::max(spanStart, rx0);
+                    spanEnd = std::min(spanEnd, rx1 - 1);
+                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                    int32_t count = spanEnd - spanStart + 1;
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      write_px(opaqueRow, cR, cG, cB);
+                    }
+                  }
+                }
+              }
+            } else if (dstOpaque) {
+              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+                uint8_t* rowBase = row_ptr(y);
+                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
                 for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
                   int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
                   if (x < rx0 || x >= rx1) continue;
@@ -1336,7 +1387,36 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                   dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
                   dst[3] = 255u;
                 }
-              } else {
+
+                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (rowEnd >= rowStart) {
+                  int32_t spanStart = maskX0 + rowStart;
+                  int32_t spanEnd = maskX0 + rowEnd;
+                  if (spanEnd >= rx0 && spanStart < rx1) {
+                    spanStart = std::max(spanStart, rx0);
+                    spanEnd = std::min(spanEnd, rx1 - 1);
+                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                    int32_t count = spanEnd - spanStart + 1;
+                    if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                      auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                      std::fill(row32, row32 + count, color);
+                    } else {
+                      for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                        opaqueRow[0] = cR;
+                        opaqueRow[1] = cG;
+                        opaqueRow[2] = cB;
+                        opaqueRow[3] = 255u;
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+                uint8_t* rowBase = row_ptr(y);
+                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
                 for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
                   int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
                   if (x < rx0 || x >= rx1) continue;
@@ -1348,31 +1428,27 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                                       static_cast<uint8_t>((pm >> 16) & 0xFFu),
                                       cov);
                 }
-              }
 
-              int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
-              int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
-              if (rowEnd >= rowStart) {
-                int32_t spanStart = maskX0 + rowStart;
-                int32_t spanEnd = maskX0 + rowEnd;
-                if (spanEnd >= rx0 && spanStart < rx1) {
-                  spanStart = std::max(spanStart, rx0);
-                  spanEnd = std::min(spanEnd, rx1 - 1);
-                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
-                  int32_t count = spanEnd - spanStart + 1;
-                  if (frontToBack) {
-                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                      write_px(opaqueRow, cR, cG, cB);
-                    }
-                  } else if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
-                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
-                    std::fill(row32, row32 + count, color);
-                  } else {
-                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
-                      opaqueRow[0] = cR;
-                      opaqueRow[1] = cG;
-                      opaqueRow[2] = cB;
-                      opaqueRow[3] = 255u;
+                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (rowEnd >= rowStart) {
+                  int32_t spanStart = maskX0 + rowStart;
+                  int32_t spanEnd = maskX0 + rowEnd;
+                  if (spanEnd >= rx0 && spanStart < rx1) {
+                    spanStart = std::max(spanStart, rx0);
+                    spanEnd = std::min(spanEnd, rx1 - 1);
+                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                    int32_t count = spanEnd - spanStart + 1;
+                    if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                      auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                      std::fill(row32, row32 + count, color);
+                    } else {
+                      for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                        opaqueRow[0] = cR;
+                        opaqueRow[1] = cG;
+                        opaqueRow[2] = cB;
+                        opaqueRow[3] = 255u;
+                      }
                     }
                   }
                 }
