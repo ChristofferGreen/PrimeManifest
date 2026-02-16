@@ -10,10 +10,17 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#elif defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 using namespace PrimeManifest;
 
@@ -22,10 +29,12 @@ struct BenchConfig {
   uint32_t width = 1280;
   uint32_t height = 720;
   uint32_t rectCount = 4000;
+  uint32_t circleCount = 0;
   uint32_t textCount = 200;
   uint32_t frames = 300;
   uint16_t tileSize = 32;
   uint16_t rectRadius = 4;
+  uint16_t circleRadius = 4;
   bool enableText = true;
   bool enableDebugTiles = false;
   bool useTileStream = false;
@@ -64,12 +73,28 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.rectCount = next(cfg.rectCount);
     } else if (arg == "--texts") {
       cfg.textCount = next(cfg.textCount);
+    } else if (arg == "--circles") {
+      cfg.circleCount = next(cfg.circleCount);
     } else if (arg == "--frames") {
       cfg.frames = next(cfg.frames);
     } else if (arg == "--tile") {
       cfg.tileSize = static_cast<uint16_t>(next(cfg.tileSize));
     } else if (arg == "--radius") {
       cfg.rectRadius = static_cast<uint16_t>(next(cfg.rectRadius));
+    } else if (arg == "--circle-radius") {
+      cfg.circleRadius = static_cast<uint16_t>(next(cfg.circleRadius));
+    } else if (arg == "--circle-bench") {
+      cfg.width = 1920;
+      cfg.height = 1080;
+      cfg.rectCount = 0;
+      cfg.circleCount = 1000000;
+      cfg.textCount = 0;
+      cfg.frames = 300;
+      cfg.tileSize = 32;
+      cfg.rectRadius = 0;
+      cfg.circleRadius = 4;
+      cfg.enableText = false;
+      cfg.reuseOptimized = true;
     } else if (arg == "--no-text") {
       cfg.enableText = false;
     } else if (arg == "--debug-tiles") {
@@ -216,6 +241,19 @@ void add_rect(RenderBatch& batch,
   batch.commands.push_back(RenderCommand{CommandType::Rect, idx});
 }
 
+void add_circle(RenderBatch& batch,
+                int32_t centerX,
+                int32_t centerY,
+                uint16_t radius,
+                uint8_t colorIndex) {
+  uint32_t idx = static_cast<uint32_t>(batch.circles.centerX.size());
+  batch.circles.centerX.push_back(static_cast<int16_t>(centerX));
+  batch.circles.centerY.push_back(static_cast<int16_t>(centerY));
+  batch.circles.radius.push_back(radius);
+  batch.circles.colorIndex.push_back(colorIndex);
+  batch.commands.push_back(RenderCommand{CommandType::Circle, idx});
+}
+
 void add_text(RenderBatch& batch,
               int32_t x,
               int32_t y,
@@ -314,6 +352,19 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
       y0 = batch.rects.y0[cmd.index];
       x1 = batch.rects.x1[cmd.index];
       y1 = batch.rects.y1[cmd.index];
+    } else if (cmd.type == CommandType::Circle) {
+      if (cmd.index >= batch.circles.centerX.size() ||
+          cmd.index >= batch.circles.centerY.size() ||
+          cmd.index >= batch.circles.radius.size()) {
+        continue;
+      }
+      int32_t cx = batch.circles.centerX[cmd.index];
+      int32_t cy = batch.circles.centerY[cmd.index];
+      int32_t r = static_cast<int32_t>(batch.circles.radius[cmd.index]);
+      x0 = cx - r;
+      y0 = cy - r;
+      x1 = cx + r + 1;
+      y1 = cy + r + 1;
     } else if (cmd.type == CommandType::Text) {
       if (cmd.index >= batch.text.x.size() ||
           cmd.index >= batch.text.y.size() ||
@@ -479,6 +530,28 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
     b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
     rectBounds[i] = b;
   }
+  std::vector<Bounds> circleBounds(batch.circles.centerX.size());
+  for (uint32_t i = 0; i < batch.circles.centerX.size(); ++i) {
+    Bounds b{};
+    if (i >= batch.circles.centerY.size() ||
+        i >= batch.circles.radius.size()) {
+      circleBounds[i] = b;
+      continue;
+    }
+    int32_t cx = batch.circles.centerX[i];
+    int32_t cy = batch.circles.centerY[i];
+    int32_t r = static_cast<int32_t>(batch.circles.radius[i]);
+    b.x0 = cx - r;
+    b.y0 = cy - r;
+    b.x1 = cx + r + 1;
+    b.y1 = cy + r + 1;
+    b.x0 = std::max(b.x0, 0);
+    b.y0 = std::max(b.y0, 0);
+    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
+    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
+    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
+    circleBounds[i] = b;
+  }
   std::vector<Bounds> textBounds(batch.text.x.size());
   for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
     Bounds b{};
@@ -575,6 +648,9 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
         if (cmd.type == CommandType::Rect) {
           if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
           b = rectBounds[cmd.index];
+        } else if (cmd.type == CommandType::Circle) {
+          if (cmd.index >= circleBounds.size() || !circleBounds[cmd.index].valid) continue;
+          b = circleBounds[cmd.index];
         } else if (cmd.type == CommandType::Text) {
           if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
           b = textBounds[cmd.index];
@@ -684,6 +760,9 @@ void build_tile_stream(RenderBatch& batch, uint32_t width, uint32_t height) {
         if (cmd.type == CommandType::Rect) {
           if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
           b = rectBounds[cmd.index];
+        } else if (cmd.type == CommandType::Circle) {
+          if (cmd.index >= circleBounds.size() || !circleBounds[cmd.index].valid) continue;
+          b = circleBounds[cmd.index];
         } else if (cmd.type == CommandType::Text) {
           if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
           b = textBounds[cmd.index];
@@ -768,6 +847,7 @@ int main(int argc, char** argv) {
   batch.reuseOptimized = cfg.reuseOptimized;
   batch.assumeFrontToBack = cfg.assumeFrontToBack;
   batch.autoTileStream = cfg.autoTileStream;
+  batch.useCommandRevision = true;
 
   build_glyph_store(batch);
   build_text_run(batch, 12);
@@ -781,6 +861,30 @@ int main(int argc, char** argv) {
 
   uint8_t clearIndex = 192;
   add_clear(batch, clearIndex);
+
+  std::vector<int32_t> circleBaseY;
+  std::vector<uint32_t> circleEdgeIndices;
+  int32_t circleMoveStep = 0;
+
+  if (cfg.rectCount > 0) {
+    batch.rects.x0.reserve(cfg.rectCount);
+    batch.rects.y0.reserve(cfg.rectCount);
+    batch.rects.x1.reserve(cfg.rectCount);
+    batch.rects.y1.reserve(cfg.rectCount);
+    batch.rects.colorIndex.reserve(cfg.rectCount);
+    batch.rects.radiusQ8_8.reserve(cfg.rectCount);
+    batch.rects.rotationQ8_8.reserve(cfg.rectCount);
+    batch.rects.zQ8_8.reserve(cfg.rectCount);
+    batch.rects.opacity.reserve(cfg.rectCount);
+    batch.rects.flags.reserve(cfg.rectCount);
+    batch.rects.gradientColor1Index.reserve(cfg.rectCount);
+    batch.rects.gradientDirX.reserve(cfg.rectCount);
+    batch.rects.gradientDirY.reserve(cfg.rectCount);
+    batch.rects.clipX0.reserve(cfg.rectCount);
+    batch.rects.clipY0.reserve(cfg.rectCount);
+    batch.rects.clipX1.reserve(cfg.rectCount);
+    batch.rects.clipY1.reserve(cfg.rectCount);
+  }
 
   for (uint32_t i = 0; i < cfg.rectCount; ++i) {
     int32_t w = wDist(rng);
@@ -796,6 +900,39 @@ int main(int argc, char** argv) {
     add_rect(batch, x0, y0, x1, y1, colorIndex, gradientIndex, gradient, radiusQ8_8);
   }
 
+  if (cfg.circleCount > 0) {
+    batch.circles.centerX.reserve(cfg.circleCount);
+    batch.circles.centerY.reserve(cfg.circleCount);
+    batch.circles.radius.reserve(cfg.circleCount);
+    batch.circles.colorIndex.reserve(cfg.circleCount);
+    circleBaseY.reserve(cfg.circleCount);
+    circleEdgeIndices.reserve(cfg.circleCount / 8);
+    circleMoveStep = std::max<int32_t>(2, static_cast<int32_t>(cfg.circleRadius) / 2);
+    if (cfg.reuseOptimized) {
+      uint32_t pad = static_cast<uint32_t>(circleMoveStep);
+      if (pad > std::numeric_limits<uint16_t>::max()) {
+        pad = std::numeric_limits<uint16_t>::max();
+      }
+      batch.circleBoundsPad = static_cast<uint16_t>(pad);
+    }
+    for (uint32_t i = 0; i < cfg.circleCount; ++i) {
+      int32_t cx = xDist(rng);
+      int32_t cy = yDist(rng);
+      uint8_t colorIndex = static_cast<uint8_t>(idxDist(rng));
+      add_circle(batch, cx, cy, cfg.circleRadius, colorIndex);
+      circleBaseY.push_back(cy);
+    }
+    int32_t maxY = static_cast<int32_t>(cfg.height);
+    int32_t safeMin = circleMoveStep;
+    int32_t safeMax = maxY - circleMoveStep;
+    for (uint32_t i = 0; i < circleBaseY.size(); ++i) {
+      int32_t base = circleBaseY[i];
+      if (base < safeMin || base > safeMax) {
+        circleEdgeIndices.push_back(i);
+      }
+    }
+  }
+
   if (cfg.enableText) {
     uint32_t runIndex = 0;
     for (uint32_t i = 0; i < cfg.textCount; ++i) {
@@ -807,6 +944,7 @@ int main(int argc, char** argv) {
   }
 
   batch.revision = 1;
+  batch.commandRevision = 1;
 
   if (cfg.enableDebugTiles) {
     uint8_t debugIndex = 0;
@@ -820,18 +958,85 @@ int main(int argc, char** argv) {
   std::vector<uint8_t> buffer(static_cast<size_t>(cfg.width) * cfg.height * 4, 0u);
   RenderTarget target{std::span<uint8_t>(buffer), cfg.width, cfg.height, cfg.width * 4};
   OptimizedBatch optimized;
-  if (cfg.useOptimized) {
+  bool dynamicCircles = !circleBaseY.empty();
+  bool renderOnly = cfg.useOptimized && !dynamicCircles;
+  if (renderOnly) {
     OptimizeRenderBatch(target, batch, optimized);
   }
+  auto canReuseOptimized = [&]() -> bool {
+    if (!batch.reuseOptimized) return false;
+    if (!optimized.valid) return false;
+    if (optimized.sourceRevision != batch.revision) return false;
+    if (optimized.targetWidth != target.width || optimized.targetHeight != target.height) return false;
+    return true;
+  };
 
   auto start = std::chrono::steady_clock::now();
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
-    if (cfg.useOptimized) {
-      RenderOptimized(target, batch, optimized);
-    } else {
-      OptimizeRenderBatch(target, batch, optimized);
-      RenderOptimized(target, batch, optimized);
+    if (dynamicCircles) {
+      int32_t delta = (frame & 1u) == 0u ? -circleMoveStep : circleMoveStep;
+      auto* __restrict baseY = circleBaseY.data();
+      auto* __restrict dstY = batch.circles.centerY.data();
+      size_t count = circleBaseY.size();
+      size_t i = 0;
+#if defined(__ARM_NEON)
+      {
+        int32x4_t delta4 = vdupq_n_s32(delta);
+        for (; i + 8 <= count; i += 8) {
+          int32x4_t a0 = vld1q_s32(baseY + i);
+          int32x4_t a1 = vld1q_s32(baseY + i + 4);
+          int32x4_t s0 = vaddq_s32(a0, delta4);
+          int32x4_t s1 = vaddq_s32(a1, delta4);
+          int16x4_t n0 = vqmovn_s32(s0);
+          int16x4_t n1 = vqmovn_s32(s1);
+          int16x8_t out = vcombine_s16(n0, n1);
+          vst1q_s16(reinterpret_cast<int16_t*>(dstY + i), out);
+        }
+      }
+#elif defined(__SSE2__)
+      {
+        __m128i delta4 = _mm_set1_epi32(delta);
+        for (; i + 8 <= count; i += 8) {
+          __m128i a0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(baseY + i));
+          __m128i a1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(baseY + i + 4));
+          __m128i s0 = _mm_add_epi32(a0, delta4);
+          __m128i s1 = _mm_add_epi32(a1, delta4);
+          __m128i packed = _mm_packs_epi32(s0, s1);
+          _mm_storeu_si128(reinterpret_cast<__m128i*>(dstY + i), packed);
+        }
+      }
+#endif
+#if defined(__clang__)
+#pragma clang loop vectorize(enable)
+#endif
+      for (; i < count; ++i) {
+        dstY[i] = static_cast<int16_t>(baseY[i] + delta);
+      }
+      if (!circleEdgeIndices.empty()) {
+        int32_t maxY = static_cast<int32_t>(cfg.height);
+        for (uint32_t idx : circleEdgeIndices) {
+          int32_t y = baseY[idx] + delta;
+          if (y < 0) y = 0;
+          if (y > maxY) y = maxY;
+          dstY[idx] = static_cast<int16_t>(y);
+        }
+      }
+      if (!batch.reuseOptimized) {
+        batch.revision += 1;
+      }
     }
+    if (cfg.useTileStream && dynamicCircles) {
+      batch.tileStream.clear();
+      build_tile_stream(batch, cfg.width, cfg.height);
+    }
+    if (renderOnly) {
+      RenderOptimized(target, batch, optimized);
+      continue;
+    }
+    if (!canReuseOptimized()) {
+      OptimizeRenderBatch(target, batch, optimized);
+    }
+    RenderOptimized(target, batch, optimized);
   }
   auto end = std::chrono::steady_clock::now();
   std::chrono::duration<double> elapsed = end - start;
@@ -839,22 +1044,34 @@ int main(int argc, char** argv) {
 
   std::cout << "PrimeManifest renderer bench\n";
   std::cout << "Resolution: " << cfg.width << "x" << cfg.height << "\n";
-  std::cout << "Rects: " << cfg.rectCount << " Texts: " << (cfg.enableText ? cfg.textCount : 0)
+  std::cout << "Rects: " << cfg.rectCount
+            << " Circles: " << cfg.circleCount
+            << " Texts: " << (cfg.enableText ? cfg.textCount : 0)
             << " Frames: " << cfg.frames << "\n";
-  std::cout << "TileSize: " << cfg.tileSize << "\n";
+  if (dynamicCircles) {
+    std::cout << "CircleMotion: Enabled (Step " << circleMoveStep << "px)\n";
+  } else {
+    std::cout << "CircleMotion: Disabled\n";
+  }
+  uint32_t reportedTileSize = optimized.valid ? optimized.tileSize : cfg.tileSize;
+  std::cout << "TileSize: " << reportedTileSize;
+  if (optimized.valid && optimized.tileSize != cfg.tileSize) {
+    std::cout << " (requested " << cfg.tileSize << ")";
+  }
+  std::cout << "\n";
   std::cout << "Palette: Indexed\n";
   std::cout << "TileStream: " << (cfg.useTileStream ? "Enabled" : "Disabled") << "\n";
   std::cout << "ReuseOptimized: " << (cfg.reuseOptimized ? "Enabled" : "Disabled") << "\n";
   std::cout << "FrontToBack: " << (cfg.assumeFrontToBack ? "Enabled" : "Disabled") << "\n";
   std::cout << "AutoTileStream: " << (cfg.autoTileStream ? "Enabled" : "Disabled") << "\n";
-  std::cout << "Optimized: " << (cfg.useOptimized ? "Enabled" : "Disabled") << "\n";
+  std::cout << "Optimized: " << (renderOnly ? "Enabled" : "Disabled") << "\n";
   std::cout << "Elapsed: " << elapsed.count() << "s\n";
   std::cout << "FPS: " << fps << "\n";
   if (cfg.profile) {
     RendererProfile profile;
     profile.clear();
     batch.profile = &profile;
-    if (cfg.useOptimized) {
+    if (renderOnly) {
       if (!optimized.valid) {
         OptimizeRenderBatch(target, batch, optimized);
       }

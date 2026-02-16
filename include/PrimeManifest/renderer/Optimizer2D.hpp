@@ -29,6 +29,9 @@ struct OptimizedBatch {
   uint32_t tileShift = 0;
   bool useTileStream = false;
   bool useTileBuffer = false;
+  bool tileRefsAreCircleIndices = false;
+  bool circleRadiusUniform = false;
+  uint16_t circleRadiusValue = 0;
   bool hasClear = false;
   uint32_t clearColor = 0;
   bool clearPattern = false;
@@ -41,6 +44,8 @@ struct OptimizedBatch {
   uint8_t debugFlags = 0;
   bool valid = false;
   uint64_t sourceRevision = 0;
+  uint64_t commandCountsRevision = 0;
+  CommandTypeCounts commandTypeCounts{};
 
   TileStream mergedTileStream;
   TileStream generatedTileStream;
@@ -52,6 +57,7 @@ struct OptimizedBatch {
   std::vector<uint32_t> tileOffsets;
   std::vector<uint32_t> tileRefs;
   std::vector<uint32_t> tileFill;
+  std::vector<uint32_t> circleTileSpans;
   std::vector<uint32_t> renderTiles;
   std::vector<uint8_t> textBaseAlpha;
   std::vector<uint8_t> textActive;
@@ -104,6 +110,9 @@ struct OptimizedBatch {
     tileShift = 0;
     useTileStream = false;
     useTileBuffer = false;
+    tileRefsAreCircleIndices = false;
+    circleRadiusUniform = false;
+    circleRadiusValue = 0;
     hasClear = false;
     clearColor = 0;
     clearPattern = false;
@@ -116,6 +125,8 @@ struct OptimizedBatch {
     debugFlags = 0;
     valid = false;
     sourceRevision = 0;
+    commandCountsRevision = 0;
+    commandTypeCounts.reset();
     mergedTileStream.clear();
     generatedTileStream.clear();
     tileStream = nullptr;
@@ -125,6 +136,7 @@ struct OptimizedBatch {
     tileOffsets.clear();
     tileRefs.clear();
     tileFill.clear();
+    circleTileSpans.clear();
     renderTiles.clear();
     textBaseAlpha.clear();
     textActive.clear();

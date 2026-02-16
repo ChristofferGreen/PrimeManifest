@@ -35,6 +35,29 @@ enum class CommandType : uint8_t {
   Text = 2,
   DebugTiles = 3,
   ClearPattern = 4,
+  Circle = 5,
+};
+
+struct CommandTypeCounts {
+  uint32_t clearCount = 0;
+  uint32_t rect = 0;
+  uint32_t circle = 0;
+  uint32_t text = 0;
+  uint32_t debugTiles = 0;
+  uint32_t clearPattern = 0;
+
+  void reset() {
+    clearCount = 0;
+    rect = 0;
+    circle = 0;
+    text = 0;
+    debugTiles = 0;
+    clearPattern = 0;
+  }
+
+  uint32_t drawCount() const {
+    return rect + circle + text;
+  }
 };
 
 struct RenderCommand {
@@ -212,6 +235,23 @@ struct RectStore {
   }
 };
 
+struct CircleStore {
+  std::vector<int16_t> centerX;
+  std::vector<int16_t> centerY;
+  std::vector<uint16_t> radius;
+  std::vector<uint8_t> colorIndex;
+
+  void clear() {
+    centerX.clear();
+    centerY.clear();
+    radius.clear();
+    colorIndex.clear();
+  }
+  size_t size() const {
+    return centerX.size();
+  }
+};
+
 struct TextStore {
   std::vector<int16_t> x;
   std::vector<int16_t> y;
@@ -367,6 +407,7 @@ struct RenderBatch {
   ClearStore clear;
   ClearPatternStore clearPattern;
   RectStore rects;
+  CircleStore circles;
   TextStore text;
   TextRunStore runs;
   GlyphStore glyphs;
@@ -374,8 +415,11 @@ struct RenderBatch {
   TileStream tileStream;
   PaletteStore palette;
   uint16_t tileSize = 32;
+  uint16_t circleBoundsPad = 0;
   bool disableOpaqueRectFastPath = false;
   uint64_t revision = 0;
+  bool useCommandRevision = false;
+  uint64_t commandRevision = 0;
   bool reuseOptimized = false;
   bool assumeFrontToBack = true;
   bool autoTileStream = true;
@@ -386,6 +430,7 @@ struct RenderBatch {
     clear.clear();
     clearPattern.clear();
     rects.clear();
+    circles.clear();
     text.clear();
     runs.clear();
     glyphs.clear();
@@ -393,7 +438,10 @@ struct RenderBatch {
     tileStream.clear();
     palette.clear();
     disableOpaqueRectFastPath = false;
+    circleBoundsPad = 0;
     revision = 0;
+    useCommandRevision = false;
+    commandRevision = 0;
     reuseOptimized = false;
     assumeFrontToBack = true;
     autoTileStream = true;

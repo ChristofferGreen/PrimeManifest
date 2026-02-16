@@ -131,6 +131,19 @@ inline void add_rect(RenderBatch& batch,
   batch.commands.push_back(RenderCommand{CommandType::Rect, idx});
 }
 
+inline void add_circle(RenderBatch& batch,
+                       int32_t centerX,
+                       int32_t centerY,
+                       uint16_t radius,
+                       uint32_t color) {
+  uint32_t idx = static_cast<uint32_t>(batch.circles.centerX.size());
+  batch.circles.centerX.push_back(static_cast<int16_t>(centerX));
+  batch.circles.centerY.push_back(static_cast<int16_t>(centerY));
+  batch.circles.radius.push_back(radius);
+  batch.circles.colorIndex.push_back(palette_index(batch, color));
+  batch.commands.push_back(RenderCommand{CommandType::Circle, idx});
+}
+
 inline void add_gradient_rect(RenderBatch& batch,
                               int32_t x0,
                               int32_t y0,

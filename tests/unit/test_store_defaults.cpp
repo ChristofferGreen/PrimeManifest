@@ -13,6 +13,14 @@ PM_TEST(stores, rect_store_starts_empty) {
   PM_CHECK(store.size() == 0, "rect store clear resets size");
 }
 
+PM_TEST(stores, circle_store_starts_empty) {
+  CircleStore store;
+  PM_CHECK(store.size() == 0, "circle store empty");
+  store.centerX.push_back(1);
+  store.clear();
+  PM_CHECK(store.size() == 0, "circle store clear resets size");
+}
+
 PM_TEST(stores, text_store_starts_empty) {
   TextStore store;
   PM_CHECK(store.size() == 0, "text store empty");

@@ -18,6 +18,7 @@ namespace PrimeManifest {
 namespace {
 
 constexpr float DefaultAa = 1.0f;
+constexpr int32_t MaxCircleMaskRadius = 8;
 
 auto clamp01(float v) -> float {
   if (v < 0.0f) return 0.0f;
@@ -30,6 +31,79 @@ auto coverage_from_dist(float dist) -> uint8_t {
   if (cov <= 0.0f) return 0;
   if (cov >= 1.0f) return 255;
   return static_cast<uint8_t>(cov * 255.0f + 0.5f);
+}
+
+auto make_mul_table() -> std::array<std::array<uint8_t, 256>, 256> {
+  std::array<std::array<uint8_t, 256>, 256> table{};
+  for (uint32_t a = 0; a < 256; ++a) {
+    for (uint32_t v = 0; v < 256; ++v) {
+      table[a][v] = static_cast<uint8_t>((v * a + 127u) / 255u);
+    }
+  }
+  return table;
+}
+
+auto const kMulTable = make_mul_table();
+
+inline auto mul_div_255(uint8_t v, uint8_t a) -> uint8_t {
+  return kMulTable[a][v];
+}
+
+struct CircleMaskCache {
+  std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> masks{};
+  std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> edgeX{};
+  std::array<std::vector<uint8_t>, MaxCircleMaskRadius + 1> edgeCov{};
+  std::array<std::vector<uint16_t>, MaxCircleMaskRadius + 1> edgeOffset{};
+  std::array<std::vector<int8_t>, MaxCircleMaskRadius + 1> opaqueStart{};
+  std::array<std::vector<int8_t>, MaxCircleMaskRadius + 1> opaqueEnd{};
+
+  CircleMaskCache() {
+    for (int32_t r = 0; r <= MaxCircleMaskRadius; ++r) {
+      int32_t size = r * 2 + 1;
+      std::vector<uint8_t> mask(static_cast<size_t>(size) * size, 0u);
+      std::vector<uint16_t> rowOffset(static_cast<size_t>(size + 1), 0u);
+      std::vector<uint8_t> rowEdgeX;
+      std::vector<uint8_t> rowEdgeCov;
+      std::vector<int8_t> rowStart(static_cast<size_t>(size), static_cast<int8_t>(size));
+      std::vector<int8_t> rowEnd(static_cast<size_t>(size), static_cast<int8_t>(-1));
+      uint16_t cursor = 0;
+      for (int32_t y = 0; y < size; ++y) {
+        rowOffset[static_cast<size_t>(y)] = cursor;
+        float fy = static_cast<float>(y - r) + 0.5f;
+        for (int32_t x = 0; x < size; ++x) {
+          float fx = static_cast<float>(x - r) + 0.5f;
+          float dist = std::sqrt(fx * fx + fy * fy) - static_cast<float>(r);
+          uint8_t coverage = coverage_from_dist(dist);
+          mask[static_cast<size_t>(y) * size + x] = coverage;
+          if (coverage != 0 && coverage != 255) {
+            rowEdgeX.push_back(static_cast<uint8_t>(x));
+            rowEdgeCov.push_back(coverage);
+            ++cursor;
+          }
+          if (coverage == 255) {
+            if (x < rowStart[static_cast<size_t>(y)]) {
+              rowStart[static_cast<size_t>(y)] = static_cast<int8_t>(x);
+            }
+            if (x > rowEnd[static_cast<size_t>(y)]) {
+              rowEnd[static_cast<size_t>(y)] = static_cast<int8_t>(x);
+            }
+          }
+        }
+        rowOffset[static_cast<size_t>(y + 1)] = cursor;
+      }
+      masks[static_cast<size_t>(r)] = std::move(mask);
+      edgeX[static_cast<size_t>(r)] = std::move(rowEdgeX);
+      edgeCov[static_cast<size_t>(r)] = std::move(rowEdgeCov);
+      edgeOffset[static_cast<size_t>(r)] = std::move(rowOffset);
+      opaqueStart[static_cast<size_t>(r)] = std::move(rowStart);
+      opaqueEnd[static_cast<size_t>(r)] = std::move(rowEnd);
+    }
+  }
+};
+
+auto circle_mask_cache() -> CircleMaskCache& {
+  static CircleMaskCache cache;
+  return cache;
 }
 
 struct Vec2f {
@@ -74,11 +148,11 @@ auto blend_premultiplied(uint8_t* dst, uint8_t srcR, uint8_t srcG, uint8_t srcB,
   uint8_t dstB = dst[2];
   uint8_t dstA = dst[3];
 
-  uint16_t invA = static_cast<uint16_t>(255u - srcA);
-  dst[0] = static_cast<uint8_t>((static_cast<uint16_t>(srcR) + (dstR * invA + 127u) / 255u) & 0xFFu);
-  dst[1] = static_cast<uint8_t>((static_cast<uint16_t>(srcG) + (dstG * invA + 127u) / 255u) & 0xFFu);
-  dst[2] = static_cast<uint8_t>((static_cast<uint16_t>(srcB) + (dstB * invA + 127u) / 255u) & 0xFFu);
-  dst[3] = static_cast<uint8_t>((static_cast<uint16_t>(srcA) + (dstA * invA + 127u) / 255u) & 0xFFu);
+  uint8_t invA = static_cast<uint8_t>(255u - srcA);
+  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(srcR) + mul_div_255(dstR, invA));
+  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(srcG) + mul_div_255(dstG, invA));
+  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(srcB) + mul_div_255(dstB, invA));
+  dst[3] = static_cast<uint8_t>(static_cast<uint16_t>(srcA) + mul_div_255(dstA, invA));
 }
 
 auto apply_opacity(uint8_t a, uint8_t opacity) -> uint8_t {
@@ -138,6 +212,7 @@ struct TilePool {
   bool shutdown = false;
   bool workReady = false;
   uint32_t workCount = 0;
+  uint32_t chunkSizeOverride = 0;
   std::atomic<uint32_t> nextWork{0};
   std::atomic<uint32_t> workDone{0};
   std::function<void(uint32_t)> job;
@@ -157,6 +232,9 @@ struct TilePool {
 
   TilePool() {
     uint32_t count = std::max(1u, std::thread::hardware_concurrency());
+    if (count > 1u) {
+      count -= 1u;
+    }
     workers.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
       workers.emplace_back([this, i]() { worker_loop(i); });
@@ -174,7 +252,10 @@ struct TilePool {
     }
   }
 
-  void run(uint32_t jobs, std::function<void(uint32_t)> fn, Profile* profileInput = nullptr) {
+  void run(uint32_t jobs,
+           std::function<void(uint32_t)> fn,
+           Profile* profileInput = nullptr,
+           uint32_t chunkOverride = 0) {
     if (jobs == 0) return;
     if (profileInput) {
       profileInput->reset(workers.size() + 1);
@@ -183,6 +264,7 @@ struct TilePool {
       std::lock_guard<std::mutex> lock(mutex);
       job = std::move(fn);
       workCount = jobs;
+      chunkSizeOverride = chunkOverride;
       nextWork.store(0);
       workDone.store(0);
       workReady = true;
@@ -212,22 +294,31 @@ struct TilePool {
 
   void do_work(uint32_t workerIndex) {
     uint32_t count = workCount;
-    constexpr uint32_t ChunkSize = 4;
+    uint32_t chunkSize = chunkSizeOverride;
+    if (chunkSize == 0) {
+      chunkSize = count / (static_cast<uint32_t>(workers.size()) * 4u);
+      if (chunkSize < 1u) chunkSize = 1u;
+      if (chunkSize > 8u) chunkSize = 8u;
+    }
     Profile* localProfile = profile;
     for (;;) {
-      uint32_t idx = nextWork.fetch_add(ChunkSize);
+      uint32_t idx = nextWork.fetch_add(chunkSize);
       if (idx >= count) break;
-      uint32_t end = std::min(idx + ChunkSize, count);
-      auto start = std::chrono::steady_clock::now();
-      for (uint32_t i = idx; i < end; ++i) {
-        job(i);
-      }
+      uint32_t end = std::min(idx + chunkSize, count);
       if (localProfile) {
+        auto start = std::chrono::steady_clock::now();
+        for (uint32_t i = idx; i < end; ++i) {
+          job(i);
+        }
         auto endTime = std::chrono::steady_clock::now();
         uint64_t ns = static_cast<uint64_t>(
           std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - start).count());
         localProfile->activeNs[workerIndex] += ns;
         localProfile->items[workerIndex] += end - idx;
+      } else {
+        for (uint32_t i = idx; i < end; ++i) {
+          job(i);
+        }
       }
       uint32_t done = workDone.fetch_add(end - idx) + (end - idx);
       if (done >= count) {
@@ -268,6 +359,133 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     if (paletteIndex >= batch.palette.size) return fallback;
     return batch.palette.colorRGBA8[paletteIndex];
   };
+  struct PalettePmCache {
+    std::vector<uint32_t> table;
+    std::vector<uint8_t> colorR;
+    std::vector<uint8_t> colorG;
+    std::vector<uint8_t> colorB;
+    std::vector<uint8_t> colorA;
+    uint64_t hash = 0;
+    uint16_t size = 0;
+  };
+  struct CircleEdgePmCache {
+    std::array<std::vector<uint32_t>, MaxCircleMaskRadius + 1> edgePm{};
+    uint64_t hash = 0;
+    uint16_t size = 0;
+  };
+  static PalettePmCache palettePm;
+  static CircleEdgePmCache circleEdgePm;
+  size_t paletteSize = static_cast<size_t>(batch.palette.size);
+  uint64_t paletteHash = 1469598103934665603ull;
+  for (size_t i = 0; i < paletteSize; ++i) {
+    paletteHash ^= static_cast<uint64_t>(batch.palette.colorRGBA8[i]);
+    paletteHash *= 1099511628211ull;
+  }
+  if (palettePm.size != batch.palette.size || palettePm.hash != paletteHash) {
+    palettePm.size = batch.palette.size;
+    palettePm.hash = paletteHash;
+    palettePm.table.assign(paletteSize * 256u, 0u);
+    palettePm.colorR.assign(paletteSize, 0u);
+    palettePm.colorG.assign(paletteSize, 0u);
+    palettePm.colorB.assign(paletteSize, 0u);
+    palettePm.colorA.assign(paletteSize, 0u);
+    for (size_t i = 0; i < paletteSize; ++i) {
+      uint32_t color = batch.palette.colorRGBA8[i];
+      uint8_t r = static_cast<uint8_t>(color & 0xFFu);
+      uint8_t g = static_cast<uint8_t>((color >> 8) & 0xFFu);
+      uint8_t b = static_cast<uint8_t>((color >> 16) & 0xFFu);
+      uint8_t a = static_cast<uint8_t>((color >> 24) & 0xFFu);
+      palettePm.colorR[i] = r;
+      palettePm.colorG[i] = g;
+      palettePm.colorB[i] = b;
+      palettePm.colorA[i] = a;
+      size_t base = i * 256u;
+      if (a == 0) {
+        continue;
+      }
+      for (uint32_t cov = 0; cov < 256u; ++cov) {
+        uint8_t srcA = apply_coverage(a, static_cast<uint8_t>(cov));
+        if (srcA == 0) continue;
+        if (srcA == 255u) {
+          palettePm.table[base + cov] = color;
+          continue;
+        }
+        uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(r) * srcA + 127u) / 255u);
+        uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(g) * srcA + 127u) / 255u);
+        uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(b) * srcA + 127u) / 255u);
+        palettePm.table[base + cov] =
+          static_cast<uint32_t>(pmR) |
+          (static_cast<uint32_t>(pmG) << 8) |
+          (static_cast<uint32_t>(pmB) << 16) |
+          (static_cast<uint32_t>(srcA) << 24);
+      }
+    }
+  }
+  if (circleEdgePm.size != batch.palette.size || circleEdgePm.hash != paletteHash) {
+    circleEdgePm.size = batch.palette.size;
+    circleEdgePm.hash = paletteHash;
+    auto const& maskCache = circle_mask_cache();
+    for (int32_t r = 0; r <= MaxCircleMaskRadius; ++r) {
+      auto const& edgeCov = maskCache.edgeCov[static_cast<size_t>(r)];
+      size_t edgeCount = edgeCov.size();
+      circleEdgePm.edgePm[static_cast<size_t>(r)].assign(paletteSize * edgeCount, 0u);
+      if (edgeCount == 0) continue;
+      auto* dst = circleEdgePm.edgePm[static_cast<size_t>(r)].data();
+      for (size_t p = 0; p < paletteSize; ++p) {
+        size_t base = p * edgeCount;
+        size_t pmBase = p * 256u;
+        for (size_t i = 0; i < edgeCount; ++i) {
+          uint8_t cov = edgeCov[i];
+          dst[base + i] = palettePm.table[pmBase + cov];
+        }
+      }
+    }
+  }
+  auto const& palettePmCache = palettePm.table;
+  auto const& paletteR = palettePm.colorR;
+  auto const& paletteG = palettePm.colorG;
+  auto const& paletteB = palettePm.colorB;
+  auto const& paletteA = palettePm.colorA;
+  bool paletteFull = batch.palette.size >= 256;
+  bool circleOnly =
+    prepared.commandTypeCounts.circle > 0 &&
+    prepared.commandTypeCounts.rect == 0 &&
+    prepared.commandTypeCounts.text == 0;
+  bool circleArraysPacked =
+    circleOnly &&
+    batch.circles.centerX.size() == batch.circles.centerY.size() &&
+    batch.circles.centerX.size() == batch.circles.radius.size() &&
+    batch.circles.centerX.size() == batch.circles.colorIndex.size() &&
+    batch.circles.centerX.size() == prepared.commandTypeCounts.circle;
+  auto const* circleCenterX = batch.circles.centerX.data();
+  auto const* circleCenterY = batch.circles.centerY.data();
+  auto const* circleRadius = batch.circles.radius.data();
+  auto const* circleColorIndex = batch.circles.colorIndex.data();
+  CircleMaskCache const* circleCache = nullptr;
+  if (prepared.commandTypeCounts.circle > 0) {
+    circleCache = &circle_mask_cache();
+  }
+  bool circleRadiusUniform = prepared.circleRadiusUniform;
+  int32_t uniformCircleRadius = static_cast<int32_t>(prepared.circleRadiusValue);
+  bool uniformCircleMask = circleRadiusUniform && uniformCircleRadius <= MaxCircleMaskRadius;
+  auto const* uniformMask = static_cast<std::vector<uint8_t> const*>(nullptr);
+  auto const* uniformEdgeOffset = static_cast<std::vector<uint16_t> const*>(nullptr);
+  auto const* uniformEdgeX = static_cast<std::vector<uint8_t> const*>(nullptr);
+  auto const* uniformEdgeCov = static_cast<std::vector<uint8_t> const*>(nullptr);
+  auto const* uniformOpaqueStart = static_cast<std::vector<int8_t> const*>(nullptr);
+  auto const* uniformOpaqueEnd = static_cast<std::vector<int8_t> const*>(nullptr);
+  int32_t uniformMaskSize = 0;
+  if (uniformCircleMask && circleCache) {
+    size_t rIndex = static_cast<size_t>(uniformCircleRadius);
+    auto const& cache = *circleCache;
+    uniformMask = &cache.masks[rIndex];
+    uniformEdgeOffset = &cache.edgeOffset[rIndex];
+    uniformEdgeX = &cache.edgeX[rIndex];
+    uniformEdgeCov = &cache.edgeCov[rIndex];
+    uniformOpaqueStart = &cache.opaqueStart[rIndex];
+    uniformOpaqueEnd = &cache.opaqueEnd[rIndex];
+    uniformMaskSize = uniformCircleRadius * 2 + 1;
+  }
 
   uint32_t tilesX = prepared.tilesX;
   uint32_t tilesY = prepared.tilesY;
@@ -334,6 +552,8 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   auto const& rectGradMin = prepared.rectGradMin;
   auto const& rectGradInvRange = prepared.rectGradInvRange;
   constexpr uint32_t InvalidOffset = 0xFFFFFFFFu;
+  bool clearOpaque = hasClear && !prepared.clearPattern && ((clearColor >> 24) & 0xFFu) == 255u;
+  bool dstOpaque = clearOpaque && !prepared.useTileBuffer;
 
   auto clearStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (hasClear && !useTileBuffer) {
@@ -394,6 +614,7 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     profile->commandCount = useTileStream ? static_cast<uint32_t>(tileStream->commands.size())
                                           : static_cast<uint32_t>(batch.commands.size());
   }
+  bool doProfile = profile != nullptr;
 
   if (renderTiles.empty() && !debugTiles) return;
 
@@ -418,7 +639,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     uint32_t tileArea = (tx1 - tx0) * (ty1 - ty0);
     uint32_t opaqueCount = 0;
     uint64_t tileCommands = 0;
-    uint64_t tilePixels = static_cast<uint64_t>(tx1 - tx0) * static_cast<uint64_t>(ty1 - ty0);
+    uint64_t tilePixels = doProfile
+      ? static_cast<uint64_t>(tx1 - tx0) * static_cast<uint64_t>(ty1 - ty0)
+      : 0;
     uint64_t tileRects = 0;
     uint64_t tileTexts = 0;
     uint64_t tileRectPixels = 0;
@@ -442,19 +665,23 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       if (frontToBack) {
         uint8_t dstA = dst[3];
         if (dstA >= OpaqueAlphaCutoff) return;
-        uint16_t invA = static_cast<uint16_t>(255u - dstA);
-        dst[0] = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dst[0]) + (static_cast<uint16_t>(pmR) * invA + 127u) / 255u) & 0xFFu);
-        dst[1] = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dst[1]) + (static_cast<uint16_t>(pmG) * invA + 127u) / 255u) & 0xFFu);
-        dst[2] = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dst[2]) + (static_cast<uint16_t>(pmB) * invA + 127u) / 255u) & 0xFFu);
-        uint8_t newA = static_cast<uint8_t>(
-          (static_cast<uint16_t>(dstA) + (static_cast<uint16_t>(srcA) * invA + 127u) / 255u) & 0xFFu);
+        uint8_t invA = static_cast<uint8_t>(255u - dstA);
+        auto const& mulRow = kMulTable[invA];
+        dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) + mulRow[pmR]);
+        dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) + mulRow[pmG]);
+        dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) + mulRow[pmB]);
+        uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[srcA]);
         dst[3] = newA;
         if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
           ++opaqueCount;
         }
+      } else if (dstOpaque) {
+        uint8_t invA = static_cast<uint8_t>(255u - srcA);
+        auto const& mulRow = kMulTable[invA];
+        dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pmR) + mulRow[dst[0]]);
+        dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(pmG) + mulRow[dst[1]]);
+        dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(pmB) + mulRow[dst[2]]);
+        dst[3] = 255u;
       } else {
         blend_premultiplied(dst, pmR, pmG, pmB, srcA);
       }
@@ -547,12 +774,19 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       } else {
         if (i >= end) break;
         uint32_t cmdIndex = tileRefs[i];
-        if (cmdIndex >= batch.commands.size()) continue;
-        auto const& cmd = batch.commands[cmdIndex];
-        type = cmd.type;
-        idx = cmd.index;
+        if (prepared.tileRefsAreCircleIndices) {
+          type = CommandType::Circle;
+          idx = cmdIndex;
+        } else {
+          if (cmdIndex >= batch.commands.size()) continue;
+          auto const& cmd = batch.commands[cmdIndex];
+          type = cmd.type;
+          idx = cmd.index;
+        }
       }
-      ++tileCommands;
+      if (doProfile) {
+        ++tileCommands;
+      }
 
       if (type == CommandType::Rect) {
         if (idx >= batch.rects.x0.size() ||
@@ -936,6 +1170,494 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           }
         }
         render_sdf_region(region.x0, region.y0, region.x1, region.y1);
+      } else if (type == CommandType::Circle) {
+        if (!circleArraysPacked) {
+          if (idx >= batch.circles.centerX.size() ||
+              idx >= batch.circles.centerY.size() ||
+              idx >= batch.circles.radius.size() ||
+              idx >= batch.circles.colorIndex.size()) {
+            continue;
+          }
+        }
+        int32_t cx = circleCenterX[idx];
+        int32_t cy = circleCenterY[idx];
+        int32_t r = circleRadiusUniform ? uniformCircleRadius : static_cast<int32_t>(circleRadius[idx]);
+        int32_t x0 = cx - r;
+        int32_t y0 = cy - r;
+        int32_t x1 = cx + r + 1;
+        int32_t y1 = cy + r + 1;
+
+        uint8_t paletteIndex = circleColorIndex[idx];
+        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
+        size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
+        uint32_t const* pmTable = palettePmCache.data() + pmOffset;
+        uint8_t cR = paletteR[paletteIndex];
+        uint8_t cG = paletteG[paletteIndex];
+        uint8_t cB = paletteB[paletteIndex];
+        uint8_t cA = paletteA[paletteIndex];
+        if (cA == 0) continue;
+        uint32_t color = 0u;
+        if (!frontToBack) {
+          color = batch.palette.colorRGBA8[paletteIndex];
+        }
+
+        if (r <= MaxCircleMaskRadius) {
+          auto const& cache = *circleCache;
+          auto const& mask = uniformCircleMask ? *uniformMask : cache.masks[static_cast<size_t>(r)];
+          auto const& edgeOffset = uniformCircleMask ? *uniformEdgeOffset : cache.edgeOffset[static_cast<size_t>(r)];
+          auto const& edgeX = uniformCircleMask ? *uniformEdgeX : cache.edgeX[static_cast<size_t>(r)];
+          auto const& edgeCov = uniformCircleMask ? *uniformEdgeCov : cache.edgeCov[static_cast<size_t>(r)];
+          auto const& rowOpaqueStart =
+            uniformCircleMask ? *uniformOpaqueStart : cache.opaqueStart[static_cast<size_t>(r)];
+          auto const& rowOpaqueEnd =
+            uniformCircleMask ? *uniformOpaqueEnd : cache.opaqueEnd[static_cast<size_t>(r)];
+          int32_t size = uniformCircleMask ? uniformMaskSize : (r * 2 + 1);
+          int32_t maskX0 = cx - r;
+          int32_t maskY0 = cy - r;
+          bool fullInside = maskX0 >= static_cast<int32_t>(tx0) &&
+                            maskY0 >= static_cast<int32_t>(ty0) &&
+                            (maskX0 + size) <= static_cast<int32_t>(tx1) &&
+                            (maskY0 + size) <= static_cast<int32_t>(ty1);
+          if (fullInside && cA == 255) {
+            if (profile) {
+              ++tileRects;
+              tileRectPixels += static_cast<uint64_t>(size) * static_cast<uint64_t>(size);
+            }
+            size_t edgeCount = edgeX.size();
+            auto const* edgePmRow =
+              edgeCount == 0
+                ? nullptr
+                : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
+            uint8_t* rowBase = row_ptr(maskY0) + static_cast<size_t>(4u * maskX0);
+            if (frontToBack) {
+              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
+                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (opaqueEnd >= opaqueStart) {
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                  int32_t count = opaqueEnd - opaqueStart + 1;
+                  for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                    write_px(opaqueRow, cR, cG, cB);
+                  }
+                }
+                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
+                if (edgePmRow) {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t dstA = dst[3];
+                    if (dstA >= OpaqueAlphaCutoff) continue;
+                    uint32_t pm = edgePmRow[i];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t invA = static_cast<uint8_t>(255u - dstA);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) +
+                                                  mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
+                    uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
+                    dst[3] = newA;
+                    if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+                      ++opaqueCount;
+                    }
+                  }
+                } else {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t dstA = dst[3];
+                    if (dstA >= OpaqueAlphaCutoff) continue;
+                    uint32_t pm = pmTable[edgeCov[i]];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t invA = static_cast<uint8_t>(255u - dstA);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) +
+                                                  mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
+                    uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
+                    dst[3] = newA;
+                    if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+                      ++opaqueCount;
+                    }
+                  }
+                }
+              }
+            } else if (dstOpaque) {
+              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
+                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (opaqueEnd >= opaqueStart) {
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                  int32_t count = opaqueEnd - opaqueStart + 1;
+                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                    std::fill(row32, row32 + count, color);
+                  } else {
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      opaqueRow[0] = cR;
+                      opaqueRow[1] = cG;
+                      opaqueRow[2] = cB;
+                      opaqueRow[3] = 255u;
+                    }
+                  }
+                }
+                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
+                if (edgePmRow) {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = edgePmRow[i];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t invA = static_cast<uint8_t>(255u - cov);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
+                    dst[3] = 255u;
+                  }
+                } else {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = pmTable[edgeCov[i]];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t invA = static_cast<uint8_t>(255u - cov);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
+                    dst[3] = 255u;
+                  }
+                }
+              }
+            } else {
+              for (int32_t localY = 0; localY < size; ++localY, rowBase += surfaceStride) {
+                int32_t opaqueStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t opaqueEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (opaqueEnd >= opaqueStart) {
+                  uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
+                  int32_t count = opaqueEnd - opaqueStart + 1;
+                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                    auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                    std::fill(row32, row32 + count, color);
+                  } else {
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      opaqueRow[0] = cR;
+                      opaqueRow[1] = cG;
+                      opaqueRow[2] = cB;
+                      opaqueRow[3] = 255u;
+                    }
+                  }
+                }
+                uint16_t start = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
+                if (edgePmRow) {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = edgePmRow[i];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
+                                        static_cast<uint8_t>(pm & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                                        cov);
+                  }
+                } else {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = pmTable[edgeCov[i]];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
+                                        static_cast<uint8_t>(pm & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                                        cov);
+                  }
+                }
+              }
+            }
+            continue;
+          }
+
+          int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+          int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+          int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+          int32_t drawY1 = hasLocalBounds ? localY1 : y1;
+
+          int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+          int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+          int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+          int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+          if (rx1 <= rx0 || ry1 <= ry0) continue;
+          if (profile) {
+            ++tileRects;
+            tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
+          }
+          if (cA == 255) {
+            size_t edgeCount = edgeX.size();
+            auto const* edgePmRow =
+              edgeCount == 0
+                ? nullptr
+                : circleEdgePm.edgePm[static_cast<size_t>(r)].data() + static_cast<size_t>(paletteIndex) * edgeCount;
+            int32_t localY = ry0 - maskY0;
+            if (frontToBack) {
+              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+                uint8_t* rowBase = row_ptr(y);
+                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
+                for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
+                  int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
+                  if (x < rx0 || x >= rx1) continue;
+                  uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                  uint8_t dstA = dst[3];
+                  if (dstA >= OpaqueAlphaCutoff) continue;
+                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
+                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                  uint8_t invA = static_cast<uint8_t>(255u - dstA);
+                  auto const& mulRow = kMulTable[invA];
+                  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) + mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
+                  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
+                                                mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
+                  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
+                                                mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
+                  uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
+                  dst[3] = newA;
+                  if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+                    ++opaqueCount;
+                  }
+                }
+
+                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (rowEnd >= rowStart) {
+                  int32_t spanStart = maskX0 + rowStart;
+                  int32_t spanEnd = maskX0 + rowEnd;
+                  if (spanEnd >= rx0 && spanStart < rx1) {
+                    spanStart = std::max(spanStart, rx0);
+                    spanEnd = std::min(spanEnd, rx1 - 1);
+                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                    int32_t count = spanEnd - spanStart + 1;
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      write_px(opaqueRow, cR, cG, cB);
+                    }
+                  }
+                }
+              }
+            } else if (dstOpaque) {
+              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+                uint8_t* rowBase = row_ptr(y);
+                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
+                for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
+                  int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
+                  if (x < rx0 || x >= rx1) continue;
+                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
+                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                  uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                  uint8_t invA = static_cast<uint8_t>(255u - cov);
+                  auto const& mulRow = kMulTable[invA];
+                  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
+                  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
+                  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
+                  dst[3] = 255u;
+                }
+
+                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (rowEnd >= rowStart) {
+                  int32_t spanStart = maskX0 + rowStart;
+                  int32_t spanEnd = maskX0 + rowEnd;
+                  if (spanEnd >= rx0 && spanStart < rx1) {
+                    spanStart = std::max(spanStart, rx0);
+                    spanEnd = std::min(spanEnd, rx1 - 1);
+                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                    int32_t count = spanEnd - spanStart + 1;
+                    if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                      auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                      std::fill(row32, row32 + count, color);
+                    } else {
+                      for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                        opaqueRow[0] = cR;
+                        opaqueRow[1] = cG;
+                        opaqueRow[2] = cB;
+                        opaqueRow[3] = 255u;
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              for (int32_t y = ry0; y < ry1; ++y, ++localY) {
+                uint8_t* rowBase = row_ptr(y);
+                uint16_t edgeStart = edgeOffset[static_cast<size_t>(localY)];
+                uint16_t edgeEnd = edgeOffset[static_cast<size_t>(localY + 1)];
+                for (uint16_t i = edgeStart; i < edgeEnd; ++i) {
+                  int32_t x = maskX0 + static_cast<int32_t>(edgeX[i]);
+                  if (x < rx0 || x >= rx1) continue;
+                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
+                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                  blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
+                                      static_cast<uint8_t>(pm & 0xFFu),
+                                      static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                                      static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                                      cov);
+                }
+
+                int32_t rowStart = static_cast<int32_t>(rowOpaqueStart[static_cast<size_t>(localY)]);
+                int32_t rowEnd = static_cast<int32_t>(rowOpaqueEnd[static_cast<size_t>(localY)]);
+                if (rowEnd >= rowStart) {
+                  int32_t spanStart = maskX0 + rowStart;
+                  int32_t spanEnd = maskX0 + rowEnd;
+                  if (spanEnd >= rx0 && spanStart < rx1) {
+                    spanStart = std::max(spanStart, rx0);
+                    spanEnd = std::min(spanEnd, rx1 - 1);
+                    uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
+                    int32_t count = spanEnd - spanStart + 1;
+                    if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                      auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
+                      std::fill(row32, row32 + count, color);
+                    } else {
+                      for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                        opaqueRow[0] = cR;
+                        opaqueRow[1] = cG;
+                        opaqueRow[2] = cB;
+                        opaqueRow[3] = 255u;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            int32_t offsetX = rx0 - maskX0;
+            int32_t rowWidth = rx1 - rx0;
+            auto const* maskBase = mask.data();
+            int32_t localY = ry0 - maskY0;
+            auto const* maskRowPtr = maskBase + localY * size + offsetX;
+            auto const* rowOpaqueStartPtr = rowOpaqueStart.data() + localY;
+            auto const* rowOpaqueEndPtr = rowOpaqueEnd.data() + localY;
+            uint8_t* rowBase = row_ptr(ry0) + static_cast<size_t>(4u * rx0);
+            for (int32_t y = ry0; y < ry1; ++y,
+                 ++localY,
+                 maskRowPtr += size,
+                 ++rowOpaqueStartPtr,
+                 ++rowOpaqueEndPtr,
+                 rowBase += surfaceStride) {
+              int32_t opaqueStart = static_cast<int32_t>(*rowOpaqueStartPtr) - offsetX;
+              int32_t opaqueEnd = static_cast<int32_t>(*rowOpaqueEndPtr) - offsetX;
+              if (opaqueEnd < 0 || opaqueStart >= rowWidth || opaqueStart > opaqueEnd) {
+                opaqueStart = rowWidth;
+                opaqueEnd = -1;
+              } else {
+                opaqueStart = std::max(opaqueStart, 0);
+                opaqueEnd = std::min(opaqueEnd, rowWidth - 1);
+              }
+
+              auto const* maskRow = maskRowPtr;
+              uint8_t* row = rowBase;
+              for (int32_t x = 0; x < opaqueStart; ++x, row += 4) {
+                uint8_t coverage = maskRow[x];
+                if (coverage == 0) continue;
+                uint32_t pm = pmTable[coverage];
+                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                if (srcA == 0) continue;
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
+              }
+              if (opaqueEnd >= opaqueStart) {
+                uint32_t pmOpaque = pmTable[255u];
+                uint8_t srcA = static_cast<uint8_t>((pmOpaque >> 24) & 0xFFu);
+                row = rowBase + static_cast<size_t>(4u * opaqueStart);
+                for (int32_t x = opaqueStart; x <= opaqueEnd; ++x, row += 4) {
+                  blend_px(row,
+                           static_cast<uint8_t>(pmOpaque & 0xFFu),
+                           static_cast<uint8_t>((pmOpaque >> 8) & 0xFFu),
+                           static_cast<uint8_t>((pmOpaque >> 16) & 0xFFu),
+                           srcA);
+                }
+              }
+              int32_t tailStart = std::max(opaqueEnd + 1, 0);
+              row = rowBase + static_cast<size_t>(4u * tailStart);
+              for (int32_t x = tailStart; x < rowWidth; ++x, row += 4) {
+                uint8_t coverage = maskRow[x];
+                if (coverage == 0) continue;
+                uint32_t pm = pmTable[coverage];
+                uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                if (srcA == 0) continue;
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
+              }
+            }
+          }
+        } else {
+          int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+          int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+          int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+          int32_t drawY1 = hasLocalBounds ? localY1 : y1;
+
+          int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+          int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+          int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+          int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+          if (rx1 <= rx0 || ry1 <= ry0) continue;
+          if (profile) {
+            ++tileRects;
+            tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
+          }
+          float fcX = static_cast<float>(cx);
+          float fcY = static_cast<float>(cy);
+          float fr = static_cast<float>(r);
+          float innerR = std::max(0.0f, fr - 0.5f);
+          float outerR = fr + 0.5f;
+          float innerR2 = innerR * innerR;
+          float outerR2 = outerR * outerR;
+          for (int32_t y = ry0; y < ry1; ++y) {
+            float dy = (static_cast<float>(y) + 0.5f) - fcY;
+            float dy2 = dy * dy;
+            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
+            for (int32_t x = rx0; x < rx1; ++x, row += 4) {
+              float dx = (static_cast<float>(x) + 0.5f) - fcX;
+              float dist2 = dx * dx + dy2;
+              if (dist2 >= outerR2) continue;
+              uint8_t coverage = 0;
+              if (dist2 <= innerR2) {
+                coverage = 255;
+              } else {
+                float dist = std::sqrt(dist2) - fr;
+                coverage = coverage_from_dist(dist);
+                if (coverage == 0) continue;
+              }
+              uint32_t pm = pmTable[coverage];
+              uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+              if (srcA == 0) continue;
+              if (srcA == 255) {
+                write_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu));
+              } else {
+                blend_px(row,
+                         static_cast<uint8_t>(pm & 0xFFu),
+                         static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                         static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                         srcA);
+              }
+            }
+          }
+        }
       } else if (type == CommandType::Text) {
         if (idx >= batch.text.x.size() ||
             idx >= batch.text.y.size() ||
@@ -1296,12 +2018,17 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       auto& pool = tile_pool();
       TilePool::Profile poolProfile;
       TilePool::Profile* profilePtr = profile ? &poolProfile : nullptr;
+      uint32_t chunkOverride = 0;
+      if (!useTileStream && prepared.tileRefsAreCircleIndices) {
+        chunkOverride = 1u;
+      }
       pool.run(static_cast<uint32_t>(renderTiles.size()),
                [&](uint32_t jobIndex) {
         uint32_t tileIndex = renderTiles[jobIndex];
         render_tile(tileIndex);
                },
-               profilePtr);
+               profilePtr,
+               chunkOverride);
       if (profilePtr) {
         size_t workerCount = poolProfile.activeNs.size();
         profile->workerNs.resize(workerCount);
