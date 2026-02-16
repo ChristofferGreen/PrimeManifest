@@ -19,6 +19,20 @@ Optional configuration:
 - `-DPRIMEMANIFEST_BUILD_TESTS=ON/OFF` toggles tests.
 - `-DPRIMEMANIFEST_BUILD_EXAMPLES=ON/OFF` toggles example binaries.
 
+## Tests
+
+```sh
+ctest --output-on-failure
+```
+
+## Coverage
+
+```sh
+./scripts/compile.sh --coverage
+```
+
+Coverage reports are written to `build-debug/coverage/`.
+
 ## Examples
 
 Text rendering demo:

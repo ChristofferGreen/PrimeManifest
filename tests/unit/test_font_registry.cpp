@@ -27,11 +27,15 @@ PM_TEST(font_registry, to_string_helpers) {
   PM_CHECK(ToString(FontSlant::Upright) == std::string_view("upright"), "slant upright string");
   PM_CHECK(ToString(FontSlant::Italic) == std::string_view("italic"), "slant italic string");
   PM_CHECK(ToString(FontSlant::Oblique) == std::string_view("oblique"), "slant oblique string");
+  PM_CHECK(ToString(static_cast<FontSlant>(255)) == std::string_view("upright"),
+           "slant fallback string");
 
   PM_CHECK(ToString(FontFallbackPolicy::BundleOnly) == std::string_view("bundle_only"),
            "fallback bundle_only string");
   PM_CHECK(ToString(FontFallbackPolicy::BundleThenOS) == std::string_view("bundle_then_os"),
            "fallback bundle_then_os string");
+  PM_CHECK(ToString(static_cast<FontFallbackPolicy>(255)) == std::string_view("bundle_then_os"),
+           "fallback policy string");
 }
 
 PM_TEST(font_registry, layout_text_handles_fonts_disabled) {
@@ -45,6 +49,30 @@ PM_TEST(font_registry, layout_text_handles_fonts_disabled) {
 #else
   PM_CHECK(!run, "LayoutText returns null when fonts disabled");
 #endif
+}
+
+PM_TEST(font_registry, registry_methods_noop_without_fonts) {
+  FontRegistry registry;
+  registry.addBundleDir("unused");
+  registry.addOsFallbackDir("unused");
+  registry.loadBundledFonts();
+  registry.loadOsFallbackFonts();
+
+  PM_CHECK(!registry.hasBundledFaces(), "registry reports no bundled faces");
+
+  Typography typography;
+  typography.size = 12.0f;
+
+  auto run = registry.layoutText("Hi", typography, 1.0f, false);
+  PM_CHECK(!run, "member layoutText returns null when fonts disabled");
+
+  auto measured = registry.measureText("Hi", typography);
+  auto expected = MeasureUiText("Hi", typography.size);
+  PM_CHECK(measured.first == expected.first, "member MeasureText width matches bitmap fallback");
+  PM_CHECK(measured.second == expected.second, "member MeasureText height matches bitmap fallback");
+
+  auto& globalRegistry = GetFontRegistry();
+  PM_CHECK(!globalRegistry.hasBundledFaces(), "global registry has no bundled faces");
 }
 
 PM_TEST(font_registry, emoji_fixed_sizes_load) {

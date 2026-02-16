@@ -68,3 +68,35 @@ PM_TEST(font_bitmap, convert_bgra32_alpha) {
   PM_CHECK(out[0] == 30, "bgra uses rgb when alpha 0");
   PM_CHECK(out[1] == 200, "bgra alpha 200");
 }
+
+PM_TEST(font_bitmap, convert_gray8_negative_pitch) {
+  uint8_t data[] = {1, 2, 3, 4};
+  FontBitmapView view;
+  view.buffer = data;
+  view.width = 2;
+  view.height = 2;
+  view.pitch = -2;
+  view.format = FontBitmapFormat::Gray8;
+
+  std::vector<uint8_t> out;
+  int32_t stride = 0;
+  PM_CHECK(ConvertFontBitmapToAlpha(view, out, stride), "gray8 converts with negative pitch");
+  PM_CHECK(stride == 2, "gray8 negative pitch stride");
+  PM_CHECK(out.size() == 4, "gray8 negative pitch output size");
+  PM_CHECK(out[0] == 3 && out[1] == 4, "gray8 negative pitch first row");
+  PM_CHECK(out[2] == 1 && out[3] == 2, "gray8 negative pitch second row");
+}
+
+PM_TEST(font_bitmap, convert_invalid_format_fails) {
+  uint8_t data[] = {1, 2};
+  FontBitmapView view;
+  view.buffer = data;
+  view.width = 1;
+  view.height = 2;
+  view.pitch = 1;
+  view.format = static_cast<FontBitmapFormat>(255);
+
+  std::vector<uint8_t> out;
+  int32_t stride = 0;
+  PM_CHECK(!ConvertFontBitmapToAlpha(view, out, stride), "invalid format fails");
+}
