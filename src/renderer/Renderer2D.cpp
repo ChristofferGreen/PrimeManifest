@@ -1207,7 +1207,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
               if (opaqueEnd >= opaqueStart) {
                 uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * opaqueStart);
                 int32_t count = opaqueEnd - opaqueStart + 1;
-                if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                if (frontToBack) {
+                  for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                    write_px(opaqueRow, cR, cG, cB);
+                  }
+                } else if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
                   auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
                   std::fill(row32, row32 + count, color);
                 } else {
@@ -1282,7 +1286,11 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                   spanEnd = std::min(spanEnd, rx1 - 1);
                   uint8_t* opaqueRow = rowBase + static_cast<size_t>(4u * spanStart);
                   int32_t count = spanEnd - spanStart + 1;
-                  if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
+                  if (frontToBack) {
+                    for (int32_t i = 0; i < count; ++i, opaqueRow += 4) {
+                      write_px(opaqueRow, cR, cG, cB);
+                    }
+                  } else if ((reinterpret_cast<uintptr_t>(opaqueRow) % alignof(uint32_t)) == 0) {
                     auto* row32 = reinterpret_cast<uint32_t*>(opaqueRow);
                     std::fill(row32, row32 + count, color);
                   } else {

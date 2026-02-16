@@ -276,6 +276,9 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 62.99 | 62.45 | 58.87 | 67.70 | 2.57 | Working tree | Auto tile-stream for circle-only without tile buffer. |
 | 2026-02-16 | 20 | 300 | 68.58 | 70.35 | 52.94 | 79.82 | 8.52 | Working tree | Circle edge blend specialization for dst-opaque (skip blend branch). |
 | 2026-02-16 | 20 | 300 | 101.84 | 103.73 | 89.48 | 108.84 | 6.27 | Working tree | Circle-only tile buffer when front-to-back + clear (no tile stream). |
+| 2026-02-16 | 20 | 300 | 102.08 | 102.12 | 87.86 | 109.88 | 5.99 | Working tree | Tile buffer clear blend uses mul table lookups. |
+| 2026-02-16 | 20 | 300 | 101.13 | 100.54 | 90.94 | 108.29 | 5.46 | Working tree | Circle-only tile pool chunk size override = 2 (with tile buffer). |
+| 2026-02-16 | 20 | 300 | 108.89 | 110.84 | 99.78 | 116.22 | 5.63 | Working tree | Front-to-back opaque circle spans use `write_px` (updates opaque count). |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -349,6 +352,9 @@ Date: 2026-02-15
 | Auto tile-stream for circle-only without tile buffer | Rejected | 20-run mean 62.99 FPS vs 92.59 baseline (regression). |
 | Circle edge blend specialization for dst-opaque (skip blend branch) | Rejected | 20-run mean 68.58 FPS vs 78.19 baseline (regression). |
 | Circle-only tile buffer when front-to-back + clear | Kept | 20-run mean 101.84 FPS vs 78.19 baseline (~30% win). |
+| Tile buffer clear blend uses mul table lookups | Rejected | 20-run mean 102.08 FPS vs 101.84 baseline (noise). |
+| Circle-only tile pool chunk size override = 2 (tile buffer) | Rejected | 20-run mean 101.13 FPS vs 101.84 baseline (regression). |
+| Front-to-back opaque circle spans use `write_px` | Kept | 20-run mean 108.89 FPS vs 101.84 baseline (~6.9% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
