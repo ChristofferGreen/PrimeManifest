@@ -402,6 +402,7 @@ Date: 2026-02-15
 | Skip sorting circle tiles by load (A/B 10-run) | Rejected | Mean 81.70 FPS vs 97.30 baseline (regression). |
 | Circle-only tile pool chunk size = 2 (A/B 10-run) | Rejected | Mean 95.78 FPS vs 97.30 baseline (regression). |
 | Specialize circle edge blends by mode (front-to-back/dst-opaque) | Kept | 20-run mean 107.59 FPS vs 97.30 baseline (~10.6% win). |
+| Hoist tile bounds to int32 locals in render loop | Rejected | 10-run mean 94.79 FPS vs 107.59 baseline (likely throttled; no win). |
 | In-place circle Y update + reduced bounds pad | Rejected | 20-run mean 71.98 FPS vs 81.78 baseline (regression). |
 | Precompute palette/edge PM row pointers | Rejected | 20-run mean 76.66 FPS vs 89.81 baseline (regression). |
 | Reduce circle bounds pad to move step | Kept | 20-run mean 78.19 FPS vs 65.53 baseline (~19.3% win) using `--reuse-optimized` (pad = step). |
