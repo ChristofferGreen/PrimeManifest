@@ -417,6 +417,7 @@ Date: 2026-02-15
 | Lazy `pmTable` pointer (only needed paths) | Rejected | 20-run mean 139.35 FPS vs 143.74 baseline (regression). |
 | Force tile size 32 (disable auto tile size) | Rejected | 10-run mean 136.67 FPS vs 143.74 baseline (regression). |
 | Disable front-to-back (no tile buffer) | Rejected | 10-run mean 86.53 FPS vs 143.74 baseline (regression). |
+| Tile pool chunk cap = 4 | Rejected | 20-run mean 137.79 FPS vs 143.74 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
