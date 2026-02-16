@@ -249,6 +249,7 @@ Date: 2026-02-16
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 164.18 | 167.52 | 144.86 | 169.87 | 6.91 | Working tree | SIMD circle Y update loop (NEON/SSE), 1,000,000 circles. |
 | 2026-02-16 | 20 | 300 | 160.79 | 163.23 | 129.45 | 172.38 | 9.59 | Working tree | New baseline with 1,000,000 circles. |
 | 2026-02-16 | 20 | 300 | 170.02 | 171.68 | 158.38 | 177.32 | 5.36 | Working tree | Store circle base Y as int32 in bench update loop. |
 | 2026-02-16 | 20 | 300 | 160.36 | 161.48 | 144.52 | 165.05 | 4.78 | Working tree | Skip `OptimizeRenderBatch` call when reuse is valid (reuse-optimized default). |
@@ -422,7 +423,7 @@ Date: 2026-02-16
 | Circle-major auto tile size 128 (A/B vs 64, interleaved) | Rejected | 10-run mean 64=107.36 vs 128=101.51 (regression, high variance). |
 | Add `__restrict` to circle array pointers | Rejected | 20-run mean 124.10 FPS vs 123.20 baseline (no clear win). |
 | Reuse circle localCounts as thread offsets | Rejected | 20-run mean 127.70 FPS vs 127.18 baseline (no clear win). |
-| SIMD circle Y update in benchmark (NEON/SSE) | Rejected | 20-run mean 121.34 FPS vs 127.36 baseline (regression). |
+| SIMD circle Y update in benchmark (NEON/SSE) | Kept | 1M case: 20-run mean 164.18 FPS vs 160.79 baseline (~2.1% win). Previously regressed at 750k (121.34 vs 127.36). |
 | In-place circle Y update + reduced bounds pad | Rejected | 20-run mean 71.98 FPS vs 81.78 baseline (regression). |
 | Precompute palette/edge PM row pointers | Rejected | 20-run mean 76.66 FPS vs 89.81 baseline (regression). |
 | Reduce circle bounds pad to move step | Kept | 20-run mean 78.19 FPS vs 65.53 baseline (~19.3% win) using `--reuse-optimized` (pad = step). |

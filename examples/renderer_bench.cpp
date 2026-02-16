@@ -978,10 +978,38 @@ int main(int argc, char** argv) {
       auto* __restrict baseY = circleBaseY.data();
       auto* __restrict dstY = batch.circles.centerY.data();
       size_t count = circleBaseY.size();
+      size_t i = 0;
+#if defined(__ARM_NEON)
+      {
+        int32x4_t delta4 = vdupq_n_s32(delta);
+        for (; i + 8 <= count; i += 8) {
+          int32x4_t a0 = vld1q_s32(baseY + i);
+          int32x4_t a1 = vld1q_s32(baseY + i + 4);
+          int32x4_t s0 = vaddq_s32(a0, delta4);
+          int32x4_t s1 = vaddq_s32(a1, delta4);
+          int16x4_t n0 = vqmovn_s32(s0);
+          int16x4_t n1 = vqmovn_s32(s1);
+          int16x8_t out = vcombine_s16(n0, n1);
+          vst1q_s16(reinterpret_cast<int16_t*>(dstY + i), out);
+        }
+      }
+#elif defined(__SSE2__)
+      {
+        __m128i delta4 = _mm_set1_epi32(delta);
+        for (; i + 8 <= count; i += 8) {
+          __m128i a0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(baseY + i));
+          __m128i a1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(baseY + i + 4));
+          __m128i s0 = _mm_add_epi32(a0, delta4);
+          __m128i s1 = _mm_add_epi32(a1, delta4);
+          __m128i packed = _mm_packs_epi32(s0, s1);
+          _mm_storeu_si128(reinterpret_cast<__m128i*>(dstY + i), packed);
+        }
+      }
+#endif
 #if defined(__clang__)
 #pragma clang loop vectorize(enable)
 #endif
-      for (size_t i = 0; i < count; ++i) {
+      for (; i < count; ++i) {
         dstY[i] = static_cast<int16_t>(baseY[i] + delta);
       }
       if (!circleEdgeIndices.empty()) {
