@@ -332,6 +332,8 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 89.39 | 88.68 | 78.83 | 98.86 | 6.57 | Working tree | Front-to-back: skip dst alpha checks on first command (fullInside circles). |
 | 2026-02-16 | 20 | 300 | 98.20 | 102.51 | 71.50 | 110.74 | 12.59 | Working tree | Baseline rerun (no reuse), A/B for cached circle colors. |
 | 2026-02-16 | 20 | 300 | 98.24 | 99.27 | 92.39 | 100.98 | 2.39 | Working tree | Circle colors from cached palette arrays (avoid shifts). |
+| 2026-02-16 | 20 | 300 | 98.20 | 102.51 | 71.50 | 110.74 | 12.59 | Working tree | Baseline rerun (no reuse), A/B for contiguous binning buffers. |
+| 2026-02-16 | 20 | 300 | 89.71 | 90.29 | 75.61 | 97.08 | 6.44 | Working tree | Binning: use contiguous per-thread buffers instead of vector-of-vectors. |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -389,6 +391,7 @@ Date: 2026-02-15
 | Binning: merge count/fill passes with barrier | Rejected | 20-run mean 95.72 FPS vs 96.29 baseline (regression). |
 | Front-to-back: skip dst alpha checks on first command (fullInside circles) | Rejected | 20-run mean 89.39 FPS vs 98.20 baseline (regression). |
 | Circle colors from cached palette arrays (avoid shifts) | Rejected | 20-run mean 98.24 FPS vs 98.20 baseline (no clear win). |
+| Binning: use contiguous per-thread buffers instead of vector-of-vectors | Rejected | 20-run mean 89.71 FPS vs 98.20 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
 | Hoist edge premultiplied lookup branch out of edge loops | Rejected | 20-run mean 70.28 FPS vs 73.76 baseline (regression). |
 | Hoist row pointer increment for clipped opaque circles | Rejected | 20-run mean 89.36 FPS vs 91.93 baseline (regression). |
