@@ -344,6 +344,7 @@ Date: 2026-02-15
 | --- | --- | --- |
 | Skip `OptimizeRenderBatch` call when reuse is valid (bench) | Kept | 20-run mean 160.36 FPS vs 156.66 baseline (~2.4% win). |
 | Circle-bench defaults enable reuse-optimized (padded bounds) | Kept | 20-run mean 156.66 FPS (optimize skipped after first frame). |
+| Circle centerY override pointer + precomputed up/down arrays | Rejected | 20-run mean 156.06 FPS vs 160.36 baseline (regression). |
 | Branchless circle motion update (precomputed edge clamp indices) | Kept | 20-run mean 92.59 FPS vs 80.64 baseline (~14.8% win) using `--reuse-optimized`. |
 | Reuse optimized batch for moving circles with padded bounds + cached command counts | Kept | 20-run mean 90.45 FPS vs 77.24 baseline (~17.1% win) using `--reuse-optimized` (auto tile-stream off). |
 | Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |
