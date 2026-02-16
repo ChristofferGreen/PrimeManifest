@@ -265,6 +265,17 @@ Date: 2026-02-15
 | 2026-02-15 | 20 | 300 | 90.45 | 90.31 | 77.06 | 97.72 | 5.67 | Working tree | `--reuse-optimized` with padded bounds + circle refs (auto tile-stream off). |
 | 2026-02-15 | 20 | 300 | 80.64 | 80.82 | 75.17 | 84.22 | 2.67 | Working tree | Baseline with branchless circle motion update (edge clamp list). |
 | 2026-02-15 | 20 | 300 | 92.59 | 93.02 | 84.96 | 97.48 | 3.35 | Working tree | `--reuse-optimized` with branchless circle motion update (edge clamp list). |
+| 2026-02-16 | 20 | 300 | 75.57 | 78.16 | 55.34 | 84.39 | 7.73 | Working tree | Precomputed circle Y up/down arrays + memcpy per frame. |
+| 2026-02-16 | 20 | 300 | 81.22 | 80.70 | 62.74 | 91.38 | 7.95 | Working tree | Per-axis circle bounds pad (X=0, Y=2*step) for vertical motion. |
+| 2026-02-16 | 20 | 300 | 84.10 | 82.48 | 73.96 | 98.85 | 7.43 | Working tree | Precompute optimized batches for up/down positions (alternate render-only). |
+| 2026-02-16 | 20 | 300 | 86.10 | 86.34 | 77.96 | 91.63 | 3.77 | Working tree | Radius-4 uniform fullInside path with fixed-size loop (9x9). |
+| 2026-02-16 | 20 | 300 | 84.18 | 85.16 | 65.00 | 89.44 | 5.16 | Working tree | FullInside edge blend unroll for 1–2 edges per row. |
+| 2026-02-16 | 20 | 300 | 81.58 | 84.72 | 60.43 | 88.73 | 8.13 | Working tree | FullInside dst-opaque edge blend using cached invA. |
+| 2026-02-16 | 20 | 300 | 66.57 | 63.90 | 56.12 | 80.38 | 6.44 | Working tree | Skip circle alpha check when palette opaque. |
+| 2026-02-16 | 20 | 300 | 79.41 | 80.93 | 70.27 | 87.22 | 5.26 | Working tree | Defer circle color load until overlap confirmed. |
+| 2026-02-16 | 20 | 300 | 62.99 | 62.45 | 58.87 | 67.70 | 2.57 | Working tree | Auto tile-stream for circle-only without tile buffer. |
+| 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
+| 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -312,6 +323,28 @@ Date: 2026-02-15
 | Cache edge premultiplied row pointers | Rejected | 10-run mean 63.13 FPS vs 83.01 baseline (regression). |
 | Cache palette premultiplied row pointers | Rejected | 10-run mean 55.35 FPS vs 83.01 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
+| Hoist edge premultiplied lookup branch out of edge loops | Rejected | 20-run mean 70.28 FPS vs 73.76 baseline (regression). |
+| Hoist row pointer increment for clipped opaque circles | Rejected | 20-run mean 89.36 FPS vs 91.93 baseline (regression). |
+| Tile size 96 vs 128 (A/B 20-run, 750k) | Rejected | Tile 128 mean 79.03 FPS vs tile 96 mean 77.54 FPS (high variance). |
+| Skip render tile sorting for >=500k circles | Rejected | 20-run mean 83.26 FPS vs 87.43 baseline (regression). |
+| In-place circle Y update + reduced bounds pad | Rejected | 20-run mean 71.98 FPS vs 81.78 baseline (regression). |
+| Precompute palette/edge PM row pointers | Rejected | 20-run mean 76.66 FPS vs 89.81 baseline (regression). |
+| Reduce circle bounds pad to move step | Kept | 20-run mean 78.19 FPS vs 65.53 baseline (~19.3% win) using `--reuse-optimized` (pad = step). |
+| Cache tile row pointers in render loop | Rejected | 20-run mean 86.52 FPS vs 89.81 baseline (regression). |
+| Hoist uniform-mask selection into pointers | Rejected | 20-run mean 77.21 FPS vs 89.81 baseline (regression). |
+| Dst-opaque circle blend specialization (avoid blend branch) | Rejected | 20-run mean 88.32 FPS vs 89.81 baseline (regression). |
+| Allow auto tile stream for circle-majority >=100k | Rejected | 20-run mean 89.61 FPS vs 89.81 baseline (slight regression). |
+| Remove circle-only chunk size override | Rejected | 20-run mean 83.88 FPS vs 89.81 baseline (regression). |
+| Branch prediction hints in blend path | Rejected | 20-run mean 79.42 FPS vs 89.81 baseline (regression). |
+| Precomputed circle Y up/down arrays + memcpy per frame | Rejected | 20-run mean 75.57 FPS vs 92.59 baseline (regression). |
+| Per-axis circle bounds pad (X=0, Y=2*step) for vertical motion | Rejected | 20-run mean 81.22 FPS vs 92.59 baseline (regression). |
+| Precompute optimized batches for up/down positions (alternate render-only) | Rejected | 20-run mean 84.10 FPS vs 92.59 baseline (regression). |
+| Radius-4 uniform fullInside path with fixed-size loop (9x9) | Rejected | 20-run mean 86.10 FPS vs 92.59 baseline (regression). |
+| FullInside edge blend unroll for 1–2 edges per row | Rejected | 20-run mean 84.18 FPS vs 92.59 baseline (regression). |
+| FullInside dst-opaque edge blend using cached invA | Rejected | 20-run mean 81.58 FPS vs 92.59 baseline (regression). |
+| Skip circle alpha check when palette opaque | Rejected | 20-run mean 66.57 FPS vs 92.59 baseline (regression). |
+| Defer circle color load until overlap confirmed | Rejected | 20-run mean 79.41 FPS vs 92.59 baseline (regression). |
+| Auto tile-stream for circle-only without tile buffer | Rejected | 20-run mean 62.99 FPS vs 92.59 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

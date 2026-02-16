@@ -908,7 +908,7 @@ int main(int argc, char** argv) {
     circleEdgeIndices.reserve(cfg.circleCount / 8);
     circleMoveStep = std::max<int32_t>(2, static_cast<int32_t>(cfg.circleRadius) / 2);
     if (cfg.reuseOptimized) {
-      uint32_t pad = static_cast<uint32_t>(circleMoveStep) * 2u;
+      uint32_t pad = static_cast<uint32_t>(circleMoveStep);
       if (pad > std::numeric_limits<uint16_t>::max()) {
         pad = std::numeric_limits<uint16_t>::max();
       }
