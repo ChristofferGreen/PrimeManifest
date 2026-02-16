@@ -6,6 +6,8 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -905,8 +907,9 @@ auto optimize_batch(RenderTarget target,
         };
         auto bin_circles_parallel = [&](auto&& compute_span) {
           constexpr size_t kParallelCircleThreshold = 50000u;
+          auto& pool = binning_pool();
           uint32_t threadCount =
-            std::min<uint32_t>(std::max(1u, std::thread::hardware_concurrency()),
+            std::min<uint32_t>(std::max(1u, pool.thread_count()),
                                static_cast<uint32_t>(circleCount));
           if (threadCount <= 1 || circleCount < kParallelCircleThreshold) {
             bin_circles(compute_span);
@@ -936,15 +939,10 @@ auto optimize_batch(RenderTarget target,
               }
             }
           };
-          std::vector<std::thread> threads;
-          threads.reserve(threadCount - 1u);
-          for (uint32_t t = 1; t < threadCount; ++t) {
-            threads.emplace_back(count_worker, t);
-          }
-          count_worker(0);
-          for (auto& t : threads) {
-            t.join();
-          }
+          pool.run([&](uint32_t t) {
+            if (t >= threadCount) return;
+            count_worker(t);
+          });
 
           tileCounts.assign(tileCount, 0);
           for (uint32_t tile = 0; tile < tileCount; ++tile) {
@@ -994,15 +992,10 @@ auto optimize_batch(RenderTarget target,
               }
             }
           };
-          threads.clear();
-          threads.reserve(threadCount - 1u);
-          for (uint32_t t = 1; t < threadCount; ++t) {
-            threads.emplace_back(fill_worker, t);
-          }
-          fill_worker(0);
-          for (auto& t : threads) {
-            t.join();
-          }
+          pool.run([&](uint32_t t) {
+            if (t >= threadCount) return;
+            fill_worker(t);
+          });
         };
 
         if (paletteOpaque) {
