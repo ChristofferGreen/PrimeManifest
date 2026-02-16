@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(optimizer_rect_cache, rect_cache_populated_for_active_rect) {
+
+TEST_SUITE_BEGIN("primemanifest.optimizer_rect_cache");
+
+TEST_CASE("rect_cache_populated_for_active_rect") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{12, 34, 56, 255}));
 
@@ -29,8 +33,10 @@ PM_TEST(optimizer_rect_cache, rect_cache_populated_for_active_rect) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(!optimized.rectEdgeOffset.empty(), "rect edge offsets created");
-  PM_CHECK(optimized.rectEdgeOffset[0] != 0xFFFFFFFFu, "rect edge offset valid");
-  PM_CHECK(optimized.rectColorR[0] == 12, "rect color cache populated");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(!optimized.rectEdgeOffset.empty(), "rect edge offsets created");
+  CHECK_MESSAGE(optimized.rectEdgeOffset[0] != 0xFFFFFFFFu, "rect edge offset valid");
+  CHECK_MESSAGE(optimized.rectColorR[0] == 12, "rect color cache populated");
 }
+
+TEST_SUITE_END();

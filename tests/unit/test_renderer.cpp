@@ -2,6 +2,7 @@
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -16,7 +17,10 @@ void enable_palette(RenderBatch& batch, uint32_t color) {
 
 } // namespace
 
-PM_TEST(renderer, rejects_disabled_palette) {
+
+TEST_SUITE_BEGIN("primemanifest.renderer");
+
+TEST_CASE("rejects_disabled_palette") {
   RenderBatch batch;
 
   OptimizedBatch optimized;
@@ -29,10 +33,10 @@ PM_TEST(renderer, rejects_disabled_palette) {
 
   RenderOptimized(target, batch, optimized);
 
-  PM_CHECK(buffer[0] == 0x7F, "palette-disabled early return");
+  CHECK_MESSAGE(buffer[0] == 0x7F, "palette-disabled early return");
 }
 
-PM_TEST(renderer, rejects_target_mismatch) {
+TEST_CASE("rejects_target_mismatch") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{1, 2, 3, 4}));
 
@@ -46,10 +50,10 @@ PM_TEST(renderer, rejects_target_mismatch) {
 
   RenderOptimized(target, batch, optimized);
 
-  PM_CHECK(buffer[0] == 0x7F, "target mismatch early return");
+  CHECK_MESSAGE(buffer[0] == 0x7F, "target mismatch early return");
 }
 
-PM_TEST(renderer, rejects_zero_stride) {
+TEST_CASE("rejects_zero_stride") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{1, 2, 3, 4}));
 
@@ -63,10 +67,10 @@ PM_TEST(renderer, rejects_zero_stride) {
 
   RenderOptimized(target, batch, optimized);
 
-  PM_CHECK(buffer[0] == 0x7F, "zero stride early return");
+  CHECK_MESSAGE(buffer[0] == 0x7F, "zero stride early return");
 }
 
-PM_TEST(renderer, tile_buffer_clear_applies) {
+TEST_CASE("tile_buffer_clear_applies") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 0}));
   batch.tileSize = 8;
@@ -87,10 +91,10 @@ PM_TEST(renderer, tile_buffer_clear_applies) {
   RenderOptimized(target, batch, optimized);
 
   uint32_t expected = PackRGBA8(Color{5, 10, 15, 128});
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == expected, "tile-buffer clear writes premultiplied pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == expected, "tile-buffer clear writes premultiplied pixel");
 }
 
-PM_TEST(renderer, tile_buffer_clear_pattern_applies) {
+TEST_CASE("tile_buffer_clear_pattern_applies") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 0}));
   batch.tileSize = 8;
@@ -118,6 +122,8 @@ PM_TEST(renderer, tile_buffer_clear_pattern_applies) {
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
   uint32_t green = PackRGBA8(Color{0, 255, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == red, "tile-buffer pattern (0,0)");
-  PM_CHECK(pixel_at(buffer, width, 1, 0) == green, "tile-buffer pattern (1,0)");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == red, "tile-buffer pattern (0,0)");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 0) == green, "tile-buffer pattern (1,0)");
 }
+
+TEST_SUITE_END();

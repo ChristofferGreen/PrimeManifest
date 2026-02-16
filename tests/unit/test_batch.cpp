@@ -1,9 +1,13 @@
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(batch, clear_all_resets_state) {
+
+TEST_SUITE_BEGIN("primemanifest.batch");
+
+TEST_CASE("clear_all_resets_state") {
   RenderBatch batch;
   batch.tileSize = 64;
   batch.circleBoundsPad = 7;
@@ -19,19 +23,21 @@ PM_TEST(batch, clear_all_resets_state) {
 
   batch.clearAll();
 
-  PM_CHECK(batch.commands.empty(), "commands cleared");
-  PM_CHECK(batch.clear.size() == 0, "clear store cleared");
-  PM_CHECK(batch.rects.size() == 0, "rect store cleared");
-  PM_CHECK(batch.circles.size() == 0, "circle store cleared");
-  PM_CHECK(batch.text.size() == 0, "text store cleared");
-  PM_CHECK(batch.glyphs.size() == 0, "glyph store cleared");
-  PM_CHECK(batch.tileStream.commands.empty(), "tile stream cleared");
-  PM_CHECK(!batch.palette.enabled, "palette disabled");
-  PM_CHECK(batch.palette.size == 0, "palette size reset");
-  PM_CHECK(!batch.disableOpaqueRectFastPath, "fast path default restored");
-  PM_CHECK(batch.circleBoundsPad == 0, "circle bounds pad reset");
-  PM_CHECK(batch.revision == 0, "revision reset");
-  PM_CHECK(!batch.reuseOptimized, "reuseOptimized reset");
-  PM_CHECK(batch.assumeFrontToBack, "front-to-back default restored");
-  PM_CHECK(batch.autoTileStream, "auto tile stream default restored");
+  CHECK_MESSAGE(batch.commands.empty(), "commands cleared");
+  CHECK_MESSAGE(batch.clear.size() == 0, "clear store cleared");
+  CHECK_MESSAGE(batch.rects.size() == 0, "rect store cleared");
+  CHECK_MESSAGE(batch.circles.size() == 0, "circle store cleared");
+  CHECK_MESSAGE(batch.text.size() == 0, "text store cleared");
+  CHECK_MESSAGE(batch.glyphs.size() == 0, "glyph store cleared");
+  CHECK_MESSAGE(batch.tileStream.commands.empty(), "tile stream cleared");
+  CHECK_MESSAGE(!batch.palette.enabled, "palette disabled");
+  CHECK_MESSAGE(batch.palette.size == 0, "palette size reset");
+  CHECK_MESSAGE(!batch.disableOpaqueRectFastPath, "fast path default restored");
+  CHECK_MESSAGE(batch.circleBoundsPad == 0, "circle bounds pad reset");
+  CHECK_MESSAGE(batch.revision == 0, "revision reset");
+  CHECK_MESSAGE(!batch.reuseOptimized, "reuseOptimized reset");
+  CHECK_MESSAGE(batch.assumeFrontToBack, "front-to-back default restored");
+  CHECK_MESSAGE(batch.autoTileStream, "auto tile stream default restored");
 }
+
+TEST_SUITE_END();

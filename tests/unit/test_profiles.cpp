@@ -2,6 +2,7 @@
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -16,7 +17,10 @@ void enable_palette(RenderBatch& batch, uint32_t color) {
 
 } // namespace
 
-PM_TEST(profile, render_populates_stats) {
+
+TEST_SUITE_BEGIN("primemanifest.profile");
+
+TEST_CASE("render_populates_stats") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -34,13 +38,13 @@ PM_TEST(profile, render_populates_stats) {
   OptimizeRenderBatch(target, batch, optimized);
   RenderOptimized(target, batch, optimized);
 
-  PM_CHECK(profile.tileCount > 0, "profile tracks tile count");
-  PM_CHECK(profile.commandCount > 0, "profile tracks command count");
-  PM_CHECK(profile.renderedRectCount >= 1, "profile counts rects");
-  PM_CHECK(profile.renderedPixelCount > 0, "profile counts pixels");
+  CHECK_MESSAGE(profile.tileCount > 0, "profile tracks tile count");
+  CHECK_MESSAGE(profile.commandCount > 0, "profile tracks command count");
+  CHECK_MESSAGE(profile.renderedRectCount >= 1, "profile counts rects");
+  CHECK_MESSAGE(profile.renderedPixelCount > 0, "profile counts pixels");
 }
 
-PM_TEST(profile, tile_buffer_pixels_reported) {
+TEST_CASE("tile_buffer_pixels_reported") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 0}));
   batch.tileSize = 8;
@@ -62,5 +66,7 @@ PM_TEST(profile, tile_buffer_pixels_reported) {
   OptimizeRenderBatch(target, batch, optimized);
   RenderOptimized(target, batch, optimized);
 
-  PM_CHECK(profile.renderedTileBufferPixels == 64, "tile buffer pixels counted");
+  CHECK_MESSAGE(profile.renderedTileBufferPixels == 64, "tile buffer pixels counted");
 }
+
+TEST_SUITE_END();

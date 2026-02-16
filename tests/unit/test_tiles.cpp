@@ -1,9 +1,13 @@
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(tiles, size_zero_defaults) {
+
+TEST_SUITE_BEGIN("primemanifest.tiles");
+
+TEST_CASE("size_zero_defaults") {
   RenderBatch batch;
   batch.tileSize = 0;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -17,10 +21,10 @@ PM_TEST(tiles, size_zero_defaults) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{100, 100, 255, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == expected, "tile size zero falls back to default");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == expected, "tile size zero falls back to default");
 }
 
-PM_TEST(tiles, size_large_still_renders) {
+TEST_CASE("size_large_still_renders") {
   RenderBatch batch;
   batch.tileSize = 512;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -34,10 +38,10 @@ PM_TEST(tiles, size_large_still_renders) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{120, 120, 255, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == expected, "large tile size still renders");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == expected, "large tile size still renders");
 }
 
-PM_TEST(tiles, size_non_power_of_two) {
+TEST_CASE("size_non_power_of_two") {
   RenderBatch batch;
   batch.tileSize = 7;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -51,10 +55,10 @@ PM_TEST(tiles, size_non_power_of_two) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{10, 200, 10, 255});
-  PM_CHECK(pixel_at(buffer, width, 7, 7) == expected, "non power-of-two tile size works");
+  CHECK_MESSAGE(pixel_at(buffer, width, 7, 7) == expected, "non power-of-two tile size works");
 }
 
-PM_TEST(tiles, multi_tile_rect) {
+TEST_CASE("multi_tile_rect") {
   RenderBatch batch;
   batch.tileSize = 8;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -68,6 +72,8 @@ PM_TEST(tiles, multi_tile_rect) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{255, 0, 255, 255});
-  PM_CHECK(pixel_at(buffer, width, 6, 6) == expected, "rect draws in first tile");
-  PM_CHECK(pixel_at(buffer, width, 18, 18) == expected, "rect draws in later tile");
+  CHECK_MESSAGE(pixel_at(buffer, width, 6, 6) == expected, "rect draws in first tile");
+  CHECK_MESSAGE(pixel_at(buffer, width, 18, 18) == expected, "rect draws in later tile");
 }
+
+TEST_SUITE_END();

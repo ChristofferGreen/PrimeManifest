@@ -1,9 +1,13 @@
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(text, draws_basic_glyph) {
+
+TEST_SUITE_BEGIN("primemanifest.text");
+
+TEST_CASE("draws_basic_glyph") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -37,10 +41,10 @@ PM_TEST(text, draws_basic_glyph) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{0, 200, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "text glyph draws pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == expected, "text glyph draws pixel");
 }
 
-PM_TEST(text, opaque_glyph_fast_path) {
+TEST_CASE("opaque_glyph_fast_path") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -74,10 +78,10 @@ PM_TEST(text, opaque_glyph_fast_path) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{200, 100, 50, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "opaque glyph fast path draws");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == expected, "opaque glyph fast path draws");
 }
 
-PM_TEST(text, partial_coverage_blends) {
+TEST_CASE("partial_coverage_blends") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -111,10 +115,10 @@ PM_TEST(text, partial_coverage_blends) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{128, 128, 128, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "partial coverage blends to mid-gray");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == expected, "partial coverage blends to mid-gray");
 }
 
-PM_TEST(text, opacity_scales_coverage) {
+TEST_CASE("opacity_scales_coverage") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -162,10 +166,10 @@ PM_TEST(text, opacity_scales_coverage) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{64, 64, 64, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == expected, "opacity scales coverage");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == expected, "opacity scales coverage");
 }
 
-PM_TEST(text, clip_respected) {
+TEST_CASE("clip_respected") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -218,11 +222,11 @@ PM_TEST(text, clip_respected) {
 
   uint32_t green = PackRGBA8(Color{0, 255, 0, 255});
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == green, "text clip allows pixel");
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == black, "text clip rejects pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == green, "text clip allows pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == black, "text clip rejects pixel");
 }
 
-PM_TEST(text, missing_bitmap_skips_draw) {
+TEST_CASE("missing_bitmap_skips_draw") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -245,10 +249,10 @@ PM_TEST(text, missing_bitmap_skips_draw) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == black, "missing bitmap skips draw");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == black, "missing bitmap skips draw");
 }
 
-PM_TEST(text, missing_run_skips_draw) {
+TEST_CASE("missing_run_skips_draw") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -276,10 +280,10 @@ PM_TEST(text, missing_run_skips_draw) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == black, "missing run skips draw");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == black, "missing run skips draw");
 }
 
-PM_TEST(text, opacity_zero_skips) {
+TEST_CASE("opacity_zero_skips") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -327,10 +331,10 @@ PM_TEST(text, opacity_zero_skips) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == black, "text opacity zero skips draw");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == black, "text opacity zero skips draw");
 }
 
-PM_TEST(text, offscreen_skips) {
+TEST_CASE("offscreen_skips") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -364,10 +368,10 @@ PM_TEST(text, offscreen_skips) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == black, "offscreen text skipped");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == black, "offscreen text skipped");
 }
 
-PM_TEST(text, atlas_pixel_draws) {
+TEST_CASE("atlas_pixel_draws") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -411,10 +415,10 @@ PM_TEST(text, atlas_pixel_draws) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{0, 200, 200, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == expected, "text atlas pixel draws");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == expected, "text atlas pixel draws");
 }
 
-PM_TEST(text, atlas_offset_draws) {
+TEST_CASE("atlas_offset_draws") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -458,10 +462,10 @@ PM_TEST(text, atlas_offset_draws) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{200, 100, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == expected, "text atlas offset draws");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == expected, "text atlas offset draws");
 }
 
-PM_TEST(text, large_across_tiles) {
+TEST_CASE("large_across_tiles") {
   RenderBatch batch;
   batch.tileSize = 8;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -497,11 +501,11 @@ PM_TEST(text, large_across_tiles) {
   render_batch(target, batch);
 
   uint32_t yellow = PackRGBA8(Color{255, 255, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 5) == yellow, "large text draws in early tile");
-  PM_CHECK(pixel_at(buffer, width, 24, 5) == yellow, "large text draws in later tile");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 5) == yellow, "large text draws in early tile");
+  CHECK_MESSAGE(pixel_at(buffer, width, 24, 5) == yellow, "large text draws in later tile");
 }
 
-PM_TEST(text, multiple_glyph_spacing) {
+TEST_CASE("multiple_glyph_spacing") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -535,12 +539,12 @@ PM_TEST(text, multiple_glyph_spacing) {
 
   render_batch(target, batch);
 
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 0 draws");
-  PM_CHECK(pixel_at(buffer, width, 5, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 1 spaced");
-  PM_CHECK(pixel_at(buffer, width, 9, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 2 spaced");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 0 draws");
+  CHECK_MESSAGE(pixel_at(buffer, width, 5, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 1 spaced");
+  CHECK_MESSAGE(pixel_at(buffer, width, 9, 1) == PackRGBA8(Color{255, 255, 255, 255}), "glyph 2 spaced");
 }
 
-PM_TEST(text, scale_applies) {
+TEST_CASE("scale_applies") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -573,6 +577,8 @@ PM_TEST(text, scale_applies) {
 
   render_batch(target, batch);
 
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{255, 255, 255, 255}),
-           "scaled text draws at origin");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == PackRGBA8(Color{255, 255, 255, 255}),
+                "scaled text draws at origin");
 }
+
+TEST_SUITE_END();

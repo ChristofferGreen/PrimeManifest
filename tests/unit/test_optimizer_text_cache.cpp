@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(optimizer_text_cache, text_cache_populated_for_active_text) {
+
+TEST_SUITE_BEGIN("primemanifest.optimizer_text_cache");
+
+TEST_CASE("text_cache_populated_for_active_text") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{10, 20, 30, 255}));
 
@@ -43,8 +47,10 @@ PM_TEST(optimizer_text_cache, text_cache_populated_for_active_text) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(!optimized.textPmOffset.empty(), "text PM offsets created");
-  PM_CHECK(optimized.textPmOffset[0] != 0xFFFFFFFFu, "text PM offset valid");
-  PM_CHECK(optimized.textColorR[0] == 10, "text color cache populated");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(!optimized.textPmOffset.empty(), "text PM offsets created");
+  CHECK_MESSAGE(optimized.textPmOffset[0] != 0xFFFFFFFFu, "text PM offset valid");
+  CHECK_MESSAGE(optimized.textColorR[0] == 10, "text color cache populated");
 }
+
+TEST_SUITE_END();

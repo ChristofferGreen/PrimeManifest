@@ -21,8 +21,6 @@ function(pm_require_cxx23 target)
   endif()
 endfunction()
 
-option(PRIMEMANIFEST_ENABLE_FONTS "Enable FreeType+HarfBuzz text shaping" OFF)
-
 set(PRIMEMANIFEST_SOURCES
   src/renderer/Optimizer2D.cpp
   src/renderer/Renderer2D.cpp
@@ -40,22 +38,10 @@ target_include_directories(PrimeManifest
     $<INSTALL_INTERFACE:include>
 )
 
-if(PRIMEMANIFEST_ENABLE_FONTS)
-  find_package(PkgConfig)
-  if(PkgConfig_FOUND)
-    pkg_check_modules(FREETYPE IMPORTED_TARGET freetype2)
-    pkg_check_modules(HARFBUZZ IMPORTED_TARGET harfbuzz)
-  endif()
-  if(FREETYPE_FOUND AND HARFBUZZ_FOUND)
-    target_link_libraries(PrimeManifest PRIVATE PkgConfig::FREETYPE PkgConfig::HARFBUZZ)
-    target_compile_definitions(PrimeManifest PUBLIC PRIMEMANIFEST_ENABLE_FONTS=1)
-  else()
-    message(WARNING "FreeType/HarfBuzz not found; font rendering disabled (fallback to bitmap font).")
-    target_compile_definitions(PrimeManifest PUBLIC PRIMEMANIFEST_ENABLE_FONTS=0)
-  endif()
-else()
-  target_compile_definitions(PrimeManifest PUBLIC PRIMEMANIFEST_ENABLE_FONTS=0)
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
+pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
+target_link_libraries(PrimeManifest PRIVATE PkgConfig::FREETYPE PkgConfig::HARFBUZZ)
 
 pm_require_cxx23(PrimeManifest)
 
@@ -102,6 +88,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_tile_stream.cpp
     tests/unit/test_struct_clears.cpp
   )
+  target_include_directories(PrimeManifest_tests PRIVATE third_party ${CMAKE_SOURCE_DIR})
   target_link_libraries(PrimeManifest_tests PRIVATE PrimeManifest)
   pm_require_cxx23(PrimeManifest_tests)
   set(PrimeManifestTestSuites

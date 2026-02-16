@@ -15,7 +15,6 @@ cmake --build build-release
 ```
 
 Optional configuration:
-- `-DPRIMEMANIFEST_ENABLE_FONTS=ON` enables FreeType + HarfBuzz text shaping.
 - `-DPRIMEMANIFEST_BUILD_TESTS=ON/OFF` toggles tests.
 - `-DPRIMEMANIFEST_BUILD_EXAMPLES=ON/OFF` toggles example binaries.
 

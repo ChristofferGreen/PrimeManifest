@@ -1,9 +1,13 @@
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(rect, fills_interior) {
+
+TEST_SUITE_BEGIN("primemanifest.rect");
+
+TEST_CASE("fills_interior") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_rect(batch, 2, 2, 6, 6, PackRGBA8(Color{200, 0, 0, 255}));
@@ -16,10 +20,10 @@ PM_TEST(rect, fills_interior) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{200, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 3, 3) == expected, "rect fills interior pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 3, 3) == expected, "rect fills interior pixel");
 }
 
-PM_TEST(rect, clip_applies) {
+TEST_CASE("clip_applies") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -53,11 +57,11 @@ PM_TEST(rect, clip_applies) {
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 4, 4) == red, "clip allows interior pixel");
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == black, "clip rejects outside pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 4, 4) == red, "clip allows interior pixel");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == black, "clip rejects outside pixel");
 }
 
-PM_TEST(rect, clip_outside_skips) {
+TEST_CASE("clip_outside_skips") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -90,10 +94,10 @@ PM_TEST(rect, clip_outside_skips) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == black, "clip outside prevents draw");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == black, "clip outside prevents draw");
 }
 
-PM_TEST(rect, opacity_zero_skips) {
+TEST_CASE("opacity_zero_skips") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -126,10 +130,10 @@ PM_TEST(rect, opacity_zero_skips) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == black, "opacity zero skips rect");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == black, "opacity zero skips rect");
 }
 
-PM_TEST(rect, opacity_half_blends) {
+TEST_CASE("opacity_half_blends") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -162,10 +166,11 @@ PM_TEST(rect, opacity_half_blends) {
   render_batch(target, batch);
 
   uint8_t red = channel_at(buffer, width, 2, 2, 0);
-  PM_CHECK(red >= 49 && red <= 51, "opacity half blends to ~50");
+  CHECK_MESSAGE(red >= 49, "opacity half lower bound");
+  CHECK_MESSAGE(red <= 51, "opacity half upper bound");
 }
 
-PM_TEST(rect, offscreen_skipped) {
+TEST_CASE("offscreen_skipped") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_rect(batch, -10, -10, -2, -2, PackRGBA8(Color{255, 0, 0, 255}));
@@ -178,10 +183,10 @@ PM_TEST(rect, offscreen_skipped) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == black, "offscreen rect skipped");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == black, "offscreen rect skipped");
 }
 
-PM_TEST(rect, rotation_draws) {
+TEST_CASE("rotation_draws") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -214,10 +219,10 @@ PM_TEST(rect, rotation_draws) {
   render_batch(target, batch);
 
   uint32_t blue = PackRGBA8(Color{0, 0, 255, 255});
-  PM_CHECK(pixel_at(buffer, width, 4, 4) == blue, "rotated rect draws center");
+  CHECK_MESSAGE(pixel_at(buffer, width, 4, 4) == blue, "rotated rect draws center");
 }
 
-PM_TEST(rect, gradient_vertical) {
+TEST_CASE("gradient_vertical") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_gradient_rect(batch, 0, 0, 10, 10,
@@ -233,10 +238,10 @@ PM_TEST(rect, gradient_vertical) {
 
   uint8_t top = channel_at(buffer, width, 5, 2, 0);
   uint8_t bottom = channel_at(buffer, width, 5, 8, 0);
-  PM_CHECK(top < bottom, "gradient rect increases along Y");
+  CHECK_MESSAGE(top < bottom, "gradient rect increases along Y");
 }
 
-PM_TEST(rect, gradient_same_colors_uniform) {
+TEST_CASE("gradient_same_colors_uniform") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_gradient_rect(batch, 0, 0, 10, 10,
@@ -251,11 +256,11 @@ PM_TEST(rect, gradient_same_colors_uniform) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{50, 60, 70, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == expected, "gradient with same colors is uniform");
-  PM_CHECK(pixel_at(buffer, width, 8, 8) == expected, "gradient with same colors is uniform");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == expected, "gradient with same colors is uniform");
+  CHECK_MESSAGE(pixel_at(buffer, width, 8, 8) == expected, "gradient with same colors is uniform");
 }
 
-PM_TEST(rect, gradient_dir_normalized) {
+TEST_CASE("gradient_dir_normalized") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_gradient_rect_dir(batch, 0, 0, 10, 10,
@@ -272,10 +277,10 @@ PM_TEST(rect, gradient_dir_normalized) {
 
   uint8_t top = channel_at(buffer, width, 5, 2, 0);
   uint8_t bottom = channel_at(buffer, width, 5, 8, 0);
-  PM_CHECK(top < bottom, "gradient dir fallback behaves vertically");
+  CHECK_MESSAGE(top < bottom, "gradient dir fallback behaves vertically");
 }
 
-PM_TEST(rect, gradient_horizontal) {
+TEST_CASE("gradient_horizontal") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_gradient_rect_dir(batch, 0, 0, 10, 10,
@@ -292,10 +297,10 @@ PM_TEST(rect, gradient_horizontal) {
 
   uint8_t left = channel_at(buffer, width, 2, 5, 0);
   uint8_t right = channel_at(buffer, width, 8, 5, 0);
-  PM_CHECK(left < right, "gradient rect increases along X");
+  CHECK_MESSAGE(left < right, "gradient rect increases along X");
 }
 
-PM_TEST(rect, gradient_clip_respected) {
+TEST_CASE("gradient_clip_respected") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -329,10 +334,10 @@ PM_TEST(rect, gradient_clip_respected) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 7, 7) == black, "gradient clip prevents outside draw");
+  CHECK_MESSAGE(pixel_at(buffer, width, 7, 7) == black, "gradient clip prevents outside draw");
 }
 
-PM_TEST(rect, gradient_opacity_applies) {
+TEST_CASE("gradient_opacity_applies") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_gradient_rect(batch, 0, 0, 10, 10,
@@ -350,10 +355,11 @@ PM_TEST(rect, gradient_opacity_applies) {
   render_batch(target, batch);
 
   uint8_t red = channel_at(buffer, width, 5, 5, 0);
-  PM_CHECK(red >= 49 && red <= 101, "gradient opacity applies");
+  CHECK_MESSAGE(red >= 49, "gradient opacity lower bound");
+  CHECK_MESSAGE(red <= 101, "gradient opacity upper bound");
 }
 
-PM_TEST(rect, negative_clip_prevents_draw) {
+TEST_CASE("negative_clip_prevents_draw") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
 
@@ -386,5 +392,7 @@ PM_TEST(rect, negative_clip_prevents_draw) {
   render_batch(target, batch);
 
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == black, "negative clip prevents draw");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == black, "negative clip prevents draw");
 }
+
+TEST_SUITE_END();

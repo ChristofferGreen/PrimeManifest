@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(text_clip_cache, clip_arrays_populated) {
+
+TEST_SUITE_BEGIN("primemanifest.text_clip_cache");
+
+TEST_CASE("clip_arrays_populated") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{10, 20, 30, 255}));
 
@@ -43,8 +47,10 @@ PM_TEST(text_clip_cache, clip_arrays_populated) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(optimized.textClipEnabled[0] == 1, "text clip enabled cached");
-  PM_CHECK(optimized.textClipX0[0] == 1, "clip x0 cached");
-  PM_CHECK(optimized.textClipY1[0] == 2, "clip y1 cached");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(optimized.textClipEnabled[0] == 1, "text clip enabled cached");
+  CHECK_MESSAGE(optimized.textClipX0[0] == 1, "clip x0 cached");
+  CHECK_MESSAGE(optimized.textClipY1[0] == 2, "clip y1 cached");
 }
+
+TEST_SUITE_END();

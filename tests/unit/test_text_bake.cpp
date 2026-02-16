@@ -1,13 +1,13 @@
 #include "PrimeManifest/text/TextBake.hpp"
 
-#include "test_harness.hpp"
+#include "third_party/doctest.h"
 
 #include <memory>
 
 using namespace PrimeManifest;
-using namespace PrimeManifestTest;
+TEST_SUITE_BEGIN("primemanifest.text_bake");
 
-PM_TEST(text_bake, append_text_run_copies_bitmaps) {
+TEST_CASE("append_text_run_copies_bitmaps") {
   RenderBatch batch;
 
   GlyphBitmap glyph;
@@ -28,26 +28,27 @@ PM_TEST(text_bake, append_text_run_copies_bitmaps) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 2, 2.25f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 10, 20, 7);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.bitmaps.size() == 1, "bitmap cache reuses glyph bitmap");
-  PM_CHECK(batch.glyphs.bitmapOpaque.size() == 1, "bitmap opacity stored");
-  PM_CHECK(batch.glyphs.bitmapOpaque[0] == 1, "opaque bitmap detected");
-  PM_CHECK(batch.glyphs.glyphXQ8_8.size() == 2, "glyphs emitted");
-  PM_CHECK(batch.glyphs.glyphXQ8_8[0] == 384, "glyph x quantized");
-  PM_CHECK(batch.glyphs.glyphYQ8_8[0] == -640, "glyph y quantized");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.bitmaps.size() == 1, "bitmap cache reuses glyph bitmap");
+  CHECK_MESSAGE(batch.glyphs.bitmapOpaque.size() == 1, "bitmap opacity stored");
+  CHECK_MESSAGE(batch.glyphs.bitmapOpaque[0] == 1, "opaque bitmap detected");
+  CHECK_MESSAGE(batch.glyphs.glyphXQ8_8.size() == 2, "glyphs emitted");
+  CHECK_MESSAGE(batch.glyphs.glyphXQ8_8[0] == 384, "glyph x quantized");
+  CHECK_MESSAGE(batch.glyphs.glyphYQ8_8[0] == -640, "glyph y quantized");
 
-  PM_CHECK(batch.runs.glyphStart.size() == 1, "run stored");
-  PM_CHECK(batch.runs.glyphCount[0] == 2, "run glyph count set");
-  PM_CHECK(batch.runs.baselineQ8_8[0] == 768, "baseline quantized");
-  PM_CHECK(batch.runs.scaleQ8_8[0] == 512, "scale quantized");
+  CHECK_MESSAGE(batch.runs.glyphStart.size() == 1, "run stored");
+  CHECK_MESSAGE(batch.runs.glyphCount[0] == 2, "run glyph count set");
+  CHECK_MESSAGE(batch.runs.baselineQ8_8[0] == 768, "baseline quantized");
+  CHECK_MESSAGE(batch.runs.scaleQ8_8[0] == 512, "scale quantized");
 
-  PM_CHECK(batch.text.width[0] == 10, "text width scaled");
-  PM_CHECK(batch.text.height[0] == 8, "text height scaled");
-  PM_CHECK(batch.text.x[0] == 10 && batch.text.y[0] == 20, "text position stored");
-  PM_CHECK(batch.text.colorIndex[0] == 7, "text color index stored");
+  CHECK_MESSAGE(batch.text.width[0] == 10, "text width scaled");
+  CHECK_MESSAGE(batch.text.height[0] == 8, "text height scaled");
+  CHECK_MESSAGE(batch.text.x[0] == 10, "text x position stored");
+  CHECK_MESSAGE(batch.text.y[0] == 20, "text y position stored");
+  CHECK_MESSAGE(batch.text.colorIndex[0] == 7, "text color index stored");
 }
 
-PM_TEST(text_bake, append_text_run_copies_atlas_pixels) {
+TEST_CASE("append_text_run_copies_atlas_pixels") {
   RenderBatch batch;
 
   auto atlas = std::make_shared<GlyphAtlas>();
@@ -79,16 +80,16 @@ PM_TEST(text_bake, append_text_run_copies_atlas_pixels) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 1, 0.0f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.bitmaps.size() == 1, "bitmap created from atlas");
-  PM_CHECK(batch.glyphs.bitmaps[0].pixels.size() == 4, "atlas pixels copied");
-  PM_CHECK(batch.glyphs.bitmaps[0].pixels[0] == 10, "atlas pixel (0,0)");
-  PM_CHECK(batch.glyphs.bitmaps[0].pixels[1] == 20, "atlas pixel (1,0)");
-  PM_CHECK(batch.glyphs.bitmaps[0].pixels[2] == 30, "atlas pixel (0,1)");
-  PM_CHECK(batch.glyphs.bitmaps[0].pixels[3] == 40, "atlas pixel (1,1)");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.bitmaps.size() == 1, "bitmap created from atlas");
+  CHECK_MESSAGE(batch.glyphs.bitmaps[0].pixels.size() == 4, "atlas pixels copied");
+  CHECK_MESSAGE(batch.glyphs.bitmaps[0].pixels[0] == 10, "atlas pixel (0,0)");
+  CHECK_MESSAGE(batch.glyphs.bitmaps[0].pixels[1] == 20, "atlas pixel (1,0)");
+  CHECK_MESSAGE(batch.glyphs.bitmaps[0].pixels[2] == 30, "atlas pixel (0,1)");
+  CHECK_MESSAGE(batch.glyphs.bitmaps[0].pixels[3] == 40, "atlas pixel (1,1)");
 }
 
-PM_TEST(text_bake, append_text_run_skips_null_glyphs) {
+TEST_CASE("append_text_run_skips_null_glyphs") {
   RenderBatch batch;
 
   GlyphBitmap glyph;
@@ -109,12 +110,12 @@ PM_TEST(text_bake, append_text_run_skips_null_glyphs) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 1, 1.0f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.glyphXQ8_8.size() == 1, "null glyph skipped");
-  PM_CHECK(batch.runs.glyphCount[0] == 1, "glyph count matches emitted glyphs");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.glyphXQ8_8.size() == 1, "null glyph skipped");
+  CHECK_MESSAGE(batch.runs.glyphCount[0] == 1, "glyph count matches emitted glyphs");
 }
 
-PM_TEST(text_bake, append_text_run_empty_bitmap_stride) {
+TEST_CASE("append_text_run_empty_bitmap_stride") {
   RenderBatch batch;
 
   GlyphBitmap glyph;
@@ -134,13 +135,13 @@ PM_TEST(text_bake, append_text_run_empty_bitmap_stride) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 1, 0.0f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.bitmaps.size() == 1, "bitmap stored");
-  PM_CHECK(batch.glyphs.bitmaps[0].stride == 2, "empty bitmap stride uses width");
-  PM_CHECK(batch.glyphs.bitmapOpaque[0] == 0, "empty bitmap not opaque");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.bitmaps.size() == 1, "bitmap stored");
+  CHECK_MESSAGE(batch.glyphs.bitmaps[0].stride == 2, "empty bitmap stride uses width");
+  CHECK_MESSAGE(batch.glyphs.bitmapOpaque[0] == 0, "empty bitmap not opaque");
 }
 
-PM_TEST(text_bake, append_text_run_color_bgra_opacity) {
+TEST_CASE("append_text_run_color_bgra_opacity") {
   RenderBatch batch;
 
   GlyphBitmap glyph;
@@ -161,11 +162,11 @@ PM_TEST(text_bake, append_text_run_color_bgra_opacity) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 1, 0.0f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.bitmapOpaque[0] == 1, "bgra bitmap opaque when alpha full");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.bitmapOpaque[0] == 1, "bgra bitmap opaque when alpha full");
 }
 
-PM_TEST(text_bake, append_text_run_unknown_format_opacity) {
+TEST_CASE("append_text_run_unknown_format_opacity") {
   RenderBatch batch;
 
   GlyphBitmap glyph;
@@ -186,20 +187,17 @@ PM_TEST(text_bake, append_text_run_unknown_format_opacity) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 1, 0.0f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.bitmapOpaque[0] == 0, "unknown format not opaque");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.bitmapOpaque[0] == 0, "unknown format not opaque");
 }
 
-PM_TEST(text_bake, append_text_without_fonts_returns_nullopt) {
+TEST_CASE("append_text_bitmap_family_returns_nullopt") {
   RenderBatch batch;
   Typography typography;
   typography.size = 14.0f;
-
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
-  (void)batch;
-  (void)typography;
-#else
+  typography.family = "bitmap";
   auto result = AppendText(batch, "Hello", typography, 1.0f, 0, 0, 0);
-  PM_CHECK(!result.has_value(), "AppendText returns null when fonts disabled");
-#endif
+  CHECK_MESSAGE(!result.has_value(), "AppendText returns null for bitmap family");
 }
+
+TEST_SUITE_END();

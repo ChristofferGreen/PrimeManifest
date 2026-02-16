@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(optimizer, rejects_missing_palette) {
+
+TEST_SUITE_BEGIN("primemanifest.optimizer");
+
+TEST_CASE("rejects_missing_palette") {
   RenderBatch batch;
   uint32_t width = 4;
   uint32_t height = 4;
@@ -25,10 +29,10 @@ PM_TEST(optimizer, rejects_missing_palette) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "optimizer rejects missing palette");
+  CHECK_MESSAGE(!optimized.valid, "optimizer rejects missing palette");
 }
 
-PM_TEST(optimizer, reuse_optimized_short_circuit) {
+TEST_CASE("reuse_optimized_short_circuit") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{10, 20, 30, 255}));
   batch.tileSize = 32;
@@ -52,11 +56,11 @@ PM_TEST(optimizer, reuse_optimized_short_circuit) {
 
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.clearColor == 0x11223344u, "reuse optimized keeps cached data");
-  PM_CHECK(optimized.useTileStream, "reuse optimized keeps tile stream flag");
+  CHECK_MESSAGE(optimized.clearColor == 0x11223344u, "reuse optimized keeps cached data");
+  CHECK_MESSAGE(optimized.useTileStream, "reuse optimized keeps tile stream flag");
 }
 
-PM_TEST(optimizer, auto_tile_stream_generates) {
+TEST_CASE("auto_tile_stream_generates") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_rect(batch, 0, 0, 6, 6, PackRGBA8(Color{10, 20, 30, 255}));
@@ -69,14 +73,14 @@ PM_TEST(optimizer, auto_tile_stream_generates) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(optimized.useTileStream, "auto tile stream enabled");
-  PM_CHECK(optimized.tileStream != nullptr, "tile stream pointer set");
-  PM_CHECK(optimized.tileStream->preMerged, "auto tile stream premerged");
-  PM_CHECK(!optimized.tileStream->commands.empty(), "auto tile stream has commands");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(optimized.useTileStream, "auto tile stream enabled");
+  CHECK_MESSAGE(optimized.tileStream != nullptr, "tile stream pointer set");
+  CHECK_MESSAGE(optimized.tileStream->preMerged, "auto tile stream premerged");
+  CHECK_MESSAGE(!optimized.tileStream->commands.empty(), "auto tile stream has commands");
 }
 
-PM_TEST(optimizer, invalid_tile_stream_disabled) {
+TEST_CASE("invalid_tile_stream_disabled") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -94,11 +98,11 @@ PM_TEST(optimizer, invalid_tile_stream_disabled) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds with invalid stream");
-  PM_CHECK(!optimized.useTileStream, "invalid tile stream disabled");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with invalid stream");
+  CHECK_MESSAGE(!optimized.useTileStream, "invalid tile stream disabled");
 }
 
-PM_TEST(optimizer, premade_tile_stream_used) {
+TEST_CASE("premade_tile_stream_used") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -126,12 +130,12 @@ PM_TEST(optimizer, premade_tile_stream_used) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds with premade stream");
-  PM_CHECK(optimized.useTileStream, "premade tile stream used");
-  PM_CHECK(optimized.tileStream == &batch.tileStream, "tile stream pointer matches batch");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with premade stream");
+  CHECK_MESSAGE(optimized.useTileStream, "premade tile stream used");
+  CHECK_MESSAGE(optimized.tileStream == &batch.tileStream, "tile stream pointer matches batch");
 }
 
-PM_TEST(optimizer, premerge_tile_stream_with_fallback_macro_offsets) {
+TEST_CASE("premerge_tile_stream_with_fallback_macro_offsets") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -165,12 +169,12 @@ PM_TEST(optimizer, premerge_tile_stream_with_fallback_macro_offsets) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds with premerge");
-  PM_CHECK(optimized.useTileStream, "premerge keeps tile stream enabled");
-  PM_CHECK(optimized.tileStream == &optimized.mergedTileStream, "premerge stores merged tile stream");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with premerge");
+  CHECK_MESSAGE(optimized.useTileStream, "premerge keeps tile stream enabled");
+  CHECK_MESSAGE(optimized.tileStream == &optimized.mergedTileStream, "premerge stores merged tile stream");
 }
 
-PM_TEST(optimizer, clear_pattern_too_large_ignored) {
+TEST_CASE("clear_pattern_too_large_ignored") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.tileSize = 16;
@@ -190,10 +194,10 @@ PM_TEST(optimizer, clear_pattern_too_large_ignored) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "oversized clear pattern ignored");
+  CHECK_MESSAGE(!optimized.valid, "oversized clear pattern ignored");
 }
 
-PM_TEST(optimizer, rejects_empty_palette_size) {
+TEST_CASE("rejects_empty_palette_size") {
   RenderBatch batch;
   batch.palette.enabled = true;
   batch.palette.size = 0;
@@ -206,10 +210,10 @@ PM_TEST(optimizer, rejects_empty_palette_size) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "empty palette size rejected");
+  CHECK_MESSAGE(!optimized.valid, "empty palette size rejected");
 }
 
-PM_TEST(optimizer, rejects_short_target_span) {
+TEST_CASE("rejects_short_target_span") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_rect(batch, 0, 0, 2, 2, PackRGBA8(Color{10, 20, 30, 255}));
@@ -220,10 +224,10 @@ PM_TEST(optimizer, rejects_short_target_span) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "short target span rejected");
+  CHECK_MESSAGE(!optimized.valid, "short target span rejected");
 }
 
-PM_TEST(optimizer, disables_tile_stream_when_tile_size_too_large) {
+TEST_CASE("disables_tile_stream_when_tile_size_too_large") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -243,11 +247,11 @@ PM_TEST(optimizer, disables_tile_stream_when_tile_size_too_large) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds with large tiles");
-  PM_CHECK(!optimized.useTileStream, "tile stream disabled when tile size too large");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with large tiles");
+  CHECK_MESSAGE(!optimized.useTileStream, "tile stream disabled when tile size too large");
 }
 
-PM_TEST(optimizer, premerge_invalid_macro_offsets_disables_stream) {
+TEST_CASE("premerge_invalid_macro_offsets_disables_stream") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -269,6 +273,8 @@ PM_TEST(optimizer, premerge_invalid_macro_offsets_disables_stream) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds with invalid macro offsets");
-  PM_CHECK(!optimized.useTileStream, "invalid macro offsets disable tile stream");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with invalid macro offsets");
+  CHECK_MESSAGE(!optimized.useTileStream, "invalid macro offsets disable tile stream");
 }
+
+TEST_SUITE_END();

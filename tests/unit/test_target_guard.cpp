@@ -1,12 +1,12 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
-#include "test_harness.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
-using namespace PrimeManifestTest;
+TEST_SUITE_BEGIN("primemanifest.target_guard");
 
-PM_TEST(target_guard, optimizer_rejects_zero_dimensions) {
+TEST_CASE("optimizer_rejects_zero_dimensions") {
   RenderBatch batch;
   batch.palette.enabled = true;
   batch.palette.size = 1;
@@ -18,10 +18,10 @@ PM_TEST(target_guard, optimizer_rejects_zero_dimensions) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "zero-sized target rejected");
+  CHECK_MESSAGE(!optimized.valid, "zero-sized target rejected");
 }
 
-PM_TEST(target_guard, renderer_rejects_empty_target) {
+TEST_CASE("renderer_rejects_empty_target") {
   RenderBatch batch;
   batch.palette.enabled = true;
   batch.palette.size = 1;
@@ -37,5 +37,7 @@ PM_TEST(target_guard, renderer_rejects_empty_target) {
 
   RenderOptimized(target, batch, optimized);
 
-  PM_CHECK(buffer[0] == 0x7F, "renderer skips empty target");
+  CHECK_MESSAGE(buffer[0] == 0x7F, "renderer skips empty target");
 }
+
+TEST_SUITE_END();

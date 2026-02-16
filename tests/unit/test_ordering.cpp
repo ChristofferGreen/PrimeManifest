@@ -1,9 +1,13 @@
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(ordering, later_command_on_top) {
+
+TEST_SUITE_BEGIN("primemanifest.ordering");
+
+TEST_CASE("later_command_on_top") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_rect(batch, 1, 1, 5, 5, PackRGBA8(Color{0, 0, 255, 255}));
@@ -17,10 +21,10 @@ PM_TEST(ordering, later_command_on_top) {
   render_batch(target, batch);
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == red, "later command draws on top");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == red, "later command draws on top");
 }
 
-PM_TEST(ordering, text_over_rect) {
+TEST_CASE("text_over_rect") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_rect(batch, 1, 1, 5, 5, PackRGBA8(Color{0, 0, 255, 255}));
@@ -55,5 +59,7 @@ PM_TEST(ordering, text_over_rect) {
   render_batch(target, batch);
 
   uint32_t green = PackRGBA8(Color{0, 255, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 2, 2) == green, "text draws after rect");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == green, "text draws after rect");
 }
+
+TEST_SUITE_END();

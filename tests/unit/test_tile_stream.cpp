@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(tile_stream, invalid_offsets_disable_stream) {
+
+TEST_SUITE_BEGIN("primemanifest.tile_stream");
+
+TEST_CASE("invalid_offsets_disable_stream") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -35,11 +39,11 @@ PM_TEST(tile_stream, invalid_offsets_disable_stream) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(!optimized.useTileStream, "tile stream disabled when offsets invalid");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(!optimized.useTileStream, "tile stream disabled when offsets invalid");
 }
 
-PM_TEST(tile_stream, premerge_rejects_macro_commands_without_offsets) {
+TEST_CASE("premerge_rejects_macro_commands_without_offsets") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.autoTileStream = false;
@@ -61,6 +65,8 @@ PM_TEST(tile_stream, premerge_rejects_macro_commands_without_offsets) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(!optimized.useTileStream, "premerge rejects macro commands without offsets");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(!optimized.useTileStream, "premerge rejects macro commands without offsets");
 }
+
+TEST_SUITE_END();

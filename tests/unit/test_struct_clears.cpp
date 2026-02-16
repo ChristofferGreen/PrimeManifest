@@ -1,12 +1,12 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
-#include "test_harness.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
-using namespace PrimeManifestTest;
+TEST_SUITE_BEGIN("primemanifest.struct_clears");
 
-PM_TEST(struct_clears, optimized_batch_clear_resets_state) {
+TEST_CASE("optimized_batch_clear_resets_state") {
   OptimizedBatch batch;
   batch.valid = true;
   batch.targetWidth = 10;
@@ -23,18 +23,20 @@ PM_TEST(struct_clears, optimized_batch_clear_resets_state) {
 
   batch.clear();
 
-  PM_CHECK(!batch.valid, "optimized batch valid reset");
-  PM_CHECK(batch.targetWidth == 0 && batch.targetHeight == 0, "target size reset");
-  PM_CHECK(!batch.useTileStream && !batch.useTileBuffer, "tile flags reset");
-  PM_CHECK(!batch.hasClear, "clear flag reset");
-  PM_CHECK(batch.clearColor == 0, "clear color reset");
-  PM_CHECK(!batch.debugTiles, "debug flag reset");
-  PM_CHECK(batch.tileStream == nullptr, "tile stream pointer reset");
-  PM_CHECK(batch.tileCounts.empty(), "tile counts cleared");
-  PM_CHECK(batch.textColorR.empty(), "text cache cleared");
+  CHECK_MESSAGE(!batch.valid, "optimized batch valid reset");
+  CHECK_MESSAGE(batch.targetWidth == 0, "target width reset");
+  CHECK_MESSAGE(batch.targetHeight == 0, "target height reset");
+  CHECK_MESSAGE(!batch.useTileStream, "tile stream flag reset");
+  CHECK_MESSAGE(!batch.useTileBuffer, "tile buffer flag reset");
+  CHECK_MESSAGE(!batch.hasClear, "clear flag reset");
+  CHECK_MESSAGE(batch.clearColor == 0, "clear color reset");
+  CHECK_MESSAGE(!batch.debugTiles, "debug flag reset");
+  CHECK_MESSAGE(batch.tileStream == nullptr, "tile stream pointer reset");
+  CHECK_MESSAGE(batch.tileCounts.empty(), "tile counts cleared");
+  CHECK_MESSAGE(batch.textColorR.empty(), "text cache cleared");
 }
 
-PM_TEST(struct_clears, renderer_profile_clear_resets) {
+TEST_CASE("renderer_profile_clear_resets") {
   RendererProfile profile;
   profile.renderNs = 1;
   profile.buildNs = 2;
@@ -44,9 +46,11 @@ PM_TEST(struct_clears, renderer_profile_clear_resets) {
 
   profile.clear();
 
-  PM_CHECK(profile.renderNs == 0, "renderNs reset");
-  PM_CHECK(profile.buildNs == 0, "buildNs reset");
-  PM_CHECK(profile.tileCount == 0, "tileCount reset");
-  PM_CHECK(profile.workerNs.empty(), "workerNs cleared");
-  PM_CHECK(profile.workerTiles.empty(), "workerTiles cleared");
+  CHECK_MESSAGE(profile.renderNs == 0, "renderNs reset");
+  CHECK_MESSAGE(profile.buildNs == 0, "buildNs reset");
+  CHECK_MESSAGE(profile.tileCount == 0, "tileCount reset");
+  CHECK_MESSAGE(profile.workerNs.empty(), "workerNs cleared");
+  CHECK_MESSAGE(profile.workerTiles.empty(), "workerTiles cleared");
 }
+
+TEST_SUITE_END();

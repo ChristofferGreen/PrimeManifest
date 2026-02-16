@@ -1,20 +1,22 @@
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
-#include "test_harness.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
-using namespace PrimeManifestTest;
+TEST_SUITE_BEGIN("primemanifest.command_structs");
 
-PM_TEST(command_structs, render_command_defaults) {
+TEST_CASE("render_command_defaults") {
   RenderCommand cmd;
-  PM_CHECK(cmd.type == CommandType::Rect, "default type is rect");
-  PM_CHECK(cmd.index == 0, "default index zero");
+  CHECK_MESSAGE(cmd.type == CommandType::Rect, "default type is rect");
+  CHECK_MESSAGE(cmd.index == 0, "default index zero");
 }
 
-PM_TEST(command_structs, tile_command_defaults) {
+TEST_CASE("tile_command_defaults") {
   TileCommand cmd;
-  PM_CHECK(cmd.type == CommandType::Rect, "default tile command type");
-  PM_CHECK(cmd.index == 0, "default tile command index");
-  PM_CHECK(cmd.order == 0, "default tile command order");
-  PM_CHECK(cmd.wMinus1 == 0, "default tile command width");
+  CHECK_MESSAGE(cmd.type == CommandType::Rect, "default tile command type");
+  CHECK_MESSAGE(cmd.index == 0, "default tile command index");
+  CHECK_MESSAGE(cmd.order == 0, "default tile command order");
+  CHECK_MESSAGE(cmd.wMinus1 == 0, "default tile command width");
 }
+
+TEST_SUITE_END();

@@ -14,18 +14,15 @@
 #include <mutex>
 #include <unordered_map>
 
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
 #include FT_TRUETYPE_TABLES_H
 #include <hb.h>
 #include <hb-ft.h>
-#endif
 
 namespace PrimeManifest {
 
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
 namespace {
 
 struct Utf8Codepoint {
@@ -267,6 +264,29 @@ static uint16_t set_face_pixel_size(FT_Face face, uint16_t sizePx) {
   return static_cast<uint16_t>(bestSize > 0 ? bestSize : sizePx);
 }
 
+static void add_default_os_font_dirs(std::vector<std::string>& dirs) {
+#if defined(__APPLE__)
+  dirs.push_back("/System/Library/Fonts");
+  dirs.push_back("/Library/Fonts");
+  if (auto* home = std::getenv("HOME")) {
+    dirs.push_back((std::filesystem::path(home) / "Library/Fonts").string());
+  }
+#elif defined(_WIN32)
+  if (auto* windir = std::getenv("WINDIR")) {
+    dirs.push_back((std::filesystem::path(windir) / "Fonts").string());
+  } else {
+    dirs.push_back("C:\\Windows\\Fonts");
+  }
+#else
+  dirs.push_back("/usr/share/fonts");
+  dirs.push_back("/usr/local/share/fonts");
+  if (auto* home = std::getenv("HOME")) {
+    dirs.push_back((std::filesystem::path(home) / ".local/share/fonts").string());
+    dirs.push_back((std::filesystem::path(home) / ".fonts").string());
+  }
+#endif
+}
+
 } // namespace
 
 struct FontRegistry::Impl {
@@ -292,7 +312,10 @@ struct FontRegistry::Impl {
   static constexpr int AtlasWidth = 1024;
   static constexpr int AtlasHeight = 1024;
 
-  Impl() { FT_Init_FreeType(&ftLibrary); }
+  Impl() {
+    FT_Init_FreeType(&ftLibrary);
+    add_default_os_font_dirs(osFontDirs);
+  }
   ~Impl() {
     for (auto &face : faces) {
       if (face->hbFont) hb_font_destroy(face->hbFont);
@@ -918,90 +941,54 @@ struct FontRegistry::Impl {
     return {w, h};
   }
 };
-#else
-struct FontRegistry::Impl {};
-#endif
 
 FontRegistry::FontRegistry()
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
-    : impl(std::make_unique<Impl>())
-#endif
-{
-}
+    : impl(std::make_unique<Impl>()) {}
 
 FontRegistry::~FontRegistry() = default;
 
 void FontRegistry::addBundleDir(std::string dir) {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   if (!impl || dir.empty()) return;
   std::lock_guard<std::mutex> lock(impl->mutex);
   impl->bundleDirs.push_back(std::move(dir));
-#else
-  (void)dir;
-#endif
 }
 
 void FontRegistry::addOsFallbackDir(std::string dir) {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   if (!impl || dir.empty()) return;
   std::lock_guard<std::mutex> lock(impl->mutex);
   impl->osFontDirs.push_back(std::move(dir));
-#else
-  (void)dir;
-#endif
 }
 
 void FontRegistry::loadBundledFonts() {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   if (!impl) return;
   std::lock_guard<std::mutex> lock(impl->mutex);
   impl->loadBundledFonts();
-#endif
 }
 
 void FontRegistry::loadOsFallbackFonts() {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   if (!impl) return;
   std::lock_guard<std::mutex> lock(impl->mutex);
   impl->loadOsFallbackFonts();
-#endif
 }
 
 bool FontRegistry::hasBundledFaces() const {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   return impl && !impl->bundledFaces.empty();
-#else
-  return false;
-#endif
 }
 
 auto FontRegistry::layoutText(std::string_view text,
                               Typography const& typography,
                               float deviceScale,
                               bool buildGlyphs) -> std::shared_ptr<TextRun> {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   if (!impl) return nullptr;
   std::lock_guard<std::mutex> lock(impl->mutex);
   return impl->layoutText(text, typography, deviceScale, buildGlyphs);
-#else
-  (void)text;
-  (void)typography;
-  (void)deviceScale;
-  (void)buildGlyphs;
-  return nullptr;
-#endif
 }
 
 auto FontRegistry::measureText(std::string_view text,
                                Typography const& typography) -> std::pair<int, int> {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   if (!impl) return {0, 0};
   std::lock_guard<std::mutex> lock(impl->mutex);
   return impl->measureText(text, typography);
-#else
-  auto [w, h] = MeasureUiText(std::string{text}, typography.size);
-  return {w, h};
-#endif
 }
 
 FontRegistry& GetFontRegistry() {
@@ -1013,25 +1000,12 @@ auto LayoutText(std::string_view text,
                 Typography const& typography,
                 float deviceScale,
                 bool buildGlyphs) -> std::shared_ptr<TextRun> {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   return GetFontRegistry().layoutText(text, typography, deviceScale, buildGlyphs);
-#else
-  (void)text;
-  (void)typography;
-  (void)deviceScale;
-  (void)buildGlyphs;
-  return nullptr;
-#endif
 }
 
 auto MeasureText(std::string_view text,
                  Typography const& typography) -> std::pair<int, int> {
-#if defined(PRIMEMANIFEST_ENABLE_FONTS) && PRIMEMANIFEST_ENABLE_FONTS
   return GetFontRegistry().measureText(text, typography);
-#else
-  auto [w, h] = MeasureUiText(std::string{text}, typography.size);
-  return {w, h};
-#endif
 }
 
 } // namespace PrimeManifest

@@ -3,7 +3,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
-#include "test_harness.hpp"
+#include "third_party/doctest.h"
 
 #include <array>
 #include <cstdint>
@@ -34,7 +34,7 @@ inline auto palette_index(RenderBatch& batch, uint32_t color) -> uint8_t {
     }
   }
   if (batch.palette.size >= batch.palette.colorRGBA8.size()) {
-    PM_CHECK(false, "palette overflow");
+    CHECK(false);
     return 0;
   }
   uint8_t idx = static_cast<uint8_t>(batch.palette.size++);

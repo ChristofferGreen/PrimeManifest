@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(rect_cache_edges, opaque_rect_generates_edge_cache) {
+
+TEST_SUITE_BEGIN("primemanifest.rect_cache_edges");
+
+TEST_CASE("opaque_rect_generates_edge_cache") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{200, 0, 0, 255}));
 
@@ -29,12 +33,12 @@ PM_TEST(rect_cache_edges, opaque_rect_generates_edge_cache) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(optimized.rectEdgeOffset[0] != 0xFFFFFFFFu, "edge offset populated for opaque rect");
-  PM_CHECK(!optimized.rectEdgePmRStore.empty(), "edge coverage cache created");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(optimized.rectEdgeOffset[0] != 0xFFFFFFFFu, "edge offset populated for opaque rect");
+  CHECK_MESSAGE(!optimized.rectEdgePmRStore.empty(), "edge coverage cache created");
 }
 
-PM_TEST(rect_cache_edges, rounded_rect_generates_edge_cache) {
+TEST_CASE("rounded_rect_generates_edge_cache") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{200, 0, 0, 255}));
 
@@ -66,7 +70,9 @@ PM_TEST(rect_cache_edges, rounded_rect_generates_edge_cache) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(optimized.rectEdgeOffset[0] != 0xFFFFFFFFu, "edge offset populated for rounded rect");
-  PM_CHECK(!optimized.rectEdgePmRStore.empty(), "edge coverage cache created");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(optimized.rectEdgeOffset[0] != 0xFFFFFFFFu, "edge offset populated for rounded rect");
+  CHECK_MESSAGE(!optimized.rectEdgePmRStore.empty(), "edge coverage cache created");
 }
+
+TEST_SUITE_END();

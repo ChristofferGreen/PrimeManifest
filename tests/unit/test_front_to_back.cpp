@@ -2,6 +2,7 @@
 #include "PrimeManifest/renderer/Renderer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -18,7 +19,10 @@ void render_front_to_back(RenderTarget target, RenderBatch const& batch) {
 
 } // namespace
 
-PM_TEST(front_to_back, frontmost_rect_wins) {
+
+TEST_SUITE_BEGIN("primemanifest.front_to_back");
+
+TEST_CASE("frontmost_rect_wins") {
   RenderBatch batch;
   add_rect(batch, 0, 0, 4, 4, PackRGBA8(Color{255, 0, 0, 255}));
   add_rect(batch, 0, 0, 4, 4, PackRGBA8(Color{0, 255, 0, 255}));
@@ -31,10 +35,10 @@ PM_TEST(front_to_back, frontmost_rect_wins) {
   render_front_to_back(target, batch);
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 1, 1) == red, "frontmost rect stays on top");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == red, "frontmost rect stays on top");
 }
 
-PM_TEST(front_to_back, translucent_rect_blends) {
+TEST_CASE("translucent_rect_blends") {
   RenderBatch batch;
   add_rect(batch, 0, 0, 2, 2, PackRGBA8(Color{255, 255, 255, 255}));
   batch.rects.opacity[0] = 128;
@@ -47,5 +51,7 @@ PM_TEST(front_to_back, translucent_rect_blends) {
   render_front_to_back(target, batch);
 
   uint32_t expected = PackRGBA8(Color{128, 128, 128, 128});
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == expected, "translucent rect blends with front-to-back path");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == expected, "translucent rect blends with front-to-back path");
 }
+
+TEST_SUITE_END();

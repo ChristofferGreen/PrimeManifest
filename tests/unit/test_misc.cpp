@@ -3,11 +3,15 @@
 #include <chrono>
 #include <cstdlib>
 #include <random>
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(misc, deterministic_output) {
+
+TEST_SUITE_BEGIN("primemanifest.misc");
+
+TEST_CASE("deterministic_output") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{10, 20, 30, 255}));
   add_rect(batch, 2, 2, 6, 6, PackRGBA8(Color{200, 0, 0, 255}));
@@ -41,10 +45,10 @@ PM_TEST(misc, deterministic_output) {
   render_batch(targetA, batch);
   render_batch(targetB, batch);
 
-  PM_CHECK(buffers_equal(bufferA, bufferB), "deterministic output for same batch");
+  CHECK_MESSAGE(buffers_equal(bufferA, bufferB), "deterministic output for same batch");
 }
 
-PM_TEST(misc, stride_padding_preserved) {
+TEST_CASE("stride_padding_preserved") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{50, 60, 70, 255}));
 
@@ -59,12 +63,12 @@ PM_TEST(misc, stride_padding_preserved) {
   for (uint32_t y = 0; y < height; ++y) {
     size_t padStart = static_cast<size_t>(y) * stride + static_cast<size_t>(width) * 4;
     for (size_t i = padStart; i < padStart + 8; ++i) {
-      PM_CHECK(buffer[i] == 0x7F, "stride padding preserved");
+      CHECK_MESSAGE(buffer[i] == 0x7F, "stride padding preserved");
     }
   }
 }
 
-PM_TEST(misc, invalid_indices_ignored) {
+TEST_CASE("invalid_indices_ignored") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.commands.push_back(RenderCommand{CommandType::Rect, 99});
@@ -78,10 +82,10 @@ PM_TEST(misc, invalid_indices_ignored) {
   render_batch(target, batch);
 
   uint32_t expected = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == expected, "invalid indices ignored");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == expected, "invalid indices ignored");
 }
 
-PM_TEST(misc, target_short_span_skips) {
+TEST_CASE("target_short_span_skips") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{10, 20, 30, 255}));
   std::vector<uint8_t> buffer(4, 0x7F);
@@ -89,10 +93,10 @@ PM_TEST(misc, target_short_span_skips) {
 
   render_batch(target, batch);
 
-  PM_CHECK(buffer[0] == 0x7F, "short span prevents write");
+  CHECK_MESSAGE(buffer[0] == 0x7F, "short span prevents write");
 }
 
-PM_TEST(misc, random_fuzz_is_deterministic) {
+TEST_CASE("random_fuzz_is_deterministic") {
   RenderBatch batch;
   batch.tileSize = 32;
   add_clear(batch, PackRGBA8(Color{5, 5, 5, 255}));
@@ -161,10 +165,10 @@ PM_TEST(misc, random_fuzz_is_deterministic) {
   render_batch(targetA, batch);
   render_batch(targetB, batch);
 
-  PM_CHECK(buffers_equal(bufferA, bufferB), "fuzz batch renders deterministically");
+  CHECK_MESSAGE(buffers_equal(bufferA, bufferB), "fuzz batch renders deterministically");
 }
 
-PM_TEST(misc, multithread_stress_deterministic) {
+TEST_CASE("multithread_stress_deterministic") {
   RenderBatch batch;
   batch.tileSize = 16;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
@@ -192,12 +196,12 @@ PM_TEST(misc, multithread_stress_deterministic) {
     if (i == 0) {
       reference = buffer;
     } else {
-      PM_CHECK(buffers_equal(buffer, reference), "stress render remains deterministic");
+      CHECK_MESSAGE(buffers_equal(buffer, reference), "stress render remains deterministic");
     }
   }
 }
 
-PM_TEST(misc, empty_batch_no_change) {
+TEST_CASE("empty_batch_no_change") {
   RenderBatch batch;
   uint32_t width = 4;
   uint32_t height = 4;
@@ -207,10 +211,10 @@ PM_TEST(misc, empty_batch_no_change) {
 
   render_batch(target, batch);
 
-  PM_CHECK(buffers_equal(buffer, original), "empty batch leaves buffer unchanged");
+  CHECK_MESSAGE(buffers_equal(buffer, original), "empty batch leaves buffer unchanged");
 }
 
-PM_TEST(misc, random_clip_rotation_mix) {
+TEST_CASE("random_clip_rotation_mix") {
   RenderBatch batch;
   batch.tileSize = 16;
   add_clear(batch, PackRGBA8(Color{3, 3, 3, 255}));
@@ -270,10 +274,10 @@ PM_TEST(misc, random_clip_rotation_mix) {
   render_batch(targetA, batch);
   render_batch(targetB, batch);
 
-  PM_CHECK(buffers_equal(bufferA, bufferB), "clip+rotation mix deterministic");
+  CHECK_MESSAGE(buffers_equal(bufferA, bufferB), "clip+rotation mix deterministic");
 }
 
-PM_TEST(misc, perf_smoke_guarded) {
+TEST_CASE("perf_smoke_guarded") {
   if (!std::getenv("PRIMEMANIFEST_PERF")) return;
 
   RenderBatch batch;
@@ -307,5 +311,7 @@ PM_TEST(misc, perf_smoke_guarded) {
   auto end = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration<double>(end - start).count();
 
-  PM_CHECK(elapsed < 10.0, "perf smoke under 10s (guarded by PRIMEMANIFEST_PERF)");
+  CHECK_MESSAGE(elapsed < 10.0, "perf smoke under 10s (guarded by PRIMEMANIFEST_PERF)");
 }
+
+TEST_SUITE_END();

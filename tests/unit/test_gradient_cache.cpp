@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(gradient_cache, gradient_dir_cached) {
+
+TEST_SUITE_BEGIN("primemanifest.gradient_cache");
+
+TEST_CASE("gradient_dir_cached") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.palette.size = 2;
@@ -49,12 +53,12 @@ PM_TEST(gradient_cache, gradient_dir_cached) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(!optimized.rectGradDirX.empty(), "gradient dir cache populated");
-  PM_CHECK(optimized.rectGradDirY[0] > 0.0f, "gradient dir has positive Y");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(!optimized.rectGradDirX.empty(), "gradient dir cache populated");
+  CHECK_MESSAGE(optimized.rectGradDirY[0] > 0.0f, "gradient dir has positive Y");
 }
 
-PM_TEST(gradient_cache, zero_dir_defaults_to_vertical) {
+TEST_CASE("zero_dir_defaults_to_vertical") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.palette.size = 2;
@@ -88,8 +92,10 @@ PM_TEST(gradient_cache, zero_dir_defaults_to_vertical) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "optimizer succeeds");
-  PM_CHECK(optimized.rectGradDirX[0] == 0.0f, "default gradient dir X is 0");
-  PM_CHECK(optimized.rectGradDirY[0] > 0.0f, "default gradient dir Y positive");
-  PM_CHECK(optimized.rectGradInvRange[0] > 0.0f, "gradient inv range positive");
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(optimized.rectGradDirX[0] == 0.0f, "default gradient dir X is 0");
+  CHECK_MESSAGE(optimized.rectGradDirY[0] > 0.0f, "default gradient dir Y positive");
+  CHECK_MESSAGE(optimized.rectGradInvRange[0] > 0.0f, "gradient inv range positive");
 }
+
+TEST_SUITE_END();

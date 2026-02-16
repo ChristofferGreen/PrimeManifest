@@ -1,6 +1,7 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
@@ -15,7 +16,10 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
 
 } // namespace
 
-PM_TEST(optimizer_filters, text_clipped_out_skips_draw) {
+
+TEST_SUITE_BEGIN("primemanifest.optimizer_filters");
+
+TEST_CASE("text_clipped_out_skips_draw") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{255, 255, 255, 255}));
 
@@ -43,10 +47,10 @@ PM_TEST(optimizer_filters, text_clipped_out_skips_draw) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "text clipped out yields no work");
+  CHECK_MESSAGE(!optimized.valid, "text clipped out yields no work");
 }
 
-PM_TEST(optimizer_filters, rect_clipped_out_skips_draw) {
+TEST_CASE("rect_clipped_out_skips_draw") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{255, 0, 0, 255}));
 
@@ -78,10 +82,10 @@ PM_TEST(optimizer_filters, rect_clipped_out_skips_draw) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "rect clipped out yields no work");
+  CHECK_MESSAGE(!optimized.valid, "rect clipped out yields no work");
 }
 
-PM_TEST(optimizer_filters, transparent_gradient_skips_draw) {
+TEST_CASE("transparent_gradient_skips_draw") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 0}));
   batch.palette.size = 2;
@@ -115,10 +119,10 @@ PM_TEST(optimizer_filters, transparent_gradient_skips_draw) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "transparent gradient yields no work");
+  CHECK_MESSAGE(!optimized.valid, "transparent gradient yields no work");
 }
 
-PM_TEST(optimizer_filters, text_opacity_zero_skips_draw) {
+TEST_CASE("text_opacity_zero_skips_draw") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{255, 255, 255, 255}));
 
@@ -146,10 +150,10 @@ PM_TEST(optimizer_filters, text_opacity_zero_skips_draw) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "text opacity zero yields no work");
+  CHECK_MESSAGE(!optimized.valid, "text opacity zero yields no work");
 }
 
-PM_TEST(optimizer_filters, clear_pattern_offset_out_of_bounds_ignored) {
+TEST_CASE("clear_pattern_offset_out_of_bounds_ignored") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.tileSize = 8;
@@ -169,10 +173,10 @@ PM_TEST(optimizer_filters, clear_pattern_offset_out_of_bounds_ignored) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(!optimized.valid, "clear pattern offset out of bounds ignored");
+  CHECK_MESSAGE(!optimized.valid, "clear pattern offset out of bounds ignored");
 }
 
-PM_TEST(optimizer_filters, clear_pattern_valid_sets_flags) {
+TEST_CASE("clear_pattern_valid_sets_flags") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
   batch.tileSize = 8;
@@ -193,13 +197,13 @@ PM_TEST(optimizer_filters, clear_pattern_valid_sets_flags) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "valid clear pattern produces optimized batch");
-  PM_CHECK(optimized.clearPattern, "clear pattern flag set");
-  PM_CHECK(optimized.clearPatternWidth == 2, "clear pattern width cached");
-  PM_CHECK(optimized.clearPatternHeight == 2, "clear pattern height cached");
+  CHECK_MESSAGE(optimized.valid, "valid clear pattern produces optimized batch");
+  CHECK_MESSAGE(optimized.clearPattern, "clear pattern flag set");
+  CHECK_MESSAGE(optimized.clearPatternWidth == 2, "clear pattern width cached");
+  CHECK_MESSAGE(optimized.clearPatternHeight == 2, "clear pattern height cached");
 }
 
-PM_TEST(optimizer_filters, clear_command_sets_color) {
+TEST_CASE("clear_command_sets_color") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{1, 2, 3, 255}));
   add_clear(batch, PackRGBA8(Color{10, 20, 30, 255}));
@@ -212,7 +216,9 @@ PM_TEST(optimizer_filters, clear_command_sets_color) {
   OptimizedBatch optimized;
   OptimizeRenderBatch(target, batch, optimized);
 
-  PM_CHECK(optimized.valid, "clear command produces optimized batch");
-  PM_CHECK(optimized.hasClear, "clear flag set");
-  PM_CHECK(optimized.clearColor == PackRGBA8(Color{10, 20, 30, 255}), "clear color cached");
+  CHECK_MESSAGE(optimized.valid, "clear command produces optimized batch");
+  CHECK_MESSAGE(optimized.hasClear, "clear flag set");
+  CHECK_MESSAGE(optimized.clearColor == PackRGBA8(Color{10, 20, 30, 255}), "clear color cached");
 }
+
+TEST_SUITE_END();

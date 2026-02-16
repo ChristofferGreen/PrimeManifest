@@ -1,9 +1,13 @@
 #include "test_helpers.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
 using namespace PrimeManifestTest;
 
-PM_TEST(circle, renders_filled_circle) {
+
+TEST_SUITE_BEGIN("primemanifest.circle");
+
+TEST_CASE("renders_filled_circle") {
   RenderBatch batch;
   add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
   add_circle(batch, 4, 4, 2, PackRGBA8(Color{255, 0, 0, 255}));
@@ -17,6 +21,8 @@ PM_TEST(circle, renders_filled_circle) {
 
   uint32_t red = PackRGBA8(Color{255, 0, 0, 255});
   uint32_t black = PackRGBA8(Color{0, 0, 0, 255});
-  PM_CHECK(pixel_at(buffer, width, 4, 4) == red, "circle center filled");
-  PM_CHECK(pixel_at(buffer, width, 0, 0) == black, "circle outside untouched");
+  CHECK_MESSAGE(pixel_at(buffer, width, 4, 4) == red, "circle center filled");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == black, "circle outside untouched");
 }
+
+TEST_SUITE_END();

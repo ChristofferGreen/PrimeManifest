@@ -1,11 +1,11 @@
 #include "PrimeManifest/text/TextBake.hpp"
 
-#include "test_harness.hpp"
+#include "third_party/doctest.h"
 
 using namespace PrimeManifest;
-using namespace PrimeManifestTest;
+TEST_SUITE_BEGIN("primemanifest.text_bake_edge");
 
-PM_TEST(text_bake_edge, append_text_run_empty_run) {
+TEST_CASE("append_text_run_empty_run") {
   RenderBatch batch;
   TextRun run;
   run.width = 3.0f;
@@ -14,12 +14,12 @@ PM_TEST(text_bake_edge, append_text_run_empty_run) {
   run.layoutScale = 1.0f;
 
   auto result = AppendTextRun(batch, run, 5, 6, 2);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result for empty run");
-  PM_CHECK(batch.glyphs.size() == 0, "no glyphs emitted");
-  PM_CHECK(batch.text.size() == 1, "text entry created");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result for empty run");
+  CHECK_MESSAGE(batch.glyphs.size() == 0, "no glyphs emitted");
+  CHECK_MESSAGE(batch.text.size() == 1, "text entry created");
 }
 
-PM_TEST(text_bake_edge, append_text_run_clamps_dimensions) {
+TEST_CASE("append_text_run_clamps_dimensions") {
   RenderBatch batch;
   TextRun run;
   run.width = 100000.0f;
@@ -28,12 +28,12 @@ PM_TEST(text_bake_edge, append_text_run_clamps_dimensions) {
   run.layoutScale = 1.0f;
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.text.width[0] == 65535, "text width clamps to u16 max");
-  PM_CHECK(batch.text.height[0] == 65535, "text height clamps to u16 max");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.text.width[0] == 65535, "text width clamps to u16 max");
+  CHECK_MESSAGE(batch.text.height[0] == 65535, "text height clamps to u16 max");
 }
 
-PM_TEST(text_bake_edge, append_text_run_large_positions_preserved) {
+TEST_CASE("append_text_run_large_positions_preserved") {
   RenderBatch batch;
 
   GlyphBitmap glyph;
@@ -53,7 +53,9 @@ PM_TEST(text_bake_edge, append_text_run_large_positions_preserved) {
   run.glyphs.push_back(GlyphPlacement{&glyph, 1, 200.0f, 0.0f});
 
   auto result = AppendTextRun(batch, run, 0, 0, 1);
-  PM_CHECK(result.has_value(), "AppendTextRun returns result");
-  PM_CHECK(batch.glyphs.glyphXQ8_8.size() == 1, "glyph emitted");
-  PM_CHECK(batch.glyphs.glyphXQ8_8[0] == 200 * 256, "large glyph x preserved");
+  CHECK_MESSAGE(result.has_value(), "AppendTextRun returns result");
+  CHECK_MESSAGE(batch.glyphs.glyphXQ8_8.size() == 1, "glyph emitted");
+  CHECK_MESSAGE(batch.glyphs.glyphXQ8_8[0] == 200 * 256, "large glyph x preserved");
 }
+
+TEST_SUITE_END();

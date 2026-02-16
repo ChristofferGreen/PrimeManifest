@@ -15,12 +15,12 @@ Defines naming and coding rules plus build/test entrypoints for contributors wor
 ## Build/test workflow
 - Debug: `cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug` then `cmake --build build-debug`.
 - Release: `cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release` then `cmake --build build-release`.
-- Options: `-DPRIMEMANIFEST_ENABLE_FONTS=ON` (FreeType + HarfBuzz), `-DPRIMEMANIFEST_BUILD_TESTS=ON/OFF`, `-DPRIMEMANIFEST_BUILD_EXAMPLES=ON/OFF`.
+- Options: `-DPRIMEMANIFEST_BUILD_TESTS=ON/OFF`, `-DPRIMEMANIFEST_BUILD_EXAMPLES=ON/OFF`.
 - Tests: from a build dir, run `ctest --output-on-failure` or execute `./PrimeManifest_tests` directly.
 
 ## Tests
-- Unit tests live in `tests/unit` and use `PM_TEST(group, name)` plus `PM_CHECK`.
-- Keep test groups under 100 cases (enforced in `tests/unit/test_main.cpp`).
+- Unit tests live in `tests/unit` and use doctest (`TEST_CASE`, `CHECK`, `TEST_SUITE_BEGIN`).
+- Keep test suites under 100 cases.
 
 ## Code guidelines
 - Target C++23; prefer value semantics, RAII, `std::span`, and `std::optional`/`std::expected`.
