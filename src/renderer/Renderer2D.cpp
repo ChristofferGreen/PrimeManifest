@@ -167,25 +167,6 @@ auto apply_coverage(uint8_t baseAlpha, uint8_t coverage) -> uint8_t {
   return static_cast<uint8_t>(std::min<uint16_t>(v, 255u));
 }
 
-struct RenderProfileScope {
-  RendererProfile* profile = nullptr;
-  std::chrono::steady_clock::time_point start{};
-
-  explicit RenderProfileScope(RendererProfile* profileInput) : profile(profileInput) {
-    if (profile) {
-      profile->clear();
-      start = std::chrono::steady_clock::now();
-    }
-  }
-
-  ~RenderProfileScope() {
-    if (!profile) return;
-    auto end = std::chrono::steady_clock::now();
-    profile->renderNs = static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
-  }
-};
-
 struct RenderTimeScope {
   RendererProfile* profile = nullptr;
   std::chrono::steady_clock::time_point start{};

@@ -174,6 +174,39 @@ TEST_CASE("premerge_tile_stream_with_fallback_macro_offsets") {
   CHECK_MESSAGE(optimized.tileStream == &optimized.mergedTileStream, "premerge stores merged tile stream");
 }
 
+TEST_CASE("circle_binning_parallel_path") {
+  RenderBatch batch;
+  uint32_t color = PackRGBA8(Color{20, 40, 60, 255});
+  enable_palette(batch, color);
+  batch.tileSize = 32;
+
+  constexpr uint32_t circleCount = 50000;
+  batch.commands.reserve(circleCount);
+  batch.circles.centerX.reserve(circleCount);
+  batch.circles.centerY.reserve(circleCount);
+  batch.circles.radius.reserve(circleCount);
+  batch.circles.colorIndex.reserve(circleCount);
+
+  uint32_t width = 64;
+  uint32_t height = 64;
+  for (uint32_t i = 0; i < circleCount; ++i) {
+    int32_t x = static_cast<int32_t>(i % width);
+    int32_t y = static_cast<int32_t>((i / width) % height);
+    add_circle(batch, x, y, 1, color);
+  }
+
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(optimized.tileRefsAreCircleIndices, "circle-only draw uses circle refs");
+  CHECK_MESSAGE(optimized.tileOffsets.size() == optimized.tileCount + 1, "tile offsets sized");
+  CHECK_MESSAGE(optimized.tileRefs.size() >= circleCount, "tile refs include all circles");
+}
+
 TEST_CASE("clear_pattern_too_large_ignored") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));

@@ -69,4 +69,28 @@ TEST_CASE("tile_buffer_pixels_reported") {
   CHECK_MESSAGE(profile.renderedTileBufferPixels == 64, "tile buffer pixels counted");
 }
 
+TEST_CASE("tile_pool_records_workers") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.tileSize = 4;
+  add_rect(batch, 0, 0, 32, 32, PackRGBA8(Color{200, 100, 50, 255}));
+
+  uint32_t width = 32;
+  uint32_t height = 32;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  RendererProfile profile;
+  batch.profile = &profile;
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(profile.workerNs.size() > 1, "tile pool worker times recorded");
+  CHECK_MESSAGE(profile.workerTiles.size() == profile.workerNs.size(), "worker tile counts sized");
+  CHECK_MESSAGE(profile.tileWorkNs > 0, "tile work time recorded");
+}
+
 TEST_SUITE_END();

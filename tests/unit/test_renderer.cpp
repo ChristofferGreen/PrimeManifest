@@ -126,4 +126,32 @@ TEST_CASE("tile_buffer_clear_pattern_applies") {
   CHECK_MESSAGE(pixel_at(buffer, width, 1, 0) == green, "tile-buffer pattern (1,0)");
 }
 
+TEST_CASE("gradient_dir_normalized_in_renderer") {
+  RenderBatch batch;
+  add_gradient_rect_dir(batch,
+                        0,
+                        0,
+                        8,
+                        8,
+                        PackRGBA8(Color{255, 0, 0, 255}),
+                        PackRGBA8(Color{0, 0, 255, 255}),
+                        0,
+                        0);
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  optimized.rectHasGradient.clear();
+
+  RenderOptimized(target, batch, optimized);
+
+  uint32_t top = pixel_at(buffer, width, 0, 0);
+  uint32_t bottom = pixel_at(buffer, width, 0, height - 1);
+  CHECK_MESSAGE(top != bottom, "normalized gradient affects output");
+}
+
 TEST_SUITE_END();
