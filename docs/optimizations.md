@@ -249,6 +249,7 @@ Date: 2026-02-16
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 166.83 | 168.63 | 155.16 | 171.63 | 5.01 | Working tree | Skip circle tile load sort when renderTiles > 256 (1,000,000 circles). |
 | 2026-02-16 | 20 | 300 | 164.18 | 167.52 | 144.86 | 169.87 | 6.91 | Working tree | SIMD circle Y update loop (NEON/SSE), 1,000,000 circles. |
 | 2026-02-16 | 20 | 300 | 160.79 | 163.23 | 129.45 | 172.38 | 9.59 | Working tree | New baseline with 1,000,000 circles. |
 | 2026-02-16 | 20 | 300 | 170.02 | 171.68 | 158.38 | 177.32 | 5.36 | Working tree | Store circle base Y as int32 in bench update loop. |
@@ -462,7 +463,7 @@ Date: 2026-02-16
 | Uniform-radius binning in-bounds fast path | Rejected | 20-run mean 104.60 FPS vs 118.04 baseline (regression). |
 | Circle-major auto tile size = 64 | Kept | 20-run mean 114.45 FPS vs 109.90 baseline (~4.1% win). |
 | Circle-major auto tile size = 96 | Rejected | 20-run mean 122.42 FPS vs 130.21 baseline (regression). |
-| Skip sorting circle tiles by load | Rejected | 20-run mean 117.82 FPS vs 130.21 baseline (regression). |
+| Skip sorting circle tiles by load | Kept | 1M case: 20-run mean 166.83 FPS vs 164.18 baseline (~1.6% win) when skipping sort for renderTiles > 256. Previously regressed at 750k (117.82 vs 130.21). |
 | Circle-only tile pool chunk size override = 2 | Rejected | 20-run mean 114.86 FPS vs 130.21 baseline (regression). |
 | Allow auto tile-stream with tile size 64 | Rejected | 20-run mean 115.93 FPS vs 130.21 baseline (regression). |
 | Edge blend split (edgePmRow branch) | Rejected | 20-run mean 115.82 FPS vs 130.21 baseline (regression). |
