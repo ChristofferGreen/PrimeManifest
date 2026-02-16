@@ -315,6 +315,7 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 97.32 | 98.87 | 90.42 | 101.36 | 3.62 | Working tree | Baseline rerun (no reuse), A/B for fullInside branch hoist. |
 | 2026-02-16 | 20 | 300 | 93.10 | 94.79 | 72.17 | 104.55 | 9.44 | Working tree | Hoist front/dst-opaque branch out of fullInside row loop. |
 | 2026-02-16 | 20 | 300 | 93.07 | 95.50 | 76.42 | 98.85 | 5.92 | Working tree | Circle bounds build uses packed arrays + reserve/push (skip size checks). |
+| 2026-02-16 | 20 | 300 | 66.04 | 67.05 | 56.34 | 69.17 | 3.09 | Working tree | Disable parallel circle binning (threshold 1,000,000). |
 
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
@@ -363,6 +364,7 @@ Date: 2026-02-15
 | Cache palette premultiplied row pointers | Rejected | 10-run mean 55.35 FPS vs 83.01 baseline (regression). |
 | Hoist front/dst-opaque branch out of fullInside row loop | Rejected | 20-run mean 93.10 FPS vs 97.32 baseline (regression). |
 | Circle bounds build uses packed arrays + reserve/push (skip size checks) | Rejected | 20-run mean 93.07 FPS vs 97.32 baseline (regression). |
+| Disable parallel circle binning (threshold 1,000,000) | Rejected | 20-run mean 66.04 FPS vs 97.32 baseline (regression). |
 | Misc micro-opts (no wins) | Rejected | Removing uniform-radius branch, edge-byte offsets, `paletteOpaque` handling, circle-only fast path, flatten localCounts, disable parallel binning, power-of-two split in `compute_span`, reuse binning pool, auto tile-stream for circle majority: all regressed in spot checks. |
 | Hoist edge premultiplied lookup branch out of edge loops | Rejected | 20-run mean 70.28 FPS vs 73.76 baseline (regression). |
 | Hoist row pointer increment for clipped opaque circles | Rejected | 20-run mean 89.36 FPS vs 91.93 baseline (regression). |
