@@ -429,6 +429,8 @@ Date: 2026-02-15
 | Pre-optimize once for moving circles (render-only reuse) | Rejected | 20-run mean 126.45 FPS vs 144.88 baseline (regression). |
 | FullInside edge/opaque pointers (avoid row indexing) | Rejected | 20-run mean 88.02 FPS vs 144.88 baseline (regression). |
 | Packed edge (x+cov) array for circles | Rejected | 20-run mean 80.12 FPS vs 144.88 baseline (regression). |
+| Tile size 48 (10-run) | Rejected | Mean 93.29 FPS vs 144.88 baseline (regression). |
+| Tile size 80 (10-run) | Rejected | Mean 111.92 FPS vs 144.88 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
