@@ -104,7 +104,51 @@ if(PRIMEMANIFEST_BUILD_TESTS)
   )
   target_link_libraries(PrimeManifest_tests PRIVATE PrimeManifest)
   pm_require_cxx23(PrimeManifest_tests)
-  add_test(NAME PrimeManifest_tests COMMAND $<TARGET_FILE:PrimeManifest_tests>)
+  set(PrimeManifestTestSuites
+    primemanifest.batch
+    primemanifest.bitmap_font
+    primemanifest.circle
+    primemanifest.clear
+    primemanifest.color_helpers
+    primemanifest.command_structs
+    primemanifest.debug_tiles
+    primemanifest.font_bitmap
+    primemanifest.font_registry
+    primemanifest.front_to_back
+    primemanifest.gradient_cache
+    primemanifest.layout
+    primemanifest.misc
+    primemanifest.optimizer
+    primemanifest.optimizer_filters
+    primemanifest.optimizer_rect_cache
+    primemanifest.optimizer_text_cache
+    primemanifest.ordering
+    primemanifest.palette
+    primemanifest.palette_store
+    primemanifest.profile
+    primemanifest.rect
+    primemanifest.rect_cache_edges
+    primemanifest.renderer
+    primemanifest.store_sizes
+    primemanifest.stores
+    primemanifest.stores_more
+    primemanifest.struct_clears
+    primemanifest.target_guard
+    primemanifest.text
+    primemanifest.text_bake
+    primemanifest.text_bake_edge
+    primemanifest.text_clip_cache
+    primemanifest.text_store
+    primemanifest.tile_stream
+    primemanifest.tiles
+  )
+
+  foreach(suite IN LISTS PrimeManifestTestSuites)
+    string(REPLACE "." "_" suiteId "${suite}")
+    set(testName "PrimeManifest_${suiteId}")
+    add_test(NAME "${testName}" COMMAND $<TARGET_FILE:PrimeManifest_tests> "--test-suite=${suite}")
+    set_tests_properties("${testName}" PROPERTIES RUN_SERIAL TRUE TIMEOUT 300)
+  endforeach()
 endif()
 
 option(PRIMEMANIFEST_BUILD_EXAMPLES "Build PrimeManifest example apps" ON)
