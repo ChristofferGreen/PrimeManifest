@@ -424,7 +424,7 @@ Date: 2026-02-15
 | Circle-only tile chunk override = 2 | Rejected | 20-run mean 142.38 FPS vs 144.69 baseline (regression). |
 | Tile pool worker threads = hardware-2 | Rejected | 20-run mean 142.77 FPS vs 144.69 baseline (regression). |
 | Tile pool: workers only (main thread idle) | Rejected | 20-run mean 141.91 FPS vs 144.69 baseline (regression). |
-| Circle colors from cached palette arrays (avoid shifts) | Rejected | 20-run mean 145.45 FPS vs 144.88 baseline (no clear win). |
+| Circle colors from cached palette arrays (avoid shifts) | Rejected | 40-run mean 144.77 FPS vs 144.88 baseline (no clear win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
