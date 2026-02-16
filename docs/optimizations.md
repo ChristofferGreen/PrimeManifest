@@ -294,6 +294,8 @@ Date: 2026-02-15
 | 2026-02-16 | 40 | 300 | 85.94 | 85.37 | 53.84 | 113.99 | 10.31 | `0ccf782` | Baseline rerun after extended benching (likely throttling). |
 | 2026-02-16 | 20 | 300 | 89.47 | 87.81 | 76.79 | 105.20 | 7.50 | Working tree | Circle-only binning baseline (uniform radius fast path disabled). |
 | 2026-02-16 | 20 | 300 | 98.24 | 98.74 | 78.65 | 114.23 | 10.84 | Working tree | Uniform-radius circle binning uses constant `r` in span computation. |
+| 2026-02-16 | 20 | 300 | 104.60 | 104.98 | 89.75 | 118.31 | 6.78 | Working tree | Uniform-radius binning with in-bounds fast path (skip clamps). |
+| 2026-02-16 | 20 | 300 | 118.04 | 121.31 | 88.06 | 129.07 | 12.20 | Working tree | Baseline rerun after in-bounds fast path revert. |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -382,6 +384,7 @@ Date: 2026-02-15
 | Clang unroll pragma on vectorized circle Y update loop | Rejected | 40-run mean 112.33 FPS vs 114.08 baseline (regression). |
 | Front-to-back opaque span aligned 32-bit writes (alpha check) | Rejected | 40-run mean 88.38 FPS vs 85.94 baseline (noisy; no clear win). |
 | Uniform-radius circle binning (use constant `r` in span computation) | Kept | 20-run mean 98.24 FPS vs 89.47 baseline (~9.8% win). |
+| Uniform-radius binning in-bounds fast path | Rejected | 20-run mean 104.60 FPS vs 118.04 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
