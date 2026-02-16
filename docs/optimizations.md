@@ -287,6 +287,13 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 104.27 | 108.14 | 83.01 | 114.69 | 9.55 | Working tree | Skip per-edge bounds checks when row fully inside X clip. |
 | 2026-02-16 | 20 | 300 | 118.46 | 120.16 | 91.85 | 130.24 | 10.06 | Working tree | Pointer-based circle Y update loop. |
 | 2026-02-16 | 20 | 300 | 124.35 | 124.50 | 116.43 | 131.65 | 4.23 | Working tree | Vectorized pointer-based circle Y update loop. |
+| 2026-02-16 | 20 | 300 | 114.44 | 112.03 | 99.21 | 130.61 | 9.29 | Working tree | Vectorized update using int16 delta. |
+| 2026-02-16 | 40 | 300 | 114.08 | 113.67 | 97.45 | 129.85 | 8.36 | `0ccf782` | Vectorized pointer-based circle Y update loop (baseline rerun). |
+| 2026-02-16 | 40 | 300 | 112.33 | 113.55 | 89.79 | 128.34 | 9.67 | Working tree | Vectorized pointer update with clang unroll pragma. |
+| 2026-02-16 | 40 | 300 | 88.38 | 88.73 | 61.53 | 108.22 | 9.83 | Working tree | Front-to-back opaque spans use aligned 32-bit writes (A/B, noisy). |
+| 2026-02-16 | 40 | 300 | 85.94 | 85.37 | 53.84 | 113.99 | 10.31 | `0ccf782` | Baseline rerun after extended benching (likely throttling). |
+| 2026-02-16 | 20 | 300 | 89.47 | 87.81 | 76.79 | 105.20 | 7.50 | Working tree | Circle-only binning baseline (uniform radius fast path disabled). |
+| 2026-02-16 | 20 | 300 | 98.24 | 98.74 | 78.65 | 114.23 | 10.84 | Working tree | Uniform-radius circle binning uses constant `r` in span computation. |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -371,6 +378,10 @@ Date: 2026-02-15
 | Skip per-edge bounds checks when row fully inside X clip | Rejected | 20-run mean 104.27 FPS vs 108.89 baseline (regression). |
 | Pointer-based circle Y update loop | Kept | 20-run mean 118.46 FPS vs 108.89 baseline (~8.8% win). |
 | Vectorized pointer-based circle Y update loop | Kept | 20-run mean 124.35 FPS vs 118.46 baseline (~5.0% win). |
+| Vectorized update using int16 delta | Rejected | 20-run mean 114.44 FPS vs 124.35 baseline (regression). |
+| Clang unroll pragma on vectorized circle Y update loop | Rejected | 40-run mean 112.33 FPS vs 114.08 baseline (regression). |
+| Front-to-back opaque span aligned 32-bit writes (alpha check) | Rejected | 40-run mean 88.38 FPS vs 85.94 baseline (noisy; no clear win). |
+| Uniform-radius circle binning (use constant `r` in span computation) | Kept | 20-run mean 98.24 FPS vs 89.47 baseline (~9.8% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
