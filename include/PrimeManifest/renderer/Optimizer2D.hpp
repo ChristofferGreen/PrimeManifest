@@ -44,6 +44,7 @@ struct OptimizedBatch {
   uint8_t debugFlags = 0;
   bool valid = false;
   uint64_t sourceRevision = 0;
+  uint64_t commandCountsRevision = 0;
   CommandTypeCounts commandTypeCounts{};
 
   TileStream mergedTileStream;
@@ -124,6 +125,7 @@ struct OptimizedBatch {
     debugFlags = 0;
     valid = false;
     sourceRevision = 0;
+    commandCountsRevision = 0;
     commandTypeCounts.reset();
     mergedTileStream.clear();
     generatedTileStream.clear();

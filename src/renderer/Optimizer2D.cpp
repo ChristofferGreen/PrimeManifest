@@ -1603,7 +1603,15 @@ void OptimizeRenderBatch(RenderTarget target, RenderBatch const& batch, Optimize
     }
   }
 
-  CommandTypeCounts commandCounts = count_command_types(batch);
+  CommandTypeCounts commandCounts{};
+  bool reuseCounts = batch.useCommandRevision &&
+                     optimized.valid &&
+                     optimized.commandCountsRevision == batch.commandRevision;
+  if (reuseCounts) {
+    commandCounts = optimized.commandTypeCounts;
+  } else {
+    commandCounts = count_command_types(batch);
+  }
   uint32_t tileSizeOverride = choose_tile_size(batch, commandCounts);
   if (canReuse && optimized.tileSize == tileSizeOverride) {
     return;
