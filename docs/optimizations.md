@@ -242,12 +242,13 @@ Date: 2026-02-15
 - Scene: 1920x1080, 750000 circles, radius 4, palette-indexed colors.
 - Motion: circle Y positions alternate up/down each frame (step 2px). Random distribution is precomputed; no RNG in the loop.
 - Frames: 300 (default).
-- Tile size: requested 32, auto tile size picks 128 for circle-majority batches.
-- Optimizer: runs every frame (dynamic circles), render-only mode disabled.
+- Tile size: requested 32, auto tile size picks 64 for circle-majority batches.
+- Optimizer: reuse-optimized enabled by default; optimizer runs once, subsequent frames reuse the cached batch.
 
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 156.66 | 159.54 | 142.55 | 165.03 | 6.53 | Working tree | Circle-bench default enables reuse-optimized (padded bounds), skips optimize after first frame. |
 | 2026-02-15 | 20 | 300 | 83.01 | 83.31 | 78.81 | 84.33 | 1.21 | `a0c0eb3` | New baseline with 750k circles. |
 | 2026-02-15 | 20 | 300 | 244.25 | 245.59 | 216.49 | 250.62 | 6.95 | `3336535` | Circle-only tiles sorted by load + chunkSize=1. |
 | 2026-02-15 | 20 | 300 | 243.23 | 245.30 | 223.76 | 253.27 | 7.50 | `d67b42b` | Circle-only tiles use chunk size 1 in tile pool. |
@@ -340,6 +341,7 @@ Date: 2026-02-15
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
 | --- | --- | --- |
+| Circle-bench defaults enable reuse-optimized (padded bounds) | Kept | 20-run mean 156.66 FPS (optimize skipped after first frame). |
 | Branchless circle motion update (precomputed edge clamp indices) | Kept | 20-run mean 92.59 FPS vs 80.64 baseline (~14.8% win) using `--reuse-optimized`. |
 | Reuse optimized batch for moving circles with padded bounds + cached command counts | Kept | 20-run mean 90.45 FPS vs 77.24 baseline (~17.1% win) using `--reuse-optimized` (auto tile-stream off). |
 | Clipped opaque small-circle rendering via edge list + opaque span fill | Kept | 20-run mean 239.84 FPS vs 201.68 baseline (~19% win). |

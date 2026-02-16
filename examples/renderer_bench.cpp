@@ -94,6 +94,7 @@ auto parse_args(int argc, char** argv) -> BenchConfig {
       cfg.rectRadius = 0;
       cfg.circleRadius = 4;
       cfg.enableText = false;
+      cfg.reuseOptimized = true;
     } else if (arg == "--no-text") {
       cfg.enableText = false;
     } else if (arg == "--debug-tiles") {
