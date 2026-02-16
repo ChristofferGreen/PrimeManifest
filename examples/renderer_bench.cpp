@@ -862,7 +862,7 @@ int main(int argc, char** argv) {
   uint8_t clearIndex = 192;
   add_clear(batch, clearIndex);
 
-  std::vector<int16_t> circleBaseY;
+  std::vector<int32_t> circleBaseY;
   std::vector<uint32_t> circleEdgeIndices;
   int32_t circleMoveStep = 0;
 
@@ -920,13 +920,13 @@ int main(int argc, char** argv) {
       int32_t cy = yDist(rng);
       uint8_t colorIndex = static_cast<uint8_t>(idxDist(rng));
       add_circle(batch, cx, cy, cfg.circleRadius, colorIndex);
-      circleBaseY.push_back(static_cast<int16_t>(cy));
+      circleBaseY.push_back(cy);
     }
     int32_t maxY = static_cast<int32_t>(cfg.height);
     int32_t safeMin = circleMoveStep;
     int32_t safeMax = maxY - circleMoveStep;
     for (uint32_t i = 0; i < circleBaseY.size(); ++i) {
-      int32_t base = static_cast<int32_t>(circleBaseY[i]);
+      int32_t base = circleBaseY[i];
       if (base < safeMin || base > safeMax) {
         circleEdgeIndices.push_back(i);
       }
@@ -982,12 +982,12 @@ int main(int argc, char** argv) {
 #pragma clang loop vectorize(enable)
 #endif
       for (size_t i = 0; i < count; ++i) {
-        dstY[i] = static_cast<int16_t>(static_cast<int32_t>(baseY[i]) + delta);
+        dstY[i] = static_cast<int16_t>(baseY[i] + delta);
       }
       if (!circleEdgeIndices.empty()) {
         int32_t maxY = static_cast<int32_t>(cfg.height);
         for (uint32_t idx : circleEdgeIndices) {
-          int32_t y = static_cast<int32_t>(baseY[idx]) + delta;
+          int32_t y = baseY[idx] + delta;
           if (y < 0) y = 0;
           if (y > maxY) y = maxY;
           dstY[idx] = static_cast<int16_t>(y);

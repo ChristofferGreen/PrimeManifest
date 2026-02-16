@@ -248,6 +248,7 @@ Date: 2026-02-15
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 170.02 | 171.68 | 158.38 | 177.32 | 5.36 | Working tree | Store circle base Y as int32 in bench update loop. |
 | 2026-02-16 | 20 | 300 | 160.36 | 161.48 | 144.52 | 165.05 | 4.78 | Working tree | Skip `OptimizeRenderBatch` call when reuse is valid (reuse-optimized default). |
 | 2026-02-16 | 20 | 300 | 156.66 | 159.54 | 142.55 | 165.03 | 6.53 | `5823005` | Circle-bench default enables reuse-optimized (padded bounds), skips optimize after first frame. |
 | 2026-02-15 | 20 | 300 | 83.01 | 83.31 | 78.81 | 84.33 | 1.21 | `a0c0eb3` | New baseline with 750k circles. |
@@ -342,6 +343,7 @@ Date: 2026-02-15
 ## Circle Benchmark Experiments
 | Change | Status | Evidence |
 | --- | --- | --- |
+| Circle base Y stored as int32 in bench update loop | Kept | 20-run mean 170.02 FPS vs 160.36 baseline (~6.0% win). |
 | Skip `OptimizeRenderBatch` call when reuse is valid (bench) | Kept | 20-run mean 160.36 FPS vs 156.66 baseline (~2.4% win). |
 | Circle-bench defaults enable reuse-optimized (padded bounds) | Kept | 20-run mean 156.66 FPS (optimize skipped after first frame). |
 | Circle centerY override pointer + precomputed up/down arrays | Rejected | 20-run mean 156.06 FPS vs 160.36 baseline (regression). |
