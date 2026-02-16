@@ -296,6 +296,8 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 98.24 | 98.74 | 78.65 | 114.23 | 10.84 | Working tree | Uniform-radius circle binning uses constant `r` in span computation. |
 | 2026-02-16 | 20 | 300 | 104.60 | 104.98 | 89.75 | 118.31 | 6.78 | Working tree | Uniform-radius binning with in-bounds fast path (skip clamps). |
 | 2026-02-16 | 20 | 300 | 118.04 | 121.31 | 88.06 | 129.07 | 12.20 | Working tree | Baseline rerun after in-bounds fast path revert. |
+| 2026-02-16 | 20 | 300 | 114.45 | 116.47 | 103.21 | 120.51 | 4.89 | Working tree | Circle-major auto tile size = 64. |
+| 2026-02-16 | 20 | 300 | 109.90 | 110.42 | 101.87 | 113.33 | 2.54 | Working tree | Circle-major auto tile size = 128 (baseline). |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -385,6 +387,7 @@ Date: 2026-02-15
 | Front-to-back opaque span aligned 32-bit writes (alpha check) | Rejected | 40-run mean 88.38 FPS vs 85.94 baseline (noisy; no clear win). |
 | Uniform-radius circle binning (use constant `r` in span computation) | Kept | 20-run mean 98.24 FPS vs 89.47 baseline (~9.8% win). |
 | Uniform-radius binning in-bounds fast path | Rejected | 20-run mean 104.60 FPS vs 118.04 baseline (regression). |
+| Circle-major auto tile size = 64 | Kept | 20-run mean 114.45 FPS vs 109.90 baseline (~4.1% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

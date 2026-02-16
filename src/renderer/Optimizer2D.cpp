@@ -149,7 +149,7 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   uint32_t drawCount = counts.drawCount();
   bool circleMajority = drawCount > 0 && (counts.circle * 2 > drawCount);
   if (tileSize == 32u && circleMajority) {
-    return 128u;
+    return 64u;
   }
   return tileSize;
 }
