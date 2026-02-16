@@ -405,6 +405,7 @@ Date: 2026-02-15
 | Specialize circle edge blends by mode (front-to-back/dst-opaque) | Kept | 20-run mean 107.59 FPS vs 97.30 baseline (~10.6% win). |
 | Hoist tile bounds to int32 locals in render loop | Rejected | 10-run mean 94.79 FPS vs 107.59 baseline (likely throttled; no win). |
 | Cache command counts by command revision (skip per-frame scan) | Kept | 20-run mean 116.94 FPS vs 107.59 baseline (~8.7% win). |
+| Cache uniform circle radius when command revision stable | Rejected | 20-run mean 109.35 FPS vs 116.94 baseline (regression, high variance). |
 | In-place circle Y update + reduced bounds pad | Rejected | 20-run mean 71.98 FPS vs 81.78 baseline (regression). |
 | Precompute palette/edge PM row pointers | Rejected | 20-run mean 76.66 FPS vs 89.81 baseline (regression). |
 | Reduce circle bounds pad to move step | Kept | 20-run mean 78.19 FPS vs 65.53 baseline (~19.3% win) using `--reuse-optimized` (pad = step). |
