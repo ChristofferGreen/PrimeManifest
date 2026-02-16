@@ -675,6 +675,9 @@ auto optimize_batch(RenderTarget target,
   }
   bool circleOnlyDraw = commandCounts.circle > 0 && commandCounts.rect == 0 && commandCounts.text == 0;
   bool useCircleRefs = circleOnlyDraw && !useTileStream && !allowAutoTileStream;
+  if (!useTileBuffer && circleOnlyDraw && hasClear && batch.assumeFrontToBack) {
+    useTileBuffer = true;
+  }
 
   bool hasDraw = false;
   if (useTileStream) {

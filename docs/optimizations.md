@@ -274,6 +274,8 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 66.57 | 63.90 | 56.12 | 80.38 | 6.44 | Working tree | Skip circle alpha check when palette opaque. |
 | 2026-02-16 | 20 | 300 | 79.41 | 80.93 | 70.27 | 87.22 | 5.26 | Working tree | Defer circle color load until overlap confirmed. |
 | 2026-02-16 | 20 | 300 | 62.99 | 62.45 | 58.87 | 67.70 | 2.57 | Working tree | Auto tile-stream for circle-only without tile buffer. |
+| 2026-02-16 | 20 | 300 | 68.58 | 70.35 | 52.94 | 79.82 | 8.52 | Working tree | Circle edge blend specialization for dst-opaque (skip blend branch). |
+| 2026-02-16 | 20 | 300 | 101.84 | 103.73 | 89.48 | 108.84 | 6.27 | Working tree | Circle-only tile buffer when front-to-back + clear (no tile stream). |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -345,6 +347,8 @@ Date: 2026-02-15
 | Skip circle alpha check when palette opaque | Rejected | 20-run mean 66.57 FPS vs 92.59 baseline (regression). |
 | Defer circle color load until overlap confirmed | Rejected | 20-run mean 79.41 FPS vs 92.59 baseline (regression). |
 | Auto tile-stream for circle-only without tile buffer | Rejected | 20-run mean 62.99 FPS vs 92.59 baseline (regression). |
+| Circle edge blend specialization for dst-opaque (skip blend branch) | Rejected | 20-run mean 68.58 FPS vs 78.19 baseline (regression). |
+| Circle-only tile buffer when front-to-back + clear | Kept | 20-run mean 101.84 FPS vs 78.19 baseline (~30% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
