@@ -286,6 +286,7 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 108.40 | 107.39 | 70.71 | 127.46 | 12.87 | Working tree | Edge premultiplied table always used in opaque circle edge blend. |
 | 2026-02-16 | 20 | 300 | 104.27 | 108.14 | 83.01 | 114.69 | 9.55 | Working tree | Skip per-edge bounds checks when row fully inside X clip. |
 | 2026-02-16 | 20 | 300 | 118.46 | 120.16 | 91.85 | 130.24 | 10.06 | Working tree | Pointer-based circle Y update loop. |
+| 2026-02-16 | 20 | 300 | 124.35 | 124.50 | 116.43 | 131.65 | 4.23 | Working tree | Vectorized pointer-based circle Y update loop. |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -369,6 +370,7 @@ Date: 2026-02-15
 | Edge premultiplied table always used in opaque circle edge blend | Rejected | 20-run mean 108.40 FPS vs 108.89 baseline (regression, high variance). |
 | Skip per-edge bounds checks when row fully inside X clip | Rejected | 20-run mean 104.27 FPS vs 108.89 baseline (regression). |
 | Pointer-based circle Y update loop | Kept | 20-run mean 118.46 FPS vs 108.89 baseline (~8.8% win). |
+| Vectorized pointer-based circle Y update loop | Kept | 20-run mean 124.35 FPS vs 118.46 baseline (~5.0% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.

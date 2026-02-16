@@ -974,9 +974,12 @@ int main(int argc, char** argv) {
   for (uint32_t frame = 0; frame < cfg.frames; ++frame) {
     if (dynamicCircles) {
       int32_t delta = (frame & 1u) == 0u ? -circleMoveStep : circleMoveStep;
-      auto* baseY = circleBaseY.data();
-      auto* dstY = batch.circles.centerY.data();
+      auto* __restrict baseY = circleBaseY.data();
+      auto* __restrict dstY = batch.circles.centerY.data();
       size_t count = circleBaseY.size();
+#if defined(__clang__)
+#pragma clang loop vectorize(enable)
+#endif
       for (size_t i = 0; i < count; ++i) {
         dstY[i] = static_cast<int16_t>(static_cast<int32_t>(baseY[i]) + delta);
       }
