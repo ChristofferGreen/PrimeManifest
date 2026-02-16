@@ -249,6 +249,7 @@ Date: 2026-02-16
 ## Circle Benchmark Measurements
 | Date | Runs | Frames | Mean FPS | Median | Min | Max | Stdev | Commit | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-02-16 | 20 | 300 | 169.96 | 170.69 | 161.68 | 172.96 | 2.93 | Working tree | Split edgePmRow branch in fullInside circle edge loops (1,000,000 circles). |
 | 2026-02-16 | 20 | 300 | 166.83 | 168.63 | 155.16 | 171.63 | 5.01 | Working tree | Skip circle tile load sort when renderTiles > 256 (1,000,000 circles). |
 | 2026-02-16 | 20 | 300 | 164.18 | 167.52 | 144.86 | 169.87 | 6.91 | Working tree | SIMD circle Y update loop (NEON/SSE), 1,000,000 circles. |
 | 2026-02-16 | 20 | 300 | 160.79 | 163.23 | 129.45 | 172.38 | 9.59 | Working tree | New baseline with 1,000,000 circles. |
@@ -466,7 +467,7 @@ Date: 2026-02-16
 | Skip sorting circle tiles by load | Kept | 1M case: 20-run mean 166.83 FPS vs 164.18 baseline (~1.6% win) when skipping sort for renderTiles > 256. Previously regressed at 750k (117.82 vs 130.21). |
 | Circle-only tile pool chunk size override = 2 | Rejected | 20-run mean 114.86 FPS vs 130.21 baseline (regression). |
 | Allow auto tile-stream with tile size 64 | Rejected | 20-run mean 115.93 FPS vs 130.21 baseline (regression). |
-| Edge blend split (edgePmRow branch) | Rejected | 20-run mean 115.82 FPS vs 130.21 baseline (regression). |
+| Edge blend split (edgePmRow branch) | Kept | 1M case: 20-run mean 169.96 FPS vs 166.83 baseline (~1.9% win). Previously regressed at 750k (115.82 vs 130.21). |
 | Edge blend skip opaque-count update | Rejected | 20-run mean 68.47 FPS vs 130.21 baseline (large regression). |
 | Cache per-circle colors in optimizer | Rejected | 20-run mean 101.01 FPS vs 130.21 baseline (regression). |
 | Edge blend split (front-to-back vs dst-opaque) | Rejected | 20-run mean 124.62 FPS vs 130.21 baseline (regression). |

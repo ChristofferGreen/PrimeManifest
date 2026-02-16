@@ -1214,24 +1214,49 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 }
                 uint16_t start = edgeOffset[static_cast<size_t>(localY)];
                 uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-                for (uint16_t i = start; i < end; ++i) {
-                  uint8_t x = edgeX[i];
-                  uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                  uint8_t dstA = dst[3];
-                  if (dstA >= OpaqueAlphaCutoff) continue;
-                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
-                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                  uint8_t invA = static_cast<uint8_t>(255u - dstA);
-                  auto const& mulRow = kMulTable[invA];
-                  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) + mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
-                  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
-                                                mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
-                  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
-                                                mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
-                  uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
-                  dst[3] = newA;
-                  if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
-                    ++opaqueCount;
+                if (edgePmRow) {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t dstA = dst[3];
+                    if (dstA >= OpaqueAlphaCutoff) continue;
+                    uint32_t pm = edgePmRow[i];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t invA = static_cast<uint8_t>(255u - dstA);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) +
+                                                  mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
+                    uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
+                    dst[3] = newA;
+                    if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+                      ++opaqueCount;
+                    }
+                  }
+                } else {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t dstA = dst[3];
+                    if (dstA >= OpaqueAlphaCutoff) continue;
+                    uint32_t pm = pmTable[edgeCov[i]];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t invA = static_cast<uint8_t>(255u - dstA);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(dst[0]) +
+                                                  mulRow[static_cast<uint8_t>(pm & 0xFFu)]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>(dst[1]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 8) & 0xFFu)]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>(dst[2]) +
+                                                  mulRow[static_cast<uint8_t>((pm >> 16) & 0xFFu)]);
+                    uint8_t newA = static_cast<uint8_t>(static_cast<uint16_t>(dstA) + mulRow[cov]);
+                    dst[3] = newA;
+                    if (dstA < OpaqueAlphaCutoff && newA >= OpaqueAlphaCutoff) {
+                      ++opaqueCount;
+                    }
                   }
                 }
               }
@@ -1256,17 +1281,32 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 }
                 uint16_t start = edgeOffset[static_cast<size_t>(localY)];
                 uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-                for (uint16_t i = start; i < end; ++i) {
-                  uint8_t x = edgeX[i];
-                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
-                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                  uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
-                  uint8_t invA = static_cast<uint8_t>(255u - cov);
-                  auto const& mulRow = kMulTable[invA];
-                  dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
-                  dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
-                  dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
-                  dst[3] = 255u;
+                if (edgePmRow) {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = edgePmRow[i];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t invA = static_cast<uint8_t>(255u - cov);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
+                    dst[3] = 255u;
+                  }
+                } else {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = pmTable[edgeCov[i]];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    uint8_t* dst = rowBase + static_cast<size_t>(4u * x);
+                    uint8_t invA = static_cast<uint8_t>(255u - cov);
+                    auto const& mulRow = kMulTable[invA];
+                    dst[0] = static_cast<uint8_t>(static_cast<uint16_t>(pm & 0xFFu) + mulRow[dst[0]]);
+                    dst[1] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 8) & 0xFFu) + mulRow[dst[1]]);
+                    dst[2] = static_cast<uint8_t>(static_cast<uint16_t>((pm >> 16) & 0xFFu) + mulRow[dst[2]]);
+                    dst[3] = 255u;
+                  }
                 }
               }
             } else {
@@ -1290,15 +1330,28 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                 }
                 uint16_t start = edgeOffset[static_cast<size_t>(localY)];
                 uint16_t end = edgeOffset[static_cast<size_t>(localY + 1)];
-                for (uint16_t i = start; i < end; ++i) {
-                  uint8_t x = edgeX[i];
-                  uint32_t pm = edgePmRow ? edgePmRow[i] : pmTable[edgeCov[i]];
-                  uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-                  blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
-                                      static_cast<uint8_t>(pm & 0xFFu),
-                                      static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                                      static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                                      cov);
+                if (edgePmRow) {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = edgePmRow[i];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
+                                        static_cast<uint8_t>(pm & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                                        cov);
+                  }
+                } else {
+                  for (uint16_t i = start; i < end; ++i) {
+                    uint8_t x = edgeX[i];
+                    uint32_t pm = pmTable[edgeCov[i]];
+                    uint8_t cov = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+                    blend_premultiplied(rowBase + static_cast<size_t>(4u * x),
+                                        static_cast<uint8_t>(pm & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                                        static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                                        cov);
+                  }
                 }
               }
             }
