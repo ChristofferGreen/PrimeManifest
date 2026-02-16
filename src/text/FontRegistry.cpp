@@ -287,6 +287,31 @@ static void add_default_os_font_dirs(std::vector<std::string>& dirs) {
 #endif
 }
 
+static void add_default_bundle_dirs(std::vector<std::string>& dirs) {
+  auto add_dir = [&](std::filesystem::path path) {
+    if (path.empty()) return;
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec) || !std::filesystem::is_directory(path, ec)) return;
+    std::string value = path.string();
+    for (auto const& existing : dirs) {
+      if (existing == value) return;
+    }
+    dirs.push_back(std::move(value));
+  };
+
+  std::error_code ec;
+  auto cwd = std::filesystem::current_path(ec);
+  if (!ec) {
+    add_dir(cwd / "assets" / "fonts");
+  }
+
+  std::filesystem::path sourcePath(__FILE__);
+  if (!sourcePath.empty()) {
+    auto repoRoot = sourcePath.parent_path().parent_path().parent_path();
+    add_dir(repoRoot / "assets" / "fonts");
+  }
+}
+
 } // namespace
 
 struct FontRegistry::Impl {
@@ -314,6 +339,7 @@ struct FontRegistry::Impl {
 
   Impl() {
     FT_Init_FreeType(&ftLibrary);
+    add_default_bundle_dirs(bundleDirs);
     add_default_os_font_dirs(osFontDirs);
   }
   ~Impl() {

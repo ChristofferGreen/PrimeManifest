@@ -40,6 +40,11 @@ Text rendering demo:
 ./build-debug/text_render_demo
 ```
 
+## Fonts
+
+PrimeManifest ships with bundled Noto Sans fonts in `assets/fonts/` and loads them by default.
+If no bundled fonts are found, the registry falls back to OS font directories.
+
 Renderer benchmark (rects):
 
 ```sh

@@ -124,6 +124,12 @@ TEST_CASE("to_string_helpers") {
            "fallback policy string");
 }
 
+TEST_CASE("default_bundle_fonts_available") {
+  FontRegistry registry;
+  registry.loadBundledFonts();
+  CHECK_MESSAGE(registry.hasBundledFaces(), "default bundled faces available");
+}
+
 TEST_CASE("layout_text_bitmap_family_returns_null") {
   Typography typography;
   typography.size = 14.0f;
