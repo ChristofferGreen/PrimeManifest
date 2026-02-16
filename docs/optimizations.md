@@ -423,6 +423,7 @@ Date: 2026-02-15
 | Tile pool atomics use relaxed ordering | Rejected | 20-run mean 144.34 FPS vs 144.69 baseline (regression). |
 | Circle-only tile chunk override = 2 | Rejected | 20-run mean 142.38 FPS vs 144.69 baseline (regression). |
 | Tile pool worker threads = hardware-2 | Rejected | 20-run mean 142.77 FPS vs 144.69 baseline (regression). |
+| Tile pool: workers only (main thread idle) | Rejected | 20-run mean 141.91 FPS vs 144.69 baseline (regression). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
