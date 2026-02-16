@@ -345,6 +345,7 @@ Date: 2026-02-15
 | --- | --- | --- |
 | Circle base Y stored as int32 in bench update loop | Kept | 20-run mean 170.02 FPS vs 160.36 baseline (~6.0% win). |
 | Palette opaque flag + cached palette arrays in circle render | Rejected | 20-run mean 153.66 FPS vs 170.02 baseline (regression). |
+| Clear tile buffer once per frame when all tiles rendered | Rejected | 20-run mean 151.86 FPS vs 170.02 baseline (regression). |
 | Skip `OptimizeRenderBatch` call when reuse is valid (bench) | Kept | 20-run mean 160.36 FPS vs 156.66 baseline (~2.4% win). |
 | Circle-bench defaults enable reuse-optimized (padded bounds) | Kept | 20-run mean 156.66 FPS (optimize skipped after first frame). |
 | Circle centerY override pointer + precomputed up/down arrays | Rejected | 20-run mean 156.06 FPS vs 160.36 baseline (regression). |
