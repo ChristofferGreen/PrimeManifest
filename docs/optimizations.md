@@ -308,6 +308,7 @@ Date: 2026-02-15
 | 2026-02-16 | 20 | 300 | 124.62 | 125.79 | 115.92 | 128.38 | 3.42 | Working tree | Edge blend uses front/dst-opaque specialized lambdas. |
 | 2026-02-16 | 20 | 300 | 126.15 | 126.35 | 117.00 | 131.96 | 3.92 | Working tree | Edge blend early-out on OpaqueAlphaCutoff before blend. |
 | 2026-02-16 | 20 | 300 | 135.87 | 136.66 | 127.94 | 138.49 | 2.89 | Working tree | Uniform-radius circle binning: specialize tilePow2 span computation. |
+| 2026-02-16 | 20 | 300 | 141.97 | 142.97 | 130.98 | 145.11 | 3.52 | Working tree | Edge blend loop specialized per front-to-back/dst-opaque. |
 | 2026-02-16 | 20 | 300 | 65.53 | 65.17 | 62.11 | 71.06 | 2.67 | Working tree | Baseline rerun, reuse-optimized, circle bounds pad = 2x step. |
 | 2026-02-16 | 20 | 300 | 78.19 | 79.63 | 72.00 | 82.58 | 3.42 | Working tree | Reuse-optimized with circle bounds pad = step. |
 
@@ -408,6 +409,7 @@ Date: 2026-02-15
 | Edge blend split (front-to-back vs dst-opaque) | Rejected | 20-run mean 124.62 FPS vs 130.21 baseline (regression). |
 | Edge blend early-out using dst alpha | Rejected | 20-run mean 126.15 FPS vs 130.21 baseline (regression). |
 | Uniform-radius binning tilePow2 specialization | Kept | 20-run mean 135.87 FPS vs 130.21 baseline (~4.3% win). |
+| Edge blend loop specialized by front-to-back/dst-opaque | Kept | 20-run mean 141.97 FPS vs 135.87 baseline (~4.5% win). |
 
 ## Next Steps
 1. Pick a baseline commit and add it to Measurements.
