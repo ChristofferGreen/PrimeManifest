@@ -36,6 +36,10 @@ enum class CommandType : uint8_t {
   DebugTiles = 3,
   ClearPattern = 4,
   Circle = 5,
+  SetPixel = 6,
+  SetPixelA = 7,
+  Line = 8,
+  Image = 9,
 };
 
 struct CommandTypeCounts {
@@ -45,6 +49,10 @@ struct CommandTypeCounts {
   uint32_t text = 0;
   uint32_t debugTiles = 0;
   uint32_t clearPattern = 0;
+  uint32_t setPixel = 0;
+  uint32_t setPixelA = 0;
+  uint32_t line = 0;
+  uint32_t image = 0;
 
   void reset() {
     clearCount = 0;
@@ -53,10 +61,14 @@ struct CommandTypeCounts {
     text = 0;
     debugTiles = 0;
     clearPattern = 0;
+    setPixel = 0;
+    setPixelA = 0;
+    line = 0;
+    image = 0;
   }
 
   uint32_t drawCount() const {
-    return rect + circle + text;
+    return rect + circle + text + setPixel + setPixelA + line + image;
   }
 };
 
@@ -93,6 +105,12 @@ enum TextFlags : uint8_t {
 
 enum DebugTilesFlags : uint8_t {
   DebugTilesFlagDirtyOnly = 1u << 0,
+};
+
+enum ImageFlags : uint8_t {
+  ImageFlagWrapU = 1u << 0,
+  ImageFlagWrapV = 1u << 1,
+  ImageFlagClip = 1u << 2,
 };
 
 struct RenderTarget {
@@ -252,6 +270,121 @@ struct CircleStore {
   }
 };
 
+struct PixelStore {
+  std::vector<int16_t> x;
+  std::vector<int16_t> y;
+  std::vector<uint8_t> colorIndex;
+
+  void clear() {
+    x.clear();
+    y.clear();
+    colorIndex.clear();
+  }
+  size_t size() const {
+    return x.size();
+  }
+};
+
+struct PixelAStore {
+  std::vector<int16_t> x;
+  std::vector<int16_t> y;
+  std::vector<uint8_t> colorIndex;
+  std::vector<uint8_t> alpha;
+
+  void clear() {
+    x.clear();
+    y.clear();
+    colorIndex.clear();
+    alpha.clear();
+  }
+  size_t size() const {
+    return x.size();
+  }
+};
+
+struct LineStore {
+  std::vector<int16_t> x0;
+  std::vector<int16_t> y0;
+  std::vector<int16_t> x1;
+  std::vector<int16_t> y1;
+  std::vector<uint16_t> widthQ8_8;
+  std::vector<uint8_t> colorIndex;
+  std::vector<uint8_t> opacity;
+
+  void clear() {
+    x0.clear();
+    y0.clear();
+    x1.clear();
+    y1.clear();
+    widthQ8_8.clear();
+    colorIndex.clear();
+    opacity.clear();
+  }
+  size_t size() const {
+    return x0.size();
+  }
+};
+
+struct ImageStore {
+  std::vector<uint16_t> width;
+  std::vector<uint16_t> height;
+  std::vector<uint32_t> strideBytes;
+  std::vector<uint32_t> dataOffset;
+  std::vector<uint8_t> data;
+
+  void clear() {
+    width.clear();
+    height.clear();
+    strideBytes.clear();
+    dataOffset.clear();
+    data.clear();
+  }
+  size_t size() const {
+    return width.size();
+  }
+};
+
+struct ImageDrawStore {
+  std::vector<int16_t> x0;
+  std::vector<int16_t> y0;
+  std::vector<int16_t> x1;
+  std::vector<int16_t> y1;
+  std::vector<uint16_t> srcX0;
+  std::vector<uint16_t> srcY0;
+  std::vector<uint16_t> srcX1;
+  std::vector<uint16_t> srcY1;
+  std::vector<uint32_t> imageIndex;
+  std::vector<uint8_t> tintColorIndex;
+  std::vector<uint8_t> opacity;
+  std::vector<uint8_t> flags;
+  std::vector<int16_t> clipX0;
+  std::vector<int16_t> clipY0;
+  std::vector<int16_t> clipX1;
+  std::vector<int16_t> clipY1;
+
+  void clear() {
+    x0.clear();
+    y0.clear();
+    x1.clear();
+    y1.clear();
+    srcX0.clear();
+    srcY0.clear();
+    srcX1.clear();
+    srcY1.clear();
+    imageIndex.clear();
+    tintColorIndex.clear();
+    opacity.clear();
+    flags.clear();
+    clipX0.clear();
+    clipY0.clear();
+    clipX1.clear();
+    clipY1.clear();
+  }
+  size_t size() const {
+    return x0.size();
+  }
+};
+
 struct TextStore {
   std::vector<int16_t> x;
   std::vector<int16_t> y;
@@ -408,6 +541,11 @@ struct RenderBatch {
   ClearPatternStore clearPattern;
   RectStore rects;
   CircleStore circles;
+  PixelStore pixels;
+  PixelAStore pixelsA;
+  LineStore lines;
+  ImageStore images;
+  ImageDrawStore imageDraws;
   TextStore text;
   TextRunStore runs;
   GlyphStore glyphs;
@@ -431,6 +569,11 @@ struct RenderBatch {
     clearPattern.clear();
     rects.clear();
     circles.clear();
+    pixels.clear();
+    pixelsA.clear();
+    lines.clear();
+    images.clear();
+    imageDraws.clear();
     text.clear();
     runs.clear();
     glyphs.clear();

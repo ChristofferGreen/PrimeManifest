@@ -61,7 +61,9 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_font_bitmap.cpp
     tests/unit/test_front_to_back.cpp
     tests/unit/test_gradient_cache.cpp
+    tests/unit/test_image.cpp
     tests/unit/test_layout.cpp
+    tests/unit/test_line.cpp
     tests/unit/test_main.cpp
     tests/unit/test_misc.cpp
     tests/unit/test_optimizer.cpp
@@ -71,6 +73,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_ordering.cpp
     tests/unit/test_palette.cpp
     tests/unit/test_palette_store.cpp
+    tests/unit/test_pixel.cpp
     tests/unit/test_profiles.cpp
     tests/unit/test_rect.cpp
     tests/unit/test_rect_cache_edges.cpp
@@ -103,7 +106,9 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     primemanifest.font_registry
     primemanifest.front_to_back
     primemanifest.gradient_cache
+    primemanifest.image
     primemanifest.layout
+    primemanifest.line
     primemanifest.misc
     primemanifest.optimizer
     primemanifest.optimizer_filters
@@ -112,6 +117,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     primemanifest.ordering
     primemanifest.palette
     primemanifest.palette_store
+    primemanifest.pixel
     primemanifest.profile
     primemanifest.rect
     primemanifest.rect_cache_edges
@@ -146,4 +152,7 @@ if(PRIMEMANIFEST_BUILD_EXAMPLES)
   add_executable(text_render_demo examples/text_render_demo.cpp)
   target_link_libraries(text_render_demo PRIVATE PrimeManifest)
   pm_require_cxx23(text_render_demo)
+  add_executable(image_line_pixel_demo examples/image_line_pixel_demo.cpp)
+  target_link_libraries(image_line_pixel_demo PRIVATE PrimeManifest)
+  pm_require_cxx23(image_line_pixel_demo)
 endif()

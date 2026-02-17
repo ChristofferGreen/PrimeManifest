@@ -6,6 +6,7 @@
 #include "third_party/doctest.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -142,6 +143,103 @@ inline void add_circle(RenderBatch& batch,
   batch.circles.radius.push_back(radius);
   batch.circles.colorIndex.push_back(palette_index(batch, color));
   batch.commands.push_back(RenderCommand{CommandType::Circle, idx});
+}
+
+inline void add_set_pixel(RenderBatch& batch,
+                          int32_t x,
+                          int32_t y,
+                          uint32_t color) {
+  uint32_t idx = static_cast<uint32_t>(batch.pixels.x.size());
+  batch.pixels.x.push_back(static_cast<int16_t>(x));
+  batch.pixels.y.push_back(static_cast<int16_t>(y));
+  batch.pixels.colorIndex.push_back(palette_index(batch, color));
+  batch.commands.push_back(RenderCommand{CommandType::SetPixel, idx});
+}
+
+inline void add_set_pixel_a(RenderBatch& batch,
+                            int32_t x,
+                            int32_t y,
+                            uint32_t color,
+                            uint8_t alpha) {
+  uint32_t idx = static_cast<uint32_t>(batch.pixelsA.x.size());
+  batch.pixelsA.x.push_back(static_cast<int16_t>(x));
+  batch.pixelsA.y.push_back(static_cast<int16_t>(y));
+  batch.pixelsA.colorIndex.push_back(palette_index(batch, color));
+  batch.pixelsA.alpha.push_back(alpha);
+  batch.commands.push_back(RenderCommand{CommandType::SetPixelA, idx});
+}
+
+inline void add_line(RenderBatch& batch,
+                     int32_t x0,
+                     int32_t y0,
+                     int32_t x1,
+                     int32_t y1,
+                     float width,
+                     uint32_t color,
+                     uint8_t opacity = 255) {
+  uint32_t idx = static_cast<uint32_t>(batch.lines.x0.size());
+  batch.lines.x0.push_back(static_cast<int16_t>(x0));
+  batch.lines.y0.push_back(static_cast<int16_t>(y0));
+  batch.lines.x1.push_back(static_cast<int16_t>(x1));
+  batch.lines.y1.push_back(static_cast<int16_t>(y1));
+  uint16_t widthQ8_8 = static_cast<uint16_t>(std::lround(width * 256.0f));
+  batch.lines.widthQ8_8.push_back(widthQ8_8);
+  batch.lines.colorIndex.push_back(palette_index(batch, color));
+  batch.lines.opacity.push_back(opacity);
+  batch.commands.push_back(RenderCommand{CommandType::Line, idx});
+}
+
+inline auto add_image_asset(RenderBatch& batch,
+                            uint16_t width,
+                            uint16_t height,
+                            std::vector<uint32_t> const& pixels) -> uint32_t {
+  uint32_t idx = static_cast<uint32_t>(batch.images.width.size());
+  batch.images.width.push_back(width);
+  batch.images.height.push_back(height);
+  batch.images.strideBytes.push_back(static_cast<uint32_t>(width) * 4u);
+  batch.images.dataOffset.push_back(static_cast<uint32_t>(batch.images.data.size()));
+  batch.images.data.reserve(batch.images.data.size() + pixels.size() * 4u);
+  for (uint32_t color : pixels) {
+    batch.images.data.push_back(static_cast<uint8_t>(color & 0xFFu));
+    batch.images.data.push_back(static_cast<uint8_t>((color >> 8) & 0xFFu));
+    batch.images.data.push_back(static_cast<uint8_t>((color >> 16) & 0xFFu));
+    batch.images.data.push_back(static_cast<uint8_t>((color >> 24) & 0xFFu));
+  }
+  return idx;
+}
+
+inline void add_image_draw(RenderBatch& batch,
+                           uint32_t imageIndex,
+                           int32_t x0,
+                           int32_t y0,
+                           int32_t x1,
+                           int32_t y1,
+                           uint16_t srcX0,
+                           uint16_t srcY0,
+                           uint16_t srcX1,
+                           uint16_t srcY1,
+                           uint32_t tintColor,
+                           uint8_t opacity = 255,
+                           uint8_t flags = 0,
+                           IntRect clip = {}) {
+  uint32_t idx = static_cast<uint32_t>(batch.imageDraws.x0.size());
+  batch.imageDraws.x0.push_back(static_cast<int16_t>(x0));
+  batch.imageDraws.y0.push_back(static_cast<int16_t>(y0));
+  batch.imageDraws.x1.push_back(static_cast<int16_t>(x1));
+  batch.imageDraws.y1.push_back(static_cast<int16_t>(y1));
+  batch.imageDraws.srcX0.push_back(srcX0);
+  batch.imageDraws.srcY0.push_back(srcY0);
+  batch.imageDraws.srcX1.push_back(srcX1);
+  batch.imageDraws.srcY1.push_back(srcY1);
+  batch.imageDraws.imageIndex.push_back(imageIndex);
+  batch.imageDraws.tintColorIndex.push_back(palette_index(batch, tintColor));
+  batch.imageDraws.opacity.push_back(opacity);
+  batch.imageDraws.flags.push_back(flags);
+  batch.imageDraws.clipX0.push_back(static_cast<int16_t>(clip.x0));
+  batch.imageDraws.clipY0.push_back(static_cast<int16_t>(clip.y0));
+  batch.imageDraws.clipX1.push_back(static_cast<int16_t>(clip.x1));
+  batch.imageDraws.clipY1.push_back(static_cast<int16_t>(clip.y1));
+  batch.commands.push_back(RenderCommand{CommandType::Image, idx});
 }
 
 inline void add_gradient_rect(RenderBatch& batch,
