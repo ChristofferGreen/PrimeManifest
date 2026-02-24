@@ -884,6 +884,11 @@ struct FontRegistry::Impl {
         placement.glyphId = static_cast<int>(infos[i].codepoint);
         placement.x = penX + xOffset;
         placement.y = penY - yOffset;
+        size_t absolute = startByte + static_cast<size_t>(infos[i].cluster);
+        if (absolute > text.size()) {
+          absolute = text.size();
+        }
+        placement.cluster = static_cast<uint32_t>(absolute);
         if (buildGlyphs) {
           placement.bitmap = getGlyphBitmap(seg.face, infos[i].codepoint, effectiveSize, emboldenStrength);
         }
@@ -929,7 +934,9 @@ struct FontRegistry::Impl {
             }
           }
         }
-        penX += xAdvance + letterSpacing + wordSpacing;
+        float advance = xAdvance + letterSpacing + wordSpacing;
+        run->glyphs.back().advance = advance;
+        penX += advance;
         penY += -yAdvance;
 
         maxRight = std::max(maxRight, glyphRight);

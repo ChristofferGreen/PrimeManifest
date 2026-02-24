@@ -42,6 +42,8 @@ struct GlyphPlacement {
   int32_t glyphId = 0;
   float x = 0.0f;
   float y = 0.0f;
+  uint32_t cluster = 0;
+  float advance = 0.0f;
 };
 
 struct TextRun {
