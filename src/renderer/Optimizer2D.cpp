@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace PrimeManifest {
@@ -181,6 +183,260 @@ auto make_tile_grid(uint32_t width, uint32_t height, uint32_t tileSize) -> TileG
   grid.tilesX = (width + grid.tileSize - 1) / grid.tileSize;
   grid.tilesY = (height + grid.tileSize - 1) / grid.tileSize;
   return grid;
+}
+
+auto command_type_name(CommandType type) -> const char* {
+  switch (type) {
+    case CommandType::Clear:
+      return "Clear";
+    case CommandType::Rect:
+      return "Rect";
+    case CommandType::Text:
+      return "Text";
+    case CommandType::DebugTiles:
+      return "DebugTiles";
+    case CommandType::ClearPattern:
+      return "ClearPattern";
+    case CommandType::Circle:
+      return "Circle";
+    case CommandType::SetPixel:
+      return "SetPixel";
+    case CommandType::SetPixelA:
+      return "SetPixelA";
+    case CommandType::Line:
+      return "Line";
+    case CommandType::Image:
+      return "Image";
+  }
+  return "Unknown";
+}
+
+auto primary_store_size(RenderBatch const& batch, CommandType type) -> size_t {
+  switch (type) {
+    case CommandType::Clear:
+      return batch.clear.colorIndex.size();
+    case CommandType::Rect:
+      return batch.rects.x0.size();
+    case CommandType::Text:
+      return batch.text.x.size();
+    case CommandType::DebugTiles:
+      return batch.debugTiles.colorIndex.size();
+    case CommandType::ClearPattern:
+      return batch.clearPattern.width.size();
+    case CommandType::Circle:
+      return batch.circles.centerX.size();
+    case CommandType::SetPixel:
+      return batch.pixels.x.size();
+    case CommandType::SetPixelA:
+      return batch.pixelsA.x.size();
+    case CommandType::Line:
+      return batch.lines.x0.size();
+    case CommandType::Image:
+      return batch.imageDraws.x0.size();
+  }
+  return 0;
+}
+
+void add_validation_issue(RenderValidationReport* report,
+                          char const* code,
+                          std::string detail) {
+  if (report == nullptr) return;
+  report->issues.push_back(RenderValidationIssue{code, std::move(detail)});
+}
+
+auto validate_render_batch(RenderTarget target,
+                           RenderBatch const& batch,
+                           uint32_t tileSizeOverride,
+                           RenderValidationReport* report) -> bool {
+  RenderValidationReport localIssues;
+  RenderValidationReport* issueReport = report != nullptr ? report : &localIssues;
+  auto check_store = [&](char const* storeName,
+                         char const* baseField,
+                         size_t baseSize,
+                         char const* fieldName,
+                         size_t fieldSize) {
+    if (fieldSize == baseSize) return;
+    add_validation_issue(
+      issueReport,
+      "StoreSizeMismatch",
+      std::string(storeName) + "." + fieldName + " size " + std::to_string(fieldSize) +
+      " != " + baseField + " size " + std::to_string(baseSize));
+  };
+
+  size_t rectBase = batch.rects.x0.size();
+  check_store("RectStore", "x0", rectBase, "y0", batch.rects.y0.size());
+  check_store("RectStore", "x0", rectBase, "x1", batch.rects.x1.size());
+  check_store("RectStore", "x0", rectBase, "y1", batch.rects.y1.size());
+  check_store("RectStore", "x0", rectBase, "colorIndex", batch.rects.colorIndex.size());
+  check_store("RectStore", "x0", rectBase, "radiusQ8_8", batch.rects.radiusQ8_8.size());
+  check_store("RectStore", "x0", rectBase, "rotationQ8_8", batch.rects.rotationQ8_8.size());
+  check_store("RectStore", "x0", rectBase, "zQ8_8", batch.rects.zQ8_8.size());
+  check_store("RectStore", "x0", rectBase, "opacity", batch.rects.opacity.size());
+  check_store("RectStore", "x0", rectBase, "flags", batch.rects.flags.size());
+  check_store("RectStore", "x0", rectBase, "gradientColor1Index", batch.rects.gradientColor1Index.size());
+  check_store("RectStore", "x0", rectBase, "gradientDirX", batch.rects.gradientDirX.size());
+  check_store("RectStore", "x0", rectBase, "gradientDirY", batch.rects.gradientDirY.size());
+  check_store("RectStore", "x0", rectBase, "clipX0", batch.rects.clipX0.size());
+  check_store("RectStore", "x0", rectBase, "clipY0", batch.rects.clipY0.size());
+  check_store("RectStore", "x0", rectBase, "clipX1", batch.rects.clipX1.size());
+  check_store("RectStore", "x0", rectBase, "clipY1", batch.rects.clipY1.size());
+
+  size_t circleBase = batch.circles.centerX.size();
+  check_store("CircleStore", "centerX", circleBase, "centerY", batch.circles.centerY.size());
+  check_store("CircleStore", "centerX", circleBase, "radius", batch.circles.radius.size());
+  check_store("CircleStore", "centerX", circleBase, "colorIndex", batch.circles.colorIndex.size());
+
+  size_t pixelBase = batch.pixels.x.size();
+  check_store("PixelStore", "x", pixelBase, "y", batch.pixels.y.size());
+  check_store("PixelStore", "x", pixelBase, "colorIndex", batch.pixels.colorIndex.size());
+
+  size_t pixelABase = batch.pixelsA.x.size();
+  check_store("PixelAStore", "x", pixelABase, "y", batch.pixelsA.y.size());
+  check_store("PixelAStore", "x", pixelABase, "colorIndex", batch.pixelsA.colorIndex.size());
+  check_store("PixelAStore", "x", pixelABase, "alpha", batch.pixelsA.alpha.size());
+
+  size_t lineBase = batch.lines.x0.size();
+  check_store("LineStore", "x0", lineBase, "y0", batch.lines.y0.size());
+  check_store("LineStore", "x0", lineBase, "x1", batch.lines.x1.size());
+  check_store("LineStore", "x0", lineBase, "y1", batch.lines.y1.size());
+  check_store("LineStore", "x0", lineBase, "widthQ8_8", batch.lines.widthQ8_8.size());
+  check_store("LineStore", "x0", lineBase, "colorIndex", batch.lines.colorIndex.size());
+  check_store("LineStore", "x0", lineBase, "opacity", batch.lines.opacity.size());
+
+  size_t imageBase = batch.images.width.size();
+  check_store("ImageStore", "width", imageBase, "height", batch.images.height.size());
+  check_store("ImageStore", "width", imageBase, "strideBytes", batch.images.strideBytes.size());
+  check_store("ImageStore", "width", imageBase, "dataOffset", batch.images.dataOffset.size());
+
+  size_t imageDrawBase = batch.imageDraws.x0.size();
+  check_store("ImageDrawStore", "x0", imageDrawBase, "y0", batch.imageDraws.y0.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "x1", batch.imageDraws.x1.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "y1", batch.imageDraws.y1.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "srcX0", batch.imageDraws.srcX0.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "srcY0", batch.imageDraws.srcY0.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "srcX1", batch.imageDraws.srcX1.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "srcY1", batch.imageDraws.srcY1.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "imageIndex", batch.imageDraws.imageIndex.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "tintColorIndex", batch.imageDraws.tintColorIndex.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "opacity", batch.imageDraws.opacity.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "flags", batch.imageDraws.flags.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "clipX0", batch.imageDraws.clipX0.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "clipY0", batch.imageDraws.clipY0.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "clipX1", batch.imageDraws.clipX1.size());
+  check_store("ImageDrawStore", "x0", imageDrawBase, "clipY1", batch.imageDraws.clipY1.size());
+
+  size_t textBase = batch.text.x.size();
+  check_store("TextStore", "x", textBase, "y", batch.text.y.size());
+  check_store("TextStore", "x", textBase, "width", batch.text.width.size());
+  check_store("TextStore", "x", textBase, "height", batch.text.height.size());
+  check_store("TextStore", "x", textBase, "zQ8_8", batch.text.zQ8_8.size());
+  check_store("TextStore", "x", textBase, "opacity", batch.text.opacity.size());
+  check_store("TextStore", "x", textBase, "colorIndex", batch.text.colorIndex.size());
+  check_store("TextStore", "x", textBase, "flags", batch.text.flags.size());
+  check_store("TextStore", "x", textBase, "runIndex", batch.text.runIndex.size());
+  check_store("TextStore", "x", textBase, "clipX0", batch.text.clipX0.size());
+  check_store("TextStore", "x", textBase, "clipY0", batch.text.clipY0.size());
+  check_store("TextStore", "x", textBase, "clipX1", batch.text.clipX1.size());
+  check_store("TextStore", "x", textBase, "clipY1", batch.text.clipY1.size());
+
+  size_t runBase = batch.runs.glyphStart.size();
+  check_store("TextRunStore", "glyphStart", runBase, "glyphCount", batch.runs.glyphCount.size());
+  check_store("TextRunStore", "glyphStart", runBase, "baselineQ8_8", batch.runs.baselineQ8_8.size());
+  check_store("TextRunStore", "glyphStart", runBase, "scaleQ8_8", batch.runs.scaleQ8_8.size());
+
+  size_t glyphBase = batch.glyphs.glyphXQ8_8.size();
+  check_store("GlyphStore", "glyphXQ8_8", glyphBase, "glyphYQ8_8", batch.glyphs.glyphYQ8_8.size());
+  check_store("GlyphStore", "glyphXQ8_8", glyphBase, "bitmapIndex", batch.glyphs.bitmapIndex.size());
+  check_store("GlyphStore", "bitmaps", batch.glyphs.bitmaps.size(), "bitmapOpaque", batch.glyphs.bitmapOpaque.size());
+
+  size_t debugBase = batch.debugTiles.colorIndex.size();
+  check_store("DebugTilesStore", "colorIndex", debugBase, "lineWidth", batch.debugTiles.lineWidth.size());
+  check_store("DebugTilesStore", "colorIndex", debugBase, "flags", batch.debugTiles.flags.size());
+
+  size_t clearPatternBase = batch.clearPattern.width.size();
+  check_store("ClearPatternStore", "width", clearPatternBase, "height", batch.clearPattern.height.size());
+  check_store("ClearPatternStore", "width", clearPatternBase, "dataOffset", batch.clearPattern.dataOffset.size());
+
+  for (size_t i = 0; i < batch.commands.size(); ++i) {
+    auto const& cmd = batch.commands[i];
+    size_t storeSize = primary_store_size(batch, cmd.type);
+    if (cmd.index >= storeSize) {
+      add_validation_issue(
+        issueReport,
+        "BadCommandIndex",
+        "commands[" + std::to_string(i) + "] " + command_type_name(cmd.type) +
+        " index " + std::to_string(cmd.index) + " out of range (size " + std::to_string(storeSize) + ")");
+    }
+  }
+
+  if (batch.tileStream.enabled) {
+    uint32_t tileSize = tileSizeOverride == 0 ? 32u : tileSizeOverride;
+    if (tileSize > 256u) {
+      add_validation_issue(issueReport, "TileStreamInvariant", "tile stream enabled with tile size > 256");
+    } else {
+      TileGrid grid = make_tile_grid(target.width, target.height, tileSize);
+      uint32_t tileCount = grid.tilesX * grid.tilesY;
+      if (batch.tileStream.offsets.size() != static_cast<size_t>(tileCount + 1)) {
+        add_validation_issue(
+          issueReport,
+          "TileStreamInvariant",
+          "tileStream.offsets size " + std::to_string(batch.tileStream.offsets.size()) +
+          " != tileCount+1 " + std::to_string(tileCount + 1));
+      } else if (!batch.tileStream.offsets.empty() &&
+                 batch.tileStream.offsets.back() != batch.tileStream.commands.size()) {
+        add_validation_issue(
+          issueReport,
+          "TileStreamInvariant",
+          "tileStream.offsets.back() " + std::to_string(batch.tileStream.offsets.back()) +
+          " != tileStream.commands size " + std::to_string(batch.tileStream.commands.size()));
+      }
+
+      if (!batch.tileStream.preMerged) {
+        uint32_t macroTilesX = (grid.tilesX + MacroFactor - 1) / MacroFactor;
+        uint32_t macroTilesY = (grid.tilesY + MacroFactor - 1) / MacroFactor;
+        uint32_t macroCount = macroTilesX * macroTilesY;
+        if (batch.tileStream.macroOffsets.empty()) {
+          if (!batch.tileStream.macroCommands.empty()) {
+            add_validation_issue(
+              issueReport,
+              "TileStreamInvariant",
+              "tileStream.macroCommands present without macroOffsets");
+          }
+        } else if (batch.tileStream.macroOffsets.size() != static_cast<size_t>(macroCount + 1)) {
+          add_validation_issue(
+            issueReport,
+            "TileStreamInvariant",
+            "tileStream.macroOffsets size " + std::to_string(batch.tileStream.macroOffsets.size()) +
+            " != macroCount+1 " + std::to_string(macroCount + 1));
+        } else if (batch.tileStream.macroOffsets.back() != batch.tileStream.macroCommands.size()) {
+          add_validation_issue(
+            issueReport,
+            "TileStreamInvariant",
+            "tileStream.macroOffsets.back() " + std::to_string(batch.tileStream.macroOffsets.back()) +
+            " != tileStream.macroCommands size " + std::to_string(batch.tileStream.macroCommands.size()));
+        }
+      }
+
+      auto validate_tile_commands = [&](char const* fieldName, auto const& commands) {
+        for (size_t i = 0; i < commands.size(); ++i) {
+          auto const& cmd = commands[i];
+          size_t storeSize = primary_store_size(batch, cmd.type);
+          if (cmd.index >= storeSize) {
+            add_validation_issue(
+              issueReport,
+              "BadTileCommandIndex",
+              std::string(fieldName) + "[" + std::to_string(i) + "] " + command_type_name(cmd.type) +
+              " index " + std::to_string(cmd.index) + " out of range (size " + std::to_string(storeSize) + ")");
+          }
+        }
+      };
+      validate_tile_commands("tileStream.commands", batch.tileStream.commands);
+      validate_tile_commands("tileStream.macroCommands", batch.tileStream.macroCommands);
+      validate_tile_commands("tileStream.globalCommands", batch.tileStream.globalCommands);
+    }
+  }
+
+  return !issueReport->hasErrors();
 }
 
 auto premerge_tile_stream(RenderBatch const& batch,
@@ -427,6 +683,14 @@ auto optimize_batch(RenderTarget target,
   if (target.width == 0 || target.height == 0) return false;
   if (target.strideBytes == 0) return false;
   if (target.data.size() < static_cast<size_t>(target.strideBytes) * target.height) return false;
+  if (batch.strictValidation) {
+    if (batch.validationReport != nullptr) {
+      batch.validationReport->clear();
+    }
+    if (!validate_render_batch(target, batch, tileSizeOverride, batch.validationReport)) {
+      return false;
+    }
+  }
 
   if (!batch.palette.enabled || batch.palette.size == 0) return false;
   bool paletteOpaque = true;
@@ -1398,6 +1662,7 @@ auto optimize_batch(RenderTarget target,
 
 void OptimizeRenderBatch(RenderTarget target, RenderBatch const& batch, OptimizedBatch& optimized) {
   bool canReuse = batch.reuseOptimized &&
+                  !batch.strictValidation &&
                   optimized.valid &&
                   optimized.sourceRevision == batch.revision &&
                   optimized.targetWidth == target.width &&

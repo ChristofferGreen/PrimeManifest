@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <span>
 #include <vector>
 
@@ -118,6 +119,23 @@ struct RenderTarget {
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t strideBytes = 0;
+};
+
+struct RenderValidationIssue {
+  std::string code;
+  std::string detail;
+};
+
+struct RenderValidationReport {
+  std::vector<RenderValidationIssue> issues;
+
+  void clear() {
+    issues.clear();
+  }
+
+  bool hasErrors() const {
+    return !issues.empty();
+  }
 };
 
 struct OptimizedBatch;
@@ -559,9 +577,11 @@ struct RenderBatch {
   bool useCommandRevision = false;
   uint64_t commandRevision = 0;
   bool reuseOptimized = false;
+  bool strictValidation = false;
   bool assumeFrontToBack = true;
   bool autoTileStream = true;
   RendererProfile* profile = nullptr;
+  RenderValidationReport* validationReport = nullptr;
 
   void clearAll() {
     commands.clear();
@@ -586,8 +606,10 @@ struct RenderBatch {
     useCommandRevision = false;
     commandRevision = 0;
     reuseOptimized = false;
+    strictValidation = false;
     assumeFrontToBack = true;
     autoTileStream = true;
+    validationReport = nullptr;
   }
 };
 

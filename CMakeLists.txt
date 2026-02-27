@@ -90,6 +90,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_store_sizes.cpp
     tests/unit/test_target_guard.cpp
     tests/unit/test_tile_stream.cpp
+    tests/unit/test_validation.cpp
     tests/unit/test_struct_clears.cpp
   )
   target_include_directories(PrimeManifest_tests PRIVATE third_party ${CMAKE_SOURCE_DIR})
@@ -134,6 +135,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     primemanifest.text_clip_cache
     primemanifest.text_store
     primemanifest.tile_stream
+    primemanifest.validation
     primemanifest.tiles
   )
 
