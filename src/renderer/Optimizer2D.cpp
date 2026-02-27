@@ -730,74 +730,92 @@ auto optimize_batch(RenderTarget target,
     profile->optTileGridNs = to_ns(gridStart, std::chrono::steady_clock::now());
   }
 
-  auto scanStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-  uint32_t clearColor = 0;
-  bool hasClear = false;
-  bool clearPattern = false;
-  uint16_t clearPatternWidth = 0;
-  uint16_t clearPatternHeight = 0;
-  uint32_t clearPatternOffset = 0;
-  if (commandCounts.clearCount == 1 && commandCounts.clearPattern == 0 &&
-      !batch.commands.empty() && batch.commands.front().type == CommandType::Clear) {
-    auto const& cmd = batch.commands.front();
-    if (cmd.index < batch.clear.colorIndex.size()) {
-      clearColor = fetch_color(batch.clear.colorIndex, cmd.index, clearColor);
-      hasClear = true;
-      clearPattern = false;
-    }
-  } else {
-    for (auto const& cmd : batch.commands) {
-      if (cmd.type == CommandType::Clear) {
-        if (cmd.index < batch.clear.colorIndex.size()) {
-          clearColor = fetch_color(batch.clear.colorIndex, cmd.index, clearColor);
-          hasClear = true;
-          clearPattern = false;
-        }
-      } else if (cmd.type == CommandType::ClearPattern) {
-        if (cmd.index < batch.clearPattern.width.size() &&
-            cmd.index < batch.clearPattern.height.size() &&
-            cmd.index < batch.clearPattern.dataOffset.size()) {
-          uint16_t width = batch.clearPattern.width[cmd.index];
-          uint16_t height = batch.clearPattern.height[cmd.index];
-          uint32_t offset = batch.clearPattern.dataOffset[cmd.index];
-          if (width > 0 && height > 0 &&
-              width <= grid.tileSize && height <= grid.tileSize) {
-            size_t bytes = static_cast<size_t>(width) * height * 4u;
-            if (static_cast<size_t>(offset) + bytes <= batch.clearPattern.data.size()) {
-              clearPattern = true;
-              clearPatternWidth = width;
-              clearPatternHeight = height;
-              clearPatternOffset = offset;
-              hasClear = true;
+  struct ScanStageResult {
+    uint32_t clearColor = 0;
+    bool hasClear = false;
+    bool clearPattern = false;
+    uint16_t clearPatternWidth = 0;
+    uint16_t clearPatternHeight = 0;
+    uint32_t clearPatternOffset = 0;
+    uint32_t debugColor = 0;
+    uint8_t debugLineWidth = 1;
+    uint8_t debugFlags = 0;
+    bool debugTiles = false;
+  };
+  auto runScanStage = [&]() -> ScanStageResult {
+    auto scanStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    ScanStageResult out{};
+    if (commandCounts.clearCount == 1 && commandCounts.clearPattern == 0 &&
+        !batch.commands.empty() && batch.commands.front().type == CommandType::Clear) {
+      auto const& cmd = batch.commands.front();
+      if (cmd.index < batch.clear.colorIndex.size()) {
+        out.clearColor = fetch_color(batch.clear.colorIndex, cmd.index, out.clearColor);
+        out.hasClear = true;
+        out.clearPattern = false;
+      }
+    } else {
+      for (auto const& cmd : batch.commands) {
+        if (cmd.type == CommandType::Clear) {
+          if (cmd.index < batch.clear.colorIndex.size()) {
+            out.clearColor = fetch_color(batch.clear.colorIndex, cmd.index, out.clearColor);
+            out.hasClear = true;
+            out.clearPattern = false;
+          }
+        } else if (cmd.type == CommandType::ClearPattern) {
+          if (cmd.index < batch.clearPattern.width.size() &&
+              cmd.index < batch.clearPattern.height.size() &&
+              cmd.index < batch.clearPattern.dataOffset.size()) {
+            uint16_t width = batch.clearPattern.width[cmd.index];
+            uint16_t height = batch.clearPattern.height[cmd.index];
+            uint32_t offset = batch.clearPattern.dataOffset[cmd.index];
+            if (width > 0 && height > 0 &&
+                width <= grid.tileSize && height <= grid.tileSize) {
+              size_t bytes = static_cast<size_t>(width) * height * 4u;
+              if (static_cast<size_t>(offset) + bytes <= batch.clearPattern.data.size()) {
+                out.clearPattern = true;
+                out.clearPatternWidth = width;
+                out.clearPatternHeight = height;
+                out.clearPatternOffset = offset;
+                out.hasClear = true;
+              }
             }
           }
         }
       }
     }
-  }
 
-  uint32_t debugColor = 0;
-  uint8_t debugLineWidth = 1;
-  uint8_t debugFlags = 0;
-  bool debugTiles = false;
-  if (commandCounts.debugTiles > 0) {
-    for (auto const& cmd : batch.commands) {
-      if (cmd.type != CommandType::DebugTiles) continue;
-      if (cmd.index < batch.debugTiles.colorIndex.size()) {
-        debugColor = fetch_color(batch.debugTiles.colorIndex, cmd.index, debugColor);
-        debugTiles = true;
-        if (cmd.index < batch.debugTiles.lineWidth.size()) {
-          debugLineWidth = std::max<uint8_t>(1, batch.debugTiles.lineWidth[cmd.index]);
-        }
-        if (cmd.index < batch.debugTiles.flags.size()) {
-          debugFlags = batch.debugTiles.flags[cmd.index];
+    if (commandCounts.debugTiles > 0) {
+      for (auto const& cmd : batch.commands) {
+        if (cmd.type != CommandType::DebugTiles) continue;
+        if (cmd.index < batch.debugTiles.colorIndex.size()) {
+          out.debugColor = fetch_color(batch.debugTiles.colorIndex, cmd.index, out.debugColor);
+          out.debugTiles = true;
+          if (cmd.index < batch.debugTiles.lineWidth.size()) {
+            out.debugLineWidth = std::max<uint8_t>(1, batch.debugTiles.lineWidth[cmd.index]);
+          }
+          if (cmd.index < batch.debugTiles.flags.size()) {
+            out.debugFlags = batch.debugTiles.flags[cmd.index];
+          }
         }
       }
     }
-  }
-  if (profile) {
-    profile->optScanNs = to_ns(scanStart, std::chrono::steady_clock::now());
-  }
+    if (profile) {
+      profile->optScanNs = to_ns(scanStart, std::chrono::steady_clock::now());
+    }
+    return out;
+  };
+
+  ScanStageResult scan = runScanStage();
+  uint32_t clearColor = scan.clearColor;
+  bool hasClear = scan.hasClear;
+  bool clearPattern = scan.clearPattern;
+  uint16_t clearPatternWidth = scan.clearPatternWidth;
+  uint16_t clearPatternHeight = scan.clearPatternHeight;
+  uint32_t clearPatternOffset = scan.clearPatternOffset;
+  uint32_t debugColor = scan.debugColor;
+  uint8_t debugLineWidth = scan.debugLineWidth;
+  uint8_t debugFlags = scan.debugFlags;
+  bool debugTiles = scan.debugTiles;
 
   bool circleRadiusUniform = false;
   uint16_t circleRadiusValue = 0;
@@ -997,14 +1015,15 @@ auto optimize_batch(RenderTarget target,
       textClipX1.assign(textCount, 0);
       textClipY1.assign(textCount, 0);
     }
-    if (useTileStream) {
+    auto runRenderTileSelectionStage = [&](bool fromTileStream) {
       auto renderTilesStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      renderTiles.clear();
       renderTiles.reserve(tileCount);
       if (hasClear) {
         for (uint32_t i = 0; i < tileCount; ++i) {
           renderTiles.push_back(i);
         }
-      } else {
+      } else if (fromTileStream) {
         std::vector<uint8_t> tileMask(tileCount, 0);
         for (uint32_t i = 0; i < tileCount; ++i) {
           if (tileStream->offsets[i] != tileStream->offsets[i + 1]) {
@@ -1014,29 +1033,39 @@ auto optimize_batch(RenderTarget target,
         for (uint32_t i = 0; i < tileCount; ++i) {
           if (tileMask[i]) renderTiles.push_back(i);
         }
+      } else {
+        for (uint32_t i = 0; i < tileCount; ++i) {
+          if (tileCounts[i] > 0) {
+            renderTiles.push_back(i);
+          }
+        }
       }
       if (profile) {
         profile->optRenderTilesNs += to_ns(renderTilesStart, std::chrono::steady_clock::now());
       }
+    };
+    auto runBinningStage = [&]() {
+      if (useTileStream) {
+        runRenderTileSelectionStage(true);
 
-      auto mark_active = [&](auto const& cmdList) {
-        for (auto const& cmd : cmdList) {
-          if (cmd.type == CommandType::Rect) {
-            if (cmd.index < rectActive.size()) {
-              rectActive[cmd.index] = 1;
-            }
-          } else if (cmd.type == CommandType::Text) {
-            if (cmd.index < textActive.size()) {
-              textActive[cmd.index] = 1;
+        auto mark_active = [&](auto const& cmdList) {
+          for (auto const& cmd : cmdList) {
+            if (cmd.type == CommandType::Rect) {
+              if (cmd.index < rectActive.size()) {
+                rectActive[cmd.index] = 1;
+              }
+            } else if (cmd.type == CommandType::Text) {
+              if (cmd.index < textActive.size()) {
+                textActive[cmd.index] = 1;
+              }
             }
           }
-        }
-      };
-      mark_active(tileStream->commands);
-    } else {
-      auto binStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-      tileCounts.assign(tileCount, 0);
-      if (useCircleRefs) {
+        };
+        mark_active(tileStream->commands);
+      } else {
+        auto binStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        tileCounts.assign(tileCount, 0);
+        if (useCircleRefs) {
         size_t circleCount = std::min({batch.circles.centerX.size(),
                                        batch.circles.centerY.size(),
                                        batch.circles.radius.size(),
@@ -1477,23 +1506,7 @@ auto optimize_batch(RenderTarget target,
         profile->optTileBinningNs = to_ns(binStart, std::chrono::steady_clock::now());
       }
 
-      auto renderTilesStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-      renderTiles.clear();
-      renderTiles.reserve(tileCount);
-      if (hasClear) {
-        for (uint32_t i = 0; i < tileCount; ++i) {
-          renderTiles.push_back(i);
-        }
-      } else {
-        for (uint32_t i = 0; i < tileCount; ++i) {
-          if (tileCounts[i] > 0) {
-            renderTiles.push_back(i);
-          }
-        }
-      }
-      if (profile) {
-        profile->optRenderTilesNs += to_ns(renderTilesStart, std::chrono::steady_clock::now());
-      }
+      runRenderTileSelectionStage(false);
       if (useCircleRefs && renderTiles.size() > 1) {
         // Sorting tiles by load helps when there are few tiles, but for large
         // tile sets the sort cost outweighs the minor ordering benefit.
@@ -1503,141 +1516,146 @@ auto optimize_batch(RenderTarget target,
           });
         }
       }
-    }
+      }
+    };
+    runBinningStage();
 
-    auto rectCacheStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    if (!rectActive.empty()) {
-      for (uint32_t i = 0; i < rectActive.size(); ++i) {
-        if (rectActive[i] == 0) continue;
-        uint32_t color = fetch_color(batch.rects.colorIndex, i, 0u);
-        uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
-        uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
-        uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
-        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-        rectColorR[i] = cR;
-        rectColorG[i] = cG;
-        rectColorB[i] = cB;
-        rectColorA[i] = cA;
-        uint8_t opacity = batch.rects.opacity[i];
-        uint8_t baseAlpha = apply_opacity(cA, opacity);
-        rectBaseAlpha[i] = baseAlpha;
-        uint8_t flags = i < batch.rects.flags.size() ? batch.rects.flags[i] : 0u;
-        if ((flags & RectFlagClip) != 0u &&
-            i < batch.rects.clipX0.size() &&
-            i < batch.rects.clipY0.size() &&
-            i < batch.rects.clipX1.size() &&
-            i < batch.rects.clipY1.size()) {
-          rectClipEnabled[i] = 1;
-          rectClipX0[i] = batch.rects.clipX0[i];
-          rectClipY0[i] = batch.rects.clipY0[i];
-          rectClipX1[i] = batch.rects.clipX1[i];
-          rectClipY1[i] = batch.rects.clipY1[i];
-        }
-        bool hasGradient = (flags & RectFlagGradient) != 0u;
-        if (hasGradient) {
-          if (i >= batch.rects.gradientColor1Index.size() ||
-              i >= batch.rects.gradientDirX.size() ||
-              i >= batch.rects.gradientDirY.size()) {
-            hasGradient = false;
+    auto runCacheBuildStage = [&]() {
+      auto rectCacheStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      if (!rectActive.empty()) {
+        for (uint32_t i = 0; i < rectActive.size(); ++i) {
+          if (rectActive[i] == 0) continue;
+          uint32_t color = fetch_color(batch.rects.colorIndex, i, 0u);
+          uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
+          uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
+          uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
+          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+          rectColorR[i] = cR;
+          rectColorG[i] = cG;
+          rectColorB[i] = cB;
+          rectColorA[i] = cA;
+          uint8_t opacity = batch.rects.opacity[i];
+          uint8_t baseAlpha = apply_opacity(cA, opacity);
+          rectBaseAlpha[i] = baseAlpha;
+          uint8_t flags = i < batch.rects.flags.size() ? batch.rects.flags[i] : 0u;
+          if ((flags & RectFlagClip) != 0u &&
+              i < batch.rects.clipX0.size() &&
+              i < batch.rects.clipY0.size() &&
+              i < batch.rects.clipX1.size() &&
+              i < batch.rects.clipY1.size()) {
+            rectClipEnabled[i] = 1;
+            rectClipX0[i] = batch.rects.clipX0[i];
+            rectClipY0[i] = batch.rects.clipY0[i];
+            rectClipX1[i] = batch.rects.clipX1[i];
+            rectClipY1[i] = batch.rects.clipY1[i];
+          }
+          bool hasGradient = (flags & RectFlagGradient) != 0u;
+          if (hasGradient) {
+            if (i >= batch.rects.gradientColor1Index.size() ||
+                i >= batch.rects.gradientDirX.size() ||
+                i >= batch.rects.gradientDirY.size()) {
+              hasGradient = false;
+            }
+          }
+          if (!hasGradient && baseAlpha == 255u) {
+            uint32_t offset = static_cast<uint32_t>(rectEdgePmRStore.size());
+            rectEdgeOffset[i] = offset;
+            rectEdgePmRStore.resize(static_cast<size_t>(offset) + 256);
+            rectEdgePmGStore.resize(static_cast<size_t>(offset) + 256);
+            rectEdgePmBStore.resize(static_cast<size_t>(offset) + 256);
+            for (uint32_t cov = 0; cov < 256; ++cov) {
+              rectEdgePmRStore[offset + cov] =
+                static_cast<uint8_t>((static_cast<uint16_t>(cR) * cov + 127u) / 255u);
+              rectEdgePmGStore[offset + cov] =
+                static_cast<uint8_t>((static_cast<uint16_t>(cG) * cov + 127u) / 255u);
+              rectEdgePmBStore[offset + cov] =
+                static_cast<uint8_t>((static_cast<uint16_t>(cB) * cov + 127u) / 255u);
+            }
+          }
+          if (hasGradient) {
+            rectHasGradient[i] = 1;
+            uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, i, 0u);
+            rectGradColorR[i] = static_cast<uint8_t>(g1 & 0xFFu);
+            rectGradColorG[i] = static_cast<uint8_t>((g1 >> 8) & 0xFFu);
+            rectGradColorB[i] = static_cast<uint8_t>((g1 >> 16) & 0xFFu);
+            rectGradColorA[i] = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
+            Vec2f dir{static_cast<float>(batch.rects.gradientDirX[i]) / 256.0f,
+                      static_cast<float>(batch.rects.gradientDirY[i]) / 256.0f};
+            dir = normalize_or_default(dir, Vec2f{0.0f, 1.0f});
+            rectGradDirX[i] = dir.x;
+            rectGradDirY[i] = dir.y;
+            int32_t x0 = batch.rects.x0[i];
+            int32_t y0 = batch.rects.y0[i];
+            int32_t x1 = batch.rects.x1[i];
+            int32_t y1 = batch.rects.y1[i];
+            Vec2f p0{static_cast<float>(x0), static_cast<float>(y0)};
+            Vec2f p1{static_cast<float>(x1), static_cast<float>(y0)};
+            Vec2f p2{static_cast<float>(x0), static_cast<float>(y1)};
+            Vec2f p3{static_cast<float>(x1), static_cast<float>(y1)};
+            float gmin = std::min({dot(p0, dir), dot(p1, dir), dot(p2, dir), dot(p3, dir)});
+            float gmax = std::max({dot(p0, dir), dot(p1, dir), dot(p2, dir), dot(p3, dir)});
+            if (std::abs(gmax - gmin) < 1e-5f) {
+              rectGradMin[i] = 0.0f;
+              rectGradInvRange[i] = 1.0f;
+            } else {
+              rectGradMin[i] = gmin;
+              rectGradInvRange[i] = 1.0f / (gmax - gmin);
+            }
           }
         }
-        if (!hasGradient && baseAlpha == 255u) {
-          uint32_t offset = static_cast<uint32_t>(rectEdgePmRStore.size());
-          rectEdgeOffset[i] = offset;
-          rectEdgePmRStore.resize(static_cast<size_t>(offset) + 256);
-          rectEdgePmGStore.resize(static_cast<size_t>(offset) + 256);
-          rectEdgePmBStore.resize(static_cast<size_t>(offset) + 256);
+      }
+      if (profile) {
+        profile->optRectCacheNs = to_ns(rectCacheStart, std::chrono::steady_clock::now());
+      }
+
+      auto textCacheStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      if (!textActive.empty()) {
+        for (uint32_t i = 0; i < textActive.size(); ++i) {
+          if (textActive[i] == 0) continue;
+          uint32_t color = fetch_color(batch.text.colorIndex, i, 0u);
+          uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
+          uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
+          uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
+          uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+          textColorR[i] = cR;
+          textColorG[i] = cG;
+          textColorB[i] = cB;
+          textColorA[i] = cA;
+          uint8_t opacity = batch.text.opacity[i];
+          uint8_t baseAlpha = apply_opacity(cA, opacity);
+          textBaseAlpha[i] = baseAlpha;
+          uint8_t flags = i < batch.text.flags.size() ? batch.text.flags[i] : 0u;
+          if ((flags & TextFlagClip) != 0u &&
+              i < batch.text.clipX0.size() &&
+              i < batch.text.clipY0.size() &&
+              i < batch.text.clipX1.size() &&
+              i < batch.text.clipY1.size()) {
+            textClipEnabled[i] = 1;
+            textClipX0[i] = batch.text.clipX0[i];
+            textClipY0[i] = batch.text.clipY0[i];
+            textClipX1[i] = batch.text.clipX1[i];
+            textClipY1[i] = batch.text.clipY1[i];
+          }
+          uint32_t offset = static_cast<uint32_t>(textPmRStore.size());
+          textPmOffset[i] = offset;
+          textPmRStore.resize(static_cast<size_t>(offset) + 256);
+          textPmGStore.resize(static_cast<size_t>(offset) + 256);
+          textPmBStore.resize(static_cast<size_t>(offset) + 256);
           for (uint32_t cov = 0; cov < 256; ++cov) {
-            rectEdgePmRStore[offset + cov] =
+            textPmRStore[offset + cov] =
               static_cast<uint8_t>((static_cast<uint16_t>(cR) * cov + 127u) / 255u);
-            rectEdgePmGStore[offset + cov] =
+            textPmGStore[offset + cov] =
               static_cast<uint8_t>((static_cast<uint16_t>(cG) * cov + 127u) / 255u);
-            rectEdgePmBStore[offset + cov] =
+            textPmBStore[offset + cov] =
               static_cast<uint8_t>((static_cast<uint16_t>(cB) * cov + 127u) / 255u);
           }
         }
-        if (hasGradient) {
-          rectHasGradient[i] = 1;
-          uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, i, 0u);
-          rectGradColorR[i] = static_cast<uint8_t>(g1 & 0xFFu);
-          rectGradColorG[i] = static_cast<uint8_t>((g1 >> 8) & 0xFFu);
-          rectGradColorB[i] = static_cast<uint8_t>((g1 >> 16) & 0xFFu);
-          rectGradColorA[i] = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
-          Vec2f dir{static_cast<float>(batch.rects.gradientDirX[i]) / 256.0f,
-                    static_cast<float>(batch.rects.gradientDirY[i]) / 256.0f};
-          dir = normalize_or_default(dir, Vec2f{0.0f, 1.0f});
-          rectGradDirX[i] = dir.x;
-          rectGradDirY[i] = dir.y;
-          int32_t x0 = batch.rects.x0[i];
-          int32_t y0 = batch.rects.y0[i];
-          int32_t x1 = batch.rects.x1[i];
-          int32_t y1 = batch.rects.y1[i];
-          Vec2f p0{static_cast<float>(x0), static_cast<float>(y0)};
-          Vec2f p1{static_cast<float>(x1), static_cast<float>(y0)};
-          Vec2f p2{static_cast<float>(x0), static_cast<float>(y1)};
-          Vec2f p3{static_cast<float>(x1), static_cast<float>(y1)};
-          float gmin = std::min({dot(p0, dir), dot(p1, dir), dot(p2, dir), dot(p3, dir)});
-          float gmax = std::max({dot(p0, dir), dot(p1, dir), dot(p2, dir), dot(p3, dir)});
-          if (std::abs(gmax - gmin) < 1e-5f) {
-            rectGradMin[i] = 0.0f;
-            rectGradInvRange[i] = 1.0f;
-          } else {
-            rectGradMin[i] = gmin;
-            rectGradInvRange[i] = 1.0f / (gmax - gmin);
-          }
-        }
       }
-    }
-    if (profile) {
-      profile->optRectCacheNs = to_ns(rectCacheStart, std::chrono::steady_clock::now());
-    }
-
-    auto textCacheStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    if (!textActive.empty()) {
-      for (uint32_t i = 0; i < textActive.size(); ++i) {
-        if (textActive[i] == 0) continue;
-        uint32_t color = fetch_color(batch.text.colorIndex, i, 0u);
-        uint8_t cR = static_cast<uint8_t>(color & 0xFFu);
-        uint8_t cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
-        uint8_t cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
-        uint8_t cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-        textColorR[i] = cR;
-        textColorG[i] = cG;
-        textColorB[i] = cB;
-        textColorA[i] = cA;
-        uint8_t opacity = batch.text.opacity[i];
-        uint8_t baseAlpha = apply_opacity(cA, opacity);
-        textBaseAlpha[i] = baseAlpha;
-        uint8_t flags = i < batch.text.flags.size() ? batch.text.flags[i] : 0u;
-        if ((flags & TextFlagClip) != 0u &&
-            i < batch.text.clipX0.size() &&
-            i < batch.text.clipY0.size() &&
-            i < batch.text.clipX1.size() &&
-            i < batch.text.clipY1.size()) {
-          textClipEnabled[i] = 1;
-          textClipX0[i] = batch.text.clipX0[i];
-          textClipY0[i] = batch.text.clipY0[i];
-          textClipX1[i] = batch.text.clipX1[i];
-          textClipY1[i] = batch.text.clipY1[i];
-        }
-        uint32_t offset = static_cast<uint32_t>(textPmRStore.size());
-        textPmOffset[i] = offset;
-        textPmRStore.resize(static_cast<size_t>(offset) + 256);
-        textPmGStore.resize(static_cast<size_t>(offset) + 256);
-        textPmBStore.resize(static_cast<size_t>(offset) + 256);
-        for (uint32_t cov = 0; cov < 256; ++cov) {
-          textPmRStore[offset + cov] =
-            static_cast<uint8_t>((static_cast<uint16_t>(cR) * cov + 127u) / 255u);
-          textPmGStore[offset + cov] =
-            static_cast<uint8_t>((static_cast<uint16_t>(cG) * cov + 127u) / 255u);
-          textPmBStore[offset + cov] =
-            static_cast<uint8_t>((static_cast<uint16_t>(cB) * cov + 127u) / 255u);
-        }
+      if (profile) {
+        profile->optTextCacheNs = to_ns(textCacheStart, std::chrono::steady_clock::now());
       }
-    }
-    if (profile) {
-      profile->optTextCacheNs = to_ns(textCacheStart, std::chrono::steady_clock::now());
-    }
+    };
+    runCacheBuildStage();
   }
 
   if (!hasDraw) {

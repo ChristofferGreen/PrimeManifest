@@ -171,6 +171,62 @@ TEST_CASE("premade_tile_stream_used") {
   CHECK_MESSAGE(optimized.tileStream == &batch.tileStream, "tile stream pointer matches batch");
 }
 
+TEST_CASE("render_tile_selection_from_tile_stream_offsets") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_rect(batch, 0, 0, 8, 8, PackRGBA8(Color{120, 30, 10, 255}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1, 1, 1, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Rect;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 0;
+  cmd.y = 0;
+  cmd.wMinus1 = 7;
+  cmd.hMinus1 = 7;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 16;
+  uint32_t height = 16;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with premade stream");
+  CHECK_MESSAGE(optimized.useTileStream, "premade tile stream used");
+  CHECK_MESSAGE(optimized.renderTiles.size() == 1u, "render tile selection keeps only populated tile");
+  CHECK_MESSAGE(optimized.renderTiles[0] == 0u, "first tile selected");
+}
+
+TEST_CASE("render_tile_selection_with_clear_covers_all_tiles") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_clear(batch, PackRGBA8(Color{5, 10, 15, 255}));
+  add_rect(batch, 0, 0, 2, 2, PackRGBA8(Color{200, 100, 50, 255}));
+
+  uint32_t width = 16;
+  uint32_t height = 16;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  CHECK_MESSAGE(optimized.valid, "optimizer succeeds with clear and draw");
+  CHECK_MESSAGE(optimized.hasClear, "clear detected in scan stage");
+  CHECK_MESSAGE(optimized.tileCount == 4u, "tile grid produces four tiles");
+  CHECK_MESSAGE(optimized.renderTiles.size() == optimized.tileCount, "render tile selection includes all tiles with clear");
+}
+
 TEST_CASE("premerge_tile_stream_with_fallback_macro_offsets") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
