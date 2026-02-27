@@ -185,4 +185,76 @@ TEST_CASE("non_tile_stream_uses_clipped_bounds") {
   CHECK_MESSAGE(pixel_at(buffer, width, 4, 2) == 0u, "pixel right of clip skipped");
 }
 
+TEST_CASE("tile_stream_set_pixel_uses_local_bounds") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  uint32_t drawColor = PackRGBA8(Color{90, 40, 200, 255});
+  add_set_pixel(batch, 0, 0, drawColor);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::SetPixel;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 6;
+  cmd.y = 5;
+  cmd.wMinus1 = 0;
+  cmd.hMinus1 = 0;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 6, 5) == drawColor, "tile-local set-pixel rendered at local bounds");
+  CHECK_MESSAGE(pixel_at(buffer, width, 0, 0) == 0u, "source store coordinate remains untouched");
+}
+
+TEST_CASE("tile_stream_set_pixel_a_uses_local_bounds") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_set_pixel_a(batch, 1, 1, PackRGBA8(Color{255, 200, 100, 255}), 128);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::SetPixelA;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 4;
+  cmd.y = 6;
+  cmd.wMinus1 = 0;
+  cmd.hMinus1 = 0;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  uint32_t expected = PackRGBA8(Color{128, 100, 50, 128});
+  CHECK_MESSAGE(pixel_at(buffer, width, 4, 6) == expected, "tile-local set-pixel-a rendered at local bounds");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == 0u, "source store coordinate remains untouched");
+}
+
 TEST_SUITE_END();

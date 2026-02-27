@@ -320,6 +320,214 @@ auto tile_pool() -> TilePool& {
 
 namespace {
 
+struct ScheduledTileCommand {
+  CommandType type = CommandType::Rect;
+  uint32_t index = 0;
+  bool hasLocalBounds = false;
+  int32_t localX0 = 0;
+  int32_t localY0 = 0;
+  int32_t localX1 = 0;
+  int32_t localY1 = 0;
+};
+
+class TileCommandScheduler {
+public:
+  TileCommandScheduler(bool useTileStream,
+                       bool tileRefsAreCircleIndices,
+                       TileStream const* tileStream,
+                       std::vector<uint32_t> const& tileOffsets,
+                       std::vector<uint32_t> const& tileRefs,
+                       std::vector<RenderCommand> const& commands,
+                       std::vector<AnalyzedCommand> const& analyzedCommands,
+                       uint32_t tileIndex,
+                       uint32_t tileOriginX,
+                       uint32_t tileOriginY)
+      : useTileStream_(useTileStream),
+        tileRefsAreCircleIndices_(tileRefsAreCircleIndices),
+        tileStream_(tileStream),
+        tileOffsets_(&tileOffsets),
+        tileRefs_(&tileRefs),
+        commands_(&commands),
+        analyzedCommands_(&analyzedCommands),
+        tileOriginX_(tileOriginX),
+        tileOriginY_(tileOriginY) {
+    if (useTileStream_) {
+      cursor_ = tileStream_->offsets[tileIndex];
+      end_ = tileStream_->offsets[tileIndex + 1];
+    } else {
+      cursor_ = (*tileOffsets_)[tileIndex];
+      end_ = (*tileOffsets_)[tileIndex + 1];
+    }
+  }
+
+  auto next(ScheduledTileCommand& out) -> bool {
+    if (useTileStream_) {
+      if (cursor_ >= end_) return false;
+      auto const& cmd = tileStream_->commands[cursor_++];
+      out.type = cmd.type;
+      out.index = cmd.index;
+      out.hasLocalBounds = true;
+      out.localX0 = static_cast<int32_t>(tileOriginX_) + static_cast<int32_t>(cmd.x);
+      out.localY0 = static_cast<int32_t>(tileOriginY_) + static_cast<int32_t>(cmd.y);
+      out.localX1 = out.localX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+      out.localY1 = out.localY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+      if (out.localX1 <= out.localX0 || out.localY1 <= out.localY0) return false;
+      return true;
+    }
+
+    while (cursor_ < end_) {
+      uint32_t cmdIndex = (*tileRefs_)[cursor_++];
+      out = ScheduledTileCommand{};
+      if (tileRefsAreCircleIndices_) {
+        out.type = CommandType::Circle;
+        out.index = cmdIndex;
+        return true;
+      }
+
+      if (cmdIndex >= commands_->size()) continue;
+      auto const& cmd = (*commands_)[cmdIndex];
+      out.type = cmd.type;
+      out.index = cmd.index;
+
+      if (!analyzedCommands_->empty()) {
+        if (cmdIndex >= analyzedCommands_->size()) continue;
+        auto const& analyzed = (*analyzedCommands_)[cmdIndex];
+        if (!analyzed.valid) continue;
+        out.hasLocalBounds = true;
+        out.localX0 = analyzed.x0;
+        out.localY0 = analyzed.y0;
+        out.localX1 = analyzed.x1;
+        out.localY1 = analyzed.y1;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+private:
+  bool useTileStream_ = false;
+  bool tileRefsAreCircleIndices_ = false;
+  TileStream const* tileStream_ = nullptr;
+  std::vector<uint32_t> const* tileOffsets_ = nullptr;
+  std::vector<uint32_t> const* tileRefs_ = nullptr;
+  std::vector<RenderCommand> const* commands_ = nullptr;
+  std::vector<AnalyzedCommand> const* analyzedCommands_ = nullptr;
+  uint32_t tileOriginX_ = 0;
+  uint32_t tileOriginY_ = 0;
+  uint32_t cursor_ = 0;
+  uint32_t end_ = 0;
+};
+
+template <typename RowPtrFn, typename WritePxFn>
+void renderSetPixelKernel(RenderBatch const& batch,
+                          uint32_t idx,
+                          bool hasLocalBounds,
+                          int32_t localX0,
+                          int32_t localY0,
+                          uint32_t tx0,
+                          uint32_t ty0,
+                          uint32_t tx1,
+                          uint32_t ty1,
+                          bool paletteFull,
+                          uint8_t const* paletteR,
+                          uint8_t const* paletteG,
+                          uint8_t const* paletteB,
+                          uint8_t const* paletteA,
+                          bool frontToBack,
+                          uint32_t& opaqueCount,
+                          RowPtrFn&& rowPtr,
+                          WritePxFn&& writePx) {
+  if (idx >= batch.pixels.x.size() ||
+      idx >= batch.pixels.y.size() ||
+      idx >= batch.pixels.colorIndex.size()) {
+    return;
+  }
+  int32_t px = batch.pixels.x[idx];
+  int32_t py = batch.pixels.y[idx];
+  int32_t drawX = hasLocalBounds ? localX0 : px;
+  int32_t drawY = hasLocalBounds ? localY0 : py;
+  if (drawX < static_cast<int32_t>(tx0) || drawX >= static_cast<int32_t>(tx1) ||
+      drawY < static_cast<int32_t>(ty0) || drawY >= static_cast<int32_t>(ty1)) {
+    return;
+  }
+  uint8_t paletteIndex = batch.pixels.colorIndex[idx];
+  if (!paletteFull && paletteIndex >= batch.palette.size) return;
+  uint8_t cR = paletteR[paletteIndex];
+  uint8_t cG = paletteG[paletteIndex];
+  uint8_t cB = paletteB[paletteIndex];
+  uint8_t cA = paletteA[paletteIndex];
+  uint8_t* dst = rowPtr(drawY) + static_cast<size_t>(4 * drawX);
+  if (cA == 255u) {
+    writePx(dst, cR, cG, cB);
+  } else {
+    if (frontToBack && dst[3] >= OpaqueAlphaCutoff) return;
+    uint8_t pmR = mul_div_255(cR, cA);
+    uint8_t pmG = mul_div_255(cG, cA);
+    uint8_t pmB = mul_div_255(cB, cA);
+    dst[0] = pmR;
+    dst[1] = pmG;
+    dst[2] = pmB;
+    dst[3] = cA;
+    if (frontToBack && cA >= OpaqueAlphaCutoff) {
+      ++opaqueCount;
+    }
+  }
+}
+
+template <typename RowPtrFn, typename WritePxFn, typename BlendPxFn>
+void renderSetPixelAKernel(RenderBatch const& batch,
+                           uint32_t idx,
+                           bool hasLocalBounds,
+                           int32_t localX0,
+                           int32_t localY0,
+                           uint32_t tx0,
+                           uint32_t ty0,
+                           uint32_t tx1,
+                           uint32_t ty1,
+                           bool paletteFull,
+                           uint8_t const* paletteR,
+                           uint8_t const* paletteG,
+                           uint8_t const* paletteB,
+                           uint8_t const* paletteA,
+                           RowPtrFn&& rowPtr,
+                           WritePxFn&& writePx,
+                           BlendPxFn&& blendPx) {
+  if (idx >= batch.pixelsA.x.size() ||
+      idx >= batch.pixelsA.y.size() ||
+      idx >= batch.pixelsA.colorIndex.size() ||
+      idx >= batch.pixelsA.alpha.size()) {
+    return;
+  }
+  uint8_t alpha = batch.pixelsA.alpha[idx];
+  if (alpha == 0) return;
+  int32_t px = batch.pixelsA.x[idx];
+  int32_t py = batch.pixelsA.y[idx];
+  int32_t drawX = hasLocalBounds ? localX0 : px;
+  int32_t drawY = hasLocalBounds ? localY0 : py;
+  if (drawX < static_cast<int32_t>(tx0) || drawX >= static_cast<int32_t>(tx1) ||
+      drawY < static_cast<int32_t>(ty0) || drawY >= static_cast<int32_t>(ty1)) {
+    return;
+  }
+  uint8_t paletteIndex = batch.pixelsA.colorIndex[idx];
+  if (!paletteFull && paletteIndex >= batch.palette.size) return;
+  uint8_t cR = paletteR[paletteIndex];
+  uint8_t cG = paletteG[paletteIndex];
+  uint8_t cB = paletteB[paletteIndex];
+  uint8_t cA = paletteA[paletteIndex];
+  uint8_t baseAlpha = apply_opacity(cA, alpha);
+  if (baseAlpha == 0) return;
+  uint8_t pmR = mul_div_255(cR, baseAlpha);
+  uint8_t pmG = mul_div_255(cG, baseAlpha);
+  uint8_t pmB = mul_div_255(cB, baseAlpha);
+  uint8_t* dst = rowPtr(drawY) + static_cast<size_t>(4 * drawX);
+  if (baseAlpha == 255u) {
+    writePx(dst, pmR, pmG, pmB);
+  } else {
+    blendPx(dst, pmR, pmG, pmB, baseAlpha);
+  }
+}
+
 void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, OptimizedBatch const& prepared);
 
 void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, OptimizedBatch const& prepared) {
@@ -704,72 +912,26 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       }
     };
 
-    uint32_t start = 0;
-    uint32_t end = 0;
-    size_t tileCursor = 0;
-    size_t tileEnd = 0;
-    if (useTileStream) {
-      tileCursor = tileStream->offsets[tileIndex];
-      tileEnd = tileStream->offsets[tileIndex + 1];
-    } else {
-      start = tileOffsets[tileIndex];
-      end = tileOffsets[tileIndex + 1];
-    }
-
-    auto next_tile_command = [&](CommandType& type,
-                                 uint32_t& idx,
-                                 bool& hasLocalBounds,
-                                 int32_t& localX0,
-                                 int32_t& localY0,
-                                 int32_t& localX1,
-                                 int32_t& localY1) -> bool {
-      if (tileCursor >= tileEnd) return false;
-      auto const& cmd = tileStream->commands[tileCursor++];
-      type = cmd.type;
-      idx = cmd.index;
-      hasLocalBounds = true;
-      localX0 = static_cast<int32_t>(tx0) + static_cast<int32_t>(cmd.x);
-      localY0 = static_cast<int32_t>(ty0) + static_cast<int32_t>(cmd.y);
-      localX1 = localX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
-      localY1 = localY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
-      if (localX1 <= localX0 || localY1 <= localY0) return false;
-      return true;
-    };
-
-    for (uint32_t i = start;; ++i) {
+    TileCommandScheduler scheduler(useTileStream,
+                                   prepared.tileRefsAreCircleIndices,
+                                   tileStream,
+                                   tileOffsets,
+                                   tileRefs,
+                                   batch.commands,
+                                   analyzedCommands,
+                                   tileIndex,
+                                   tx0,
+                                   ty0);
+    ScheduledTileCommand scheduled{};
+    while (scheduler.next(scheduled)) {
       if (frontToBack && opaqueCount >= tileArea) break;
-      CommandType type = CommandType::Rect;
-      uint32_t idx = 0;
-      bool hasLocalBounds = false;
-      int32_t localX0 = 0;
-      int32_t localY0 = 0;
-      int32_t localX1 = 0;
-      int32_t localY1 = 0;
-      if (useTileStream) {
-        if (!next_tile_command(type, idx, hasLocalBounds, localX0, localY0, localX1, localY1)) break;
-      } else {
-        if (i >= end) break;
-        uint32_t cmdIndex = tileRefs[i];
-        if (prepared.tileRefsAreCircleIndices) {
-          type = CommandType::Circle;
-          idx = cmdIndex;
-        } else {
-          if (cmdIndex >= batch.commands.size()) continue;
-          auto const& cmd = batch.commands[cmdIndex];
-          type = cmd.type;
-          idx = cmd.index;
-          if (!analyzedCommands.empty()) {
-            if (cmdIndex >= analyzedCommands.size()) continue;
-            auto const& analyzed = analyzedCommands[cmdIndex];
-            if (!analyzed.valid) continue;
-            hasLocalBounds = true;
-            localX0 = analyzed.x0;
-            localY0 = analyzed.y0;
-            localX1 = analyzed.x1;
-            localY1 = analyzed.y1;
-          }
-        }
-      }
+      CommandType type = scheduled.type;
+      uint32_t idx = scheduled.index;
+      bool hasLocalBounds = scheduled.hasLocalBounds;
+      int32_t localX0 = scheduled.localX0;
+      int32_t localY0 = scheduled.localY0;
+      int32_t localX1 = scheduled.localX1;
+      int32_t localY1 = scheduled.localY1;
       if (doProfile) {
         ++tileCommands;
       }
@@ -1901,75 +2063,42 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           }
         }
       } else if (type == CommandType::SetPixel) {
-        if (idx >= batch.pixels.x.size() ||
-            idx >= batch.pixels.y.size() ||
-            idx >= batch.pixels.colorIndex.size()) {
-          continue;
-        }
-        int32_t px = batch.pixels.x[idx];
-        int32_t py = batch.pixels.y[idx];
-        int32_t drawX = hasLocalBounds ? localX0 : px;
-        int32_t drawY = hasLocalBounds ? localY0 : py;
-        if (drawX < static_cast<int32_t>(tx0) || drawX >= static_cast<int32_t>(tx1) ||
-            drawY < static_cast<int32_t>(ty0) || drawY >= static_cast<int32_t>(ty1)) {
-          continue;
-        }
-        uint8_t paletteIndex = batch.pixels.colorIndex[idx];
-        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
-        uint8_t cR = paletteR[paletteIndex];
-        uint8_t cG = paletteG[paletteIndex];
-        uint8_t cB = paletteB[paletteIndex];
-        uint8_t cA = paletteA[paletteIndex];
-        uint8_t* dst = row_ptr(drawY) + static_cast<size_t>(4 * drawX);
-        if (cA == 255u) {
-          write_px(dst, cR, cG, cB);
-        } else {
-          if (frontToBack && dst[3] >= OpaqueAlphaCutoff) continue;
-          uint8_t pmR = mul_div_255(cR, cA);
-          uint8_t pmG = mul_div_255(cG, cA);
-          uint8_t pmB = mul_div_255(cB, cA);
-          dst[0] = pmR;
-          dst[1] = pmG;
-          dst[2] = pmB;
-          dst[3] = cA;
-          if (frontToBack && cA >= OpaqueAlphaCutoff) {
-            ++opaqueCount;
-          }
-        }
+        renderSetPixelKernel(batch,
+                             idx,
+                             hasLocalBounds,
+                             localX0,
+                             localY0,
+                             tx0,
+                             ty0,
+                             tx1,
+                             ty1,
+                             paletteFull,
+                             paletteR.data(),
+                             paletteG.data(),
+                             paletteB.data(),
+                             paletteA.data(),
+                             frontToBack,
+                             opaqueCount,
+                             row_ptr,
+                             write_px);
       } else if (type == CommandType::SetPixelA) {
-        if (idx >= batch.pixelsA.x.size() ||
-            idx >= batch.pixelsA.y.size() ||
-            idx >= batch.pixelsA.colorIndex.size() ||
-            idx >= batch.pixelsA.alpha.size()) {
-          continue;
-        }
-        uint8_t alpha = batch.pixelsA.alpha[idx];
-        if (alpha == 0) continue;
-        int32_t px = batch.pixelsA.x[idx];
-        int32_t py = batch.pixelsA.y[idx];
-        int32_t drawX = hasLocalBounds ? localX0 : px;
-        int32_t drawY = hasLocalBounds ? localY0 : py;
-        if (drawX < static_cast<int32_t>(tx0) || drawX >= static_cast<int32_t>(tx1) ||
-            drawY < static_cast<int32_t>(ty0) || drawY >= static_cast<int32_t>(ty1)) {
-          continue;
-        }
-        uint8_t paletteIndex = batch.pixelsA.colorIndex[idx];
-        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
-        uint8_t cR = paletteR[paletteIndex];
-        uint8_t cG = paletteG[paletteIndex];
-        uint8_t cB = paletteB[paletteIndex];
-        uint8_t cA = paletteA[paletteIndex];
-        uint8_t baseAlpha = apply_opacity(cA, alpha);
-        if (baseAlpha == 0) continue;
-        uint8_t pmR = mul_div_255(cR, baseAlpha);
-        uint8_t pmG = mul_div_255(cG, baseAlpha);
-        uint8_t pmB = mul_div_255(cB, baseAlpha);
-        uint8_t* dst = row_ptr(drawY) + static_cast<size_t>(4 * drawX);
-        if (baseAlpha == 255u) {
-          write_px(dst, pmR, pmG, pmB);
-        } else {
-          blend_px(dst, pmR, pmG, pmB, baseAlpha);
-        }
+        renderSetPixelAKernel(batch,
+                              idx,
+                              hasLocalBounds,
+                              localX0,
+                              localY0,
+                              tx0,
+                              ty0,
+                              tx1,
+                              ty1,
+                              paletteFull,
+                              paletteR.data(),
+                              paletteG.data(),
+                              paletteB.data(),
+                              paletteA.data(),
+                              row_ptr,
+                              write_px,
+                              blend_px);
       } else if (type == CommandType::Line) {
         if (idx >= batch.lines.x0.size() ||
             idx >= batch.lines.y0.size() ||
