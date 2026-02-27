@@ -131,12 +131,15 @@ TEST_CASE("profile_tracks_invalid_command_data_skips") {
   RenderOptimized(target, batch, optimized);
 
   size_t rectType = static_cast<size_t>(CommandType::Rect);
-  size_t invalidDataReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  size_t invalidDataReason = static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData);
   CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer skipped commands recorded");
   CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer rect skipped command counted");
-  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidDataReason] >= 1, "optimizer invalid-data reason counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidDataReason] >= 1,
+                "optimizer tile-stream invalid-data reason counted");
   CHECK_MESSAGE(profile.optimizerSkippedCommands.byTypeAndReason[rectType][invalidDataReason] >= 1,
-                "optimizer rect+invalid-data matrix counted");
+                "optimizer rect+tile-stream-invalid-data matrix counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData)] == 0,
+                "generic optimizer invalid-data reason untouched");
   CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
 }
 
@@ -179,12 +182,15 @@ TEST_CASE("profile_tracks_unsupported_command_type_skips") {
   RenderOptimized(target, batch, optimized);
 
   size_t clearType = static_cast<size_t>(CommandType::Clear);
-  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData);
   CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer skipped commands recorded");
   CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[clearType] >= 1, "optimizer clear type skipped counted");
-  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1, "optimizer invalid reason counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1,
+                "optimizer tile-stream invalid reason counted");
   CHECK_MESSAGE(profile.optimizerSkippedCommands.byTypeAndReason[clearType][invalidReason] >= 1,
-                "optimizer clear+invalid matrix counted");
+                "optimizer clear+tile-stream-invalid matrix counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData)] == 0,
+                "generic optimizer invalid reason untouched");
   CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
 }
 
@@ -227,10 +233,59 @@ TEST_CASE("premerge_tile_stream_skips_counted_in_optimizer") {
   RenderOptimized(target, batch, optimized);
 
   size_t rectType = static_cast<size_t>(CommandType::Rect);
-  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData);
   CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer skipped premerge tile command recorded");
   CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer premerge rect skip counted");
-  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1, "optimizer premerge invalid reason counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1,
+                "optimizer premerge tile-stream invalid reason counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData)] == 0,
+                "generic optimizer invalid reason untouched");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
+}
+
+TEST_CASE("tile_stream_local_bounds_sanitization_uses_dedicated_reason") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  add_rect(batch, 0, 0, 8, 8, PackRGBA8(Color{180, 80, 20, 255}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand outOfTile{};
+  outOfTile.type = CommandType::Rect;
+  outOfTile.index = 0;
+  outOfTile.order = 0;
+  outOfTile.x = 20;
+  outOfTile.y = 0;
+  outOfTile.wMinus1 = 1;
+  outOfTile.hMinus1 = 1;
+  batch.tileStream.commands = {outOfTile};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  RendererProfile profile;
+  batch.profile = &profile;
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  RenderOptimized(target, batch, optimized);
+
+  size_t rectType = static_cast<size_t>(CommandType::Rect);
+  size_t localBoundsReason = static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamCulledByLocalBounds);
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer tile-stream local-bounds skip recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer tile-stream by-type recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[localBoundsReason] >= 1,
+                "optimizer tile-stream local-bounds reason recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byTypeAndReason[rectType][localBoundsReason] >= 1,
+                "optimizer tile-stream rect+local-bounds matrix recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerCulledByBounds)] == 0,
+                "generic optimizer bounds reason untouched");
   CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
 }
 

@@ -976,10 +976,10 @@ auto optimize_batch(RenderTarget target,
       for (uint32_t i = start; i < end; ++i) {
         auto const& cmd = tileStream->commands[i];
         bool keep = true;
-        SkippedCommandReason reason = SkippedCommandReason::OptimizerInvalidCommandData;
+        SkippedCommandReason reason = SkippedCommandReason::OptimizerTileStreamInvalidCommandData;
         if (!isDrawCommandType(cmd.type) || !hasRequiredCommandData(batch, cmd.type, cmd.index)) {
           keep = false;
-          reason = SkippedCommandReason::OptimizerInvalidCommandData;
+          reason = SkippedCommandReason::OptimizerTileStreamInvalidCommandData;
         } else {
           int32_t drawX0 = tileX0 + static_cast<int32_t>(cmd.x);
           int32_t drawY0 = tileY0 + static_cast<int32_t>(cmd.y);
@@ -991,7 +991,7 @@ auto optimize_batch(RenderTarget target,
           int32_t iy1 = std::min(drawY1, tileY1);
           if (ix1 <= ix0 || iy1 <= iy0) {
             keep = false;
-            reason = SkippedCommandReason::OptimizerCulledByBounds;
+            reason = SkippedCommandReason::OptimizerTileStreamCulledByLocalBounds;
           }
         }
         if (keep) {

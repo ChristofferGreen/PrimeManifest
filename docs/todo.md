@@ -15,4 +15,5 @@
 13. [x] Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
 14. [x] Add optimizer-side skip diagnostics reasons so culling/invalid-command drops are split from render-stage skips.
 15. [x] Add tile-stream/premerge optimizer diagnostics so malformed tile-command drops are attributed before render dispatch.
-16. Add dedicated optimizer skip reasons for tile-local bounds sanitization vs command-data sanitization in tile streams.
+16. [x] Add dedicated optimizer skip reasons for tile-local bounds sanitization vs command-data sanitization in tile streams.
+17. Add a small `SkippedCommandReason` name formatter for diagnostics output/tests so reason buckets can be inspected without numeric decoding.

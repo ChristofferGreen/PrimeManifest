@@ -55,9 +55,11 @@ enum class SkippedCommandReason : uint8_t {
   OptimizerInvalidCommandData = 6,
   OptimizerCulledByBounds = 7,
   OptimizerCulledByAlpha = 8,
+  OptimizerTileStreamInvalidCommandData = 9,
+  OptimizerTileStreamCulledByLocalBounds = 10,
 };
 
-constexpr size_t SkippedCommandReasonCount = static_cast<size_t>(SkippedCommandReason::OptimizerCulledByAlpha) + 1u;
+constexpr size_t SkippedCommandReasonCount = static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamCulledByLocalBounds) + 1u;
 
 struct SkippedCommandDiagnostics {
   uint64_t total = 0;
