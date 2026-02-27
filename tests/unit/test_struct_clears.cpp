@@ -41,6 +41,12 @@ TEST_CASE("renderer_profile_clear_resets") {
   profile.renderNs = 1;
   profile.buildNs = 2;
   profile.tileCount = 3;
+  profile.skippedCommands.total = 6;
+  profile.skippedCommands.unknownType = 2;
+  profile.skippedCommands.byType[static_cast<size_t>(CommandType::Rect)] = 4;
+  profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 3;
+  profile.skippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Rect)]
+                                    [static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 3;
   profile.workerNs = {4};
   profile.workerTiles = {5};
 
@@ -49,6 +55,15 @@ TEST_CASE("renderer_profile_clear_resets") {
   CHECK_MESSAGE(profile.renderNs == 0, "renderNs reset");
   CHECK_MESSAGE(profile.buildNs == 0, "buildNs reset");
   CHECK_MESSAGE(profile.tileCount == 0, "tileCount reset");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "skipped command total reset");
+  CHECK_MESSAGE(profile.skippedCommands.unknownType == 0, "skipped command unknown type reset");
+  CHECK_MESSAGE(profile.skippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 0,
+                "skipped command by-type reset");
+  CHECK_MESSAGE(profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 0,
+                "skipped command by-reason reset");
+  CHECK_MESSAGE(profile.skippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Rect)]
+                                               [static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 0,
+                "skipped command matrix reset");
   CHECK_MESSAGE(profile.workerNs.empty(), "workerNs cleared");
   CHECK_MESSAGE(profile.workerTiles.empty(), "workerTiles cleared");
 }

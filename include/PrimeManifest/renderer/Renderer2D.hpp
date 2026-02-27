@@ -43,6 +43,59 @@ enum class CommandType : uint8_t {
   Image = 9,
 };
 
+constexpr size_t RendererProfileCommandTypeBuckets = static_cast<size_t>(CommandType::Image) + 1u;
+
+enum class SkippedCommandReason : uint8_t {
+  InvalidTileReference = 0,
+  MissingAnalyzedCommand = 1,
+  InactiveAnalyzedCommand = 2,
+  InvalidLocalBounds = 3,
+  InvalidCommandData = 4,
+  UnsupportedCommandType = 5,
+};
+
+constexpr size_t SkippedCommandReasonCount = static_cast<size_t>(SkippedCommandReason::UnsupportedCommandType) + 1u;
+
+struct SkippedCommandDiagnostics {
+  uint64_t total = 0;
+  uint64_t unknownType = 0;
+  std::array<uint64_t, RendererProfileCommandTypeBuckets> byType{};
+  std::array<uint64_t, SkippedCommandReasonCount> byReason{};
+  std::array<std::array<uint64_t, SkippedCommandReasonCount>, RendererProfileCommandTypeBuckets> byTypeAndReason{};
+
+  void clear() {
+    total = 0;
+    unknownType = 0;
+    byType.fill(0);
+    byReason.fill(0);
+    for (auto& bucket : byTypeAndReason) {
+      bucket.fill(0);
+    }
+  }
+
+  void add(CommandType type, SkippedCommandReason reason) {
+    size_t typeIndex = static_cast<size_t>(type);
+    size_t reasonIndex = static_cast<size_t>(reason);
+    if (typeIndex >= byType.size() || reasonIndex >= byReason.size()) {
+      addUnknown(reason);
+      return;
+    }
+    ++total;
+    ++byType[typeIndex];
+    ++byReason[reasonIndex];
+    ++byTypeAndReason[typeIndex][reasonIndex];
+  }
+
+  void addUnknown(SkippedCommandReason reason) {
+    size_t reasonIndex = static_cast<size_t>(reason);
+    ++total;
+    ++unknownType;
+    if (reasonIndex < byReason.size()) {
+      ++byReason[reasonIndex];
+    }
+  }
+};
+
 struct CommandTypeCounts {
   uint32_t clearCount = 0;
   uint32_t rect = 0;
@@ -166,6 +219,7 @@ struct RendererProfile {
   uint64_t renderedRectPixels = 0;
   uint64_t renderedTextPixels = 0;
   uint64_t renderedTileBufferPixels = 0;
+  SkippedCommandDiagnostics skippedCommands;
   std::vector<uint64_t> workerNs;
   std::vector<uint32_t> workerTiles;
 
@@ -195,6 +249,7 @@ struct RendererProfile {
     renderedRectPixels = 0;
     renderedTextPixels = 0;
     renderedTileBufferPixels = 0;
+    skippedCommands.clear();
     workerNs.clear();
     workerTiles.clear();
   }

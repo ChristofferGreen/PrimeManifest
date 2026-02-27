@@ -12,4 +12,5 @@
 10. [x] Complete `RenderOptimizedImpl` `Rect` kernel extraction and route `CommandType::Rect` through kernel dispatch.
 11. [x] Complete `RenderOptimizedImpl` `Text` kernel extraction and finish dispatch cleanup.
 12. [x] Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
-13. Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
+13. [x] Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
+14. Add optimizer-side skip diagnostics reasons so culling/invalid-command drops are split from render-stage skips.

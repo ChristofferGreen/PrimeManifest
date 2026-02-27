@@ -323,6 +323,9 @@ namespace {
 struct ScheduledTileCommand {
   CommandType type = CommandType::Rect;
   uint32_t index = 0;
+  bool hasKnownType = false;
+  bool shouldRender = false;
+  SkippedCommandReason skipReason = SkippedCommandReason::UnsupportedCommandType;
   bool hasLocalBounds = false;
   int32_t localX0 = 0;
   int32_t localY0 = 0;
@@ -363,15 +366,22 @@ public:
   auto next(ScheduledTileCommand& out) -> bool {
     if (useTileStream_) {
       if (cursor_ >= end_) return false;
+      out = ScheduledTileCommand{};
       auto const& cmd = tileStream_->commands[cursor_++];
       out.type = cmd.type;
       out.index = cmd.index;
+      out.hasKnownType = true;
       out.hasLocalBounds = true;
       out.localX0 = static_cast<int32_t>(tileOriginX_) + static_cast<int32_t>(cmd.x);
       out.localY0 = static_cast<int32_t>(tileOriginY_) + static_cast<int32_t>(cmd.y);
       out.localX1 = out.localX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
       out.localY1 = out.localY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
-      if (out.localX1 <= out.localX0 || out.localY1 <= out.localY0) return false;
+      if (out.localX1 <= out.localX0 || out.localY1 <= out.localY0) {
+        out.shouldRender = false;
+        out.skipReason = SkippedCommandReason::InvalidLocalBounds;
+        return true;
+      }
+      out.shouldRender = true;
       return true;
     }
 
@@ -381,24 +391,40 @@ public:
       if (tileRefsAreCircleIndices_) {
         out.type = CommandType::Circle;
         out.index = cmdIndex;
+        out.hasKnownType = true;
+        out.shouldRender = true;
         return true;
       }
 
-      if (cmdIndex >= commands_->size()) continue;
+      if (cmdIndex >= commands_->size()) {
+        out.shouldRender = false;
+        out.skipReason = SkippedCommandReason::InvalidTileReference;
+        return true;
+      }
       auto const& cmd = (*commands_)[cmdIndex];
       out.type = cmd.type;
       out.index = cmd.index;
+      out.hasKnownType = true;
 
       if (!analyzedCommands_->empty()) {
-        if (cmdIndex >= analyzedCommands_->size()) continue;
+        if (cmdIndex >= analyzedCommands_->size()) {
+          out.shouldRender = false;
+          out.skipReason = SkippedCommandReason::MissingAnalyzedCommand;
+          return true;
+        }
         auto const& analyzed = (*analyzedCommands_)[cmdIndex];
-        if (!analyzed.valid) continue;
+        if (!analyzed.valid) {
+          out.shouldRender = false;
+          out.skipReason = SkippedCommandReason::InactiveAnalyzedCommand;
+          return true;
+        }
         out.hasLocalBounds = true;
         out.localX0 = analyzed.x0;
         out.localY0 = analyzed.y0;
         out.localX1 = analyzed.x1;
         out.localY1 = analyzed.y1;
       }
+      out.shouldRender = true;
       return true;
     }
 
@@ -418,6 +444,68 @@ private:
   uint32_t cursor_ = 0;
   uint32_t end_ = 0;
 };
+
+auto isRectCommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.rects.x0.size() &&
+         idx < batch.rects.y0.size() &&
+         idx < batch.rects.x1.size() &&
+         idx < batch.rects.y1.size() &&
+         idx < batch.rects.colorIndex.size();
+}
+
+auto isCircleCommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.circles.centerX.size() &&
+         idx < batch.circles.centerY.size() &&
+         idx < batch.circles.radius.size() &&
+         idx < batch.circles.colorIndex.size();
+}
+
+auto isTextCommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.text.x.size() &&
+         idx < batch.text.y.size() &&
+         idx < batch.text.width.size() &&
+         idx < batch.text.height.size() &&
+         idx < batch.text.colorIndex.size() &&
+         idx < batch.text.opacity.size() &&
+         idx < batch.text.runIndex.size();
+}
+
+auto isSetPixelCommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.pixels.x.size() &&
+         idx < batch.pixels.y.size() &&
+         idx < batch.pixels.colorIndex.size();
+}
+
+auto isSetPixelACommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.pixelsA.x.size() &&
+         idx < batch.pixelsA.y.size() &&
+         idx < batch.pixelsA.colorIndex.size() &&
+         idx < batch.pixelsA.alpha.size();
+}
+
+auto isLineCommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.lines.x0.size() &&
+         idx < batch.lines.y0.size() &&
+         idx < batch.lines.x1.size() &&
+         idx < batch.lines.y1.size() &&
+         idx < batch.lines.widthQ8_8.size() &&
+         idx < batch.lines.colorIndex.size() &&
+         idx < batch.lines.opacity.size();
+}
+
+auto isImageCommandDataValid(RenderBatch const& batch, uint32_t idx) -> bool {
+  return idx < batch.imageDraws.x0.size() &&
+         idx < batch.imageDraws.y0.size() &&
+         idx < batch.imageDraws.x1.size() &&
+         idx < batch.imageDraws.y1.size() &&
+         idx < batch.imageDraws.srcX0.size() &&
+         idx < batch.imageDraws.srcY0.size() &&
+         idx < batch.imageDraws.srcX1.size() &&
+         idx < batch.imageDraws.srcY1.size() &&
+         idx < batch.imageDraws.imageIndex.size() &&
+         idx < batch.imageDraws.tintColorIndex.size() &&
+         idx < batch.imageDraws.opacity.size();
+}
 
 template <typename RowPtrFn, typename WritePxFn>
 void renderSetPixelKernel(RenderBatch const& batch,
@@ -835,6 +923,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   std::atomic<uint64_t> renderedRectPixels{0};
   std::atomic<uint64_t> renderedTextPixels{0};
   std::atomic<uint64_t> renderedTileBufferPixels{0};
+  std::atomic<uint64_t> skippedCommandsTotal{0};
+  std::atomic<uint64_t> skippedCommandsUnknownType{0};
+  std::array<std::atomic<uint64_t>, RendererProfileCommandTypeBuckets> skippedCommandsByType{};
+  std::array<std::atomic<uint64_t>, SkippedCommandReasonCount> skippedCommandsByReason{};
+  std::array<std::array<std::atomic<uint64_t>, SkippedCommandReasonCount>, RendererProfileCommandTypeBuckets>
+    skippedCommandsByTypeAndReason{};
 
   auto render_tile = [&](uint32_t tileIndex) {
     uint32_t tx = tileIndex % tilesX;
@@ -856,6 +950,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     uint64_t tileRectPixels = 0;
     uint64_t tileTextPixels = 0;
     uint64_t tileTileBufferPixels = 0;
+    uint64_t tileSkippedCommandsTotal = 0;
+    uint64_t tileSkippedCommandsUnknownType = 0;
+    std::array<uint64_t, RendererProfileCommandTypeBuckets> tileSkippedCommandsByType{};
+    std::array<uint64_t, SkippedCommandReasonCount> tileSkippedCommandsByReason{};
+    std::array<std::array<uint64_t, SkippedCommandReasonCount>, RendererProfileCommandTypeBuckets>
+      tileSkippedCommandsByTypeAndReason{};
     uint8_t* surfaceBase = target.data.data();
     uint32_t surfaceStride = target.strideBytes;
     int32_t surfaceY0 = 0;
@@ -909,6 +1009,32 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         dst[1] = g;
         dst[2] = b;
         dst[3] = 255u;
+      }
+    };
+    auto record_skipped_known = [&](CommandType type, SkippedCommandReason reason) {
+      if (!doProfile) return;
+      size_t typeIndex = static_cast<size_t>(type);
+      size_t reasonIndex = static_cast<size_t>(reason);
+      ++tileSkippedCommandsTotal;
+      if (reasonIndex < tileSkippedCommandsByReason.size()) {
+        ++tileSkippedCommandsByReason[reasonIndex];
+      }
+      if (typeIndex < tileSkippedCommandsByType.size()) {
+        ++tileSkippedCommandsByType[typeIndex];
+        if (reasonIndex < tileSkippedCommandsByTypeAndReason[typeIndex].size()) {
+          ++tileSkippedCommandsByTypeAndReason[typeIndex][reasonIndex];
+        }
+      } else {
+        ++tileSkippedCommandsUnknownType;
+      }
+    };
+    auto record_skipped_unknown = [&](SkippedCommandReason reason) {
+      if (!doProfile) return;
+      size_t reasonIndex = static_cast<size_t>(reason);
+      ++tileSkippedCommandsTotal;
+      ++tileSkippedCommandsUnknownType;
+      if (reasonIndex < tileSkippedCommandsByReason.size()) {
+        ++tileSkippedCommandsByReason[reasonIndex];
       }
     };
 
@@ -2429,6 +2555,14 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     ScheduledTileCommand scheduled{};
     while (scheduler.next(scheduled)) {
       if (frontToBack && opaqueCount >= tileArea) break;
+      if (!scheduled.shouldRender) {
+        if (scheduled.hasKnownType) {
+          record_skipped_known(scheduled.type, scheduled.skipReason);
+        } else {
+          record_skipped_unknown(scheduled.skipReason);
+        }
+        continue;
+      }
       CommandType type = scheduled.type;
       uint32_t idx = scheduled.index;
       bool hasLocalBounds = scheduled.hasLocalBounds;
@@ -2441,12 +2575,28 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       }
 
       if (type == CommandType::Rect) {
+        if (doProfile && !isRectCommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderRectKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Circle) {
+        if (doProfile && !isCircleCommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderCircleKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Text) {
+        if (doProfile && !isTextCommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderTextKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::SetPixel) {
+        if (doProfile && !isSetPixelCommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderSetPixelKernel(batch,
                              idx,
                              hasLocalBounds,
@@ -2466,6 +2616,10 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                              row_ptr,
                              write_px);
       } else if (type == CommandType::SetPixelA) {
+        if (doProfile && !isSetPixelACommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderSetPixelAKernel(batch,
                               idx,
                               hasLocalBounds,
@@ -2484,9 +2638,19 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                               write_px,
                               blend_px);
       } else if (type == CommandType::Line) {
+        if (doProfile && !isLineCommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderLineKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Image) {
+        if (doProfile && !isImageCommandDataValid(batch, idx)) {
+          record_skipped_known(type, SkippedCommandReason::InvalidCommandData);
+          continue;
+        }
         renderImageKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
+      } else if (doProfile) {
+        record_skipped_known(type, SkippedCommandReason::UnsupportedCommandType);
       }
     }
 
@@ -2568,6 +2732,22 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       renderedRectPixels.fetch_add(tileRectPixels, std::memory_order_relaxed);
       renderedTextPixels.fetch_add(tileTextPixels, std::memory_order_relaxed);
       renderedTileBufferPixels.fetch_add(tileTileBufferPixels, std::memory_order_relaxed);
+      skippedCommandsTotal.fetch_add(tileSkippedCommandsTotal, std::memory_order_relaxed);
+      skippedCommandsUnknownType.fetch_add(tileSkippedCommandsUnknownType, std::memory_order_relaxed);
+      for (size_t typeIndex = 0; typeIndex < tileSkippedCommandsByType.size(); ++typeIndex) {
+        skippedCommandsByType[typeIndex].fetch_add(tileSkippedCommandsByType[typeIndex], std::memory_order_relaxed);
+      }
+      for (size_t reasonIndex = 0; reasonIndex < tileSkippedCommandsByReason.size(); ++reasonIndex) {
+        skippedCommandsByReason[reasonIndex].fetch_add(tileSkippedCommandsByReason[reasonIndex],
+                                                       std::memory_order_relaxed);
+      }
+      for (size_t typeIndex = 0; typeIndex < tileSkippedCommandsByTypeAndReason.size(); ++typeIndex) {
+        for (size_t reasonIndex = 0; reasonIndex < tileSkippedCommandsByTypeAndReason[typeIndex].size(); ++reasonIndex) {
+          skippedCommandsByTypeAndReason[typeIndex][reasonIndex].fetch_add(
+            tileSkippedCommandsByTypeAndReason[typeIndex][reasonIndex],
+            std::memory_order_relaxed);
+        }
+      }
     }
   };
 
@@ -2699,6 +2879,22 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     profile->renderedRectPixels = renderedRectPixels.load(std::memory_order_relaxed);
     profile->renderedTextPixels = renderedTextPixels.load(std::memory_order_relaxed);
     profile->renderedTileBufferPixels = renderedTileBufferPixels.load(std::memory_order_relaxed);
+    profile->skippedCommands.clear();
+    profile->skippedCommands.total = skippedCommandsTotal.load(std::memory_order_relaxed);
+    profile->skippedCommands.unknownType = skippedCommandsUnknownType.load(std::memory_order_relaxed);
+    for (size_t typeIndex = 0; typeIndex < profile->skippedCommands.byType.size(); ++typeIndex) {
+      profile->skippedCommands.byType[typeIndex] = skippedCommandsByType[typeIndex].load(std::memory_order_relaxed);
+    }
+    for (size_t reasonIndex = 0; reasonIndex < profile->skippedCommands.byReason.size(); ++reasonIndex) {
+      profile->skippedCommands.byReason[reasonIndex] =
+        skippedCommandsByReason[reasonIndex].load(std::memory_order_relaxed);
+    }
+    for (size_t typeIndex = 0; typeIndex < profile->skippedCommands.byTypeAndReason.size(); ++typeIndex) {
+      for (size_t reasonIndex = 0; reasonIndex < profile->skippedCommands.byTypeAndReason[typeIndex].size(); ++reasonIndex) {
+        profile->skippedCommands.byTypeAndReason[typeIndex][reasonIndex] =
+          skippedCommandsByTypeAndReason[typeIndex][reasonIndex].load(std::memory_order_relaxed);
+      }
+    }
   }
 }
 
