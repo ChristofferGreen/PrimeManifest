@@ -183,14 +183,6 @@ auto make_tile_grid(uint32_t width, uint32_t height, uint32_t tileSize) -> TileG
   return grid;
 }
 
-struct CommandBounds {
-  int32_t x0 = 0;
-  int32_t y0 = 0;
-  int32_t x1 = 0;
-  int32_t y1 = 0;
-  bool valid = false;
-};
-
 auto premerge_tile_stream(RenderBatch const& batch,
                           TileGrid const& grid,
                           uint32_t width,
@@ -221,185 +213,10 @@ auto premerge_tile_stream(RenderBatch const& batch,
     return merged;
   }
 
-  std::vector<CommandBounds> rectBounds(batch.rects.x0.size());
-  for (uint32_t i = 0; i < batch.rects.x0.size(); ++i) {
-    CommandBounds b{};
-    b.x0 = batch.rects.x0[i];
-    b.y0 = batch.rects.y0[i];
-    b.x1 = batch.rects.x1[i];
-    b.y1 = batch.rects.y1[i];
-    if (i < batch.rects.flags.size() && (batch.rects.flags[i] & RectFlagClip) != 0u &&
-        i < batch.rects.clipX0.size() && i < batch.rects.clipY0.size() &&
-        i < batch.rects.clipX1.size() && i < batch.rects.clipY1.size()) {
-      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.rects.clipX0[i]));
-      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.rects.clipY0[i]));
-      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.rects.clipX1[i]));
-      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.rects.clipY1[i]));
-    }
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    rectBounds[i] = b;
-  }
-
-  std::vector<CommandBounds> circleBounds(batch.circles.centerX.size());
-  int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
-  for (uint32_t i = 0; i < batch.circles.centerX.size(); ++i) {
-    CommandBounds b{};
-    if (i >= batch.circles.centerY.size() ||
-        i >= batch.circles.radius.size() ||
-        i >= batch.circles.colorIndex.size()) {
-      circleBounds[i] = b;
-      continue;
-    }
-    int32_t cx = batch.circles.centerX[i];
-    int32_t cy = batch.circles.centerY[i];
-    int32_t r = static_cast<int32_t>(batch.circles.radius[i]);
-    b.x0 = cx - r - circlePad;
-    b.y0 = cy - r - circlePad;
-    b.x1 = cx + r + 1 + circlePad;
-    b.y1 = cy + r + 1 + circlePad;
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    circleBounds[i] = b;
-  }
-
-  std::vector<CommandBounds> textBounds(batch.text.x.size());
-  for (uint32_t i = 0; i < batch.text.x.size(); ++i) {
-    CommandBounds b{};
-    b.x0 = batch.text.x[i];
-    b.y0 = batch.text.y[i];
-    b.x1 = b.x0 + batch.text.width[i];
-    b.y1 = b.y0 + batch.text.height[i];
-    if (i < batch.text.flags.size() && (batch.text.flags[i] & TextFlagClip) != 0u &&
-        i < batch.text.clipX0.size() && i < batch.text.clipY0.size() &&
-        i < batch.text.clipX1.size() && i < batch.text.clipY1.size()) {
-      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.text.clipX0[i]));
-      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.text.clipY0[i]));
-      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.text.clipX1[i]));
-      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.text.clipY1[i]));
-    }
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    textBounds[i] = b;
-  }
-
-  std::vector<CommandBounds> pixelBounds(batch.pixels.x.size());
-  for (uint32_t i = 0; i < batch.pixels.x.size(); ++i) {
-    CommandBounds b{};
-    if (i >= batch.pixels.y.size() || i >= batch.pixels.colorIndex.size()) {
-      pixelBounds[i] = b;
-      continue;
-    }
-    b.x0 = batch.pixels.x[i];
-    b.y0 = batch.pixels.y[i];
-    b.x1 = b.x0 + 1;
-    b.y1 = b.y0 + 1;
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    pixelBounds[i] = b;
-  }
-
-  std::vector<CommandBounds> pixelABounds(batch.pixelsA.x.size());
-  for (uint32_t i = 0; i < batch.pixelsA.x.size(); ++i) {
-    CommandBounds b{};
-    if (i >= batch.pixelsA.y.size() ||
-        i >= batch.pixelsA.colorIndex.size() ||
-        i >= batch.pixelsA.alpha.size()) {
-      pixelABounds[i] = b;
-      continue;
-    }
-    b.x0 = batch.pixelsA.x[i];
-    b.y0 = batch.pixelsA.y[i];
-    b.x1 = b.x0 + 1;
-    b.y1 = b.y0 + 1;
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    pixelABounds[i] = b;
-  }
-
-  std::vector<CommandBounds> lineBounds(batch.lines.x0.size());
-  for (uint32_t i = 0; i < batch.lines.x0.size(); ++i) {
-    CommandBounds b{};
-    if (i >= batch.lines.y0.size() ||
-        i >= batch.lines.x1.size() ||
-        i >= batch.lines.y1.size() ||
-        i >= batch.lines.widthQ8_8.size() ||
-        i >= batch.lines.colorIndex.size() ||
-        i >= batch.lines.opacity.size()) {
-      lineBounds[i] = b;
-      continue;
-    }
-    float fx0 = static_cast<float>(batch.lines.x0[i]);
-    float fy0 = static_cast<float>(batch.lines.y0[i]);
-    float fx1 = static_cast<float>(batch.lines.x1[i]);
-    float fy1 = static_cast<float>(batch.lines.y1[i]);
-    float widthPx = static_cast<float>(batch.lines.widthQ8_8[i]) / 256.0f;
-    float radius = widthPx * 0.5f;
-    float pad = radius + 1.0f;
-    float minX = std::min(fx0, fx1) - pad;
-    float maxX = std::max(fx0, fx1) + pad;
-    float minY = std::min(fy0, fy1) - pad;
-    float maxY = std::max(fy0, fy1) + pad;
-    b.x0 = static_cast<int32_t>(std::floor(minX));
-    b.y0 = static_cast<int32_t>(std::floor(minY));
-    b.x1 = static_cast<int32_t>(std::ceil(maxX));
-    b.y1 = static_cast<int32_t>(std::ceil(maxY));
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    lineBounds[i] = b;
-  }
-
-  std::vector<CommandBounds> imageBounds(batch.imageDraws.x0.size());
-  for (uint32_t i = 0; i < batch.imageDraws.x0.size(); ++i) {
-    CommandBounds b{};
-    if (i >= batch.imageDraws.y0.size() ||
-        i >= batch.imageDraws.x1.size() ||
-        i >= batch.imageDraws.y1.size() ||
-        i >= batch.imageDraws.imageIndex.size() ||
-        i >= batch.imageDraws.tintColorIndex.size() ||
-        i >= batch.imageDraws.opacity.size()) {
-      imageBounds[i] = b;
-      continue;
-    }
-    b.x0 = batch.imageDraws.x0[i];
-    b.y0 = batch.imageDraws.y0[i];
-    b.x1 = batch.imageDraws.x1[i];
-    b.y1 = batch.imageDraws.y1[i];
-    uint8_t flags = i < batch.imageDraws.flags.size() ? batch.imageDraws.flags[i] : 0u;
-    if ((flags & ImageFlagClip) != 0u &&
-        i < batch.imageDraws.clipX0.size() &&
-        i < batch.imageDraws.clipY0.size() &&
-        i < batch.imageDraws.clipX1.size() &&
-        i < batch.imageDraws.clipY1.size()) {
-      b.x0 = std::max(b.x0, static_cast<int32_t>(batch.imageDraws.clipX0[i]));
-      b.y0 = std::max(b.y0, static_cast<int32_t>(batch.imageDraws.clipY0[i]));
-      b.x1 = std::min(b.x1, static_cast<int32_t>(batch.imageDraws.clipX1[i]));
-      b.y1 = std::min(b.y1, static_cast<int32_t>(batch.imageDraws.clipY1[i]));
-    }
-    b.x0 = std::max(b.x0, 0);
-    b.y0 = std::max(b.y0, 0);
-    b.x1 = std::min(b.x1, static_cast<int32_t>(width));
-    b.y1 = std::min(b.y1, static_cast<int32_t>(height));
-    b.valid = (b.x1 > b.x0 && b.y1 > b.y0);
-    imageBounds[i] = b;
+  std::vector<PrimitiveBounds> globalBounds(src.globalCommands.size());
+  for (uint32_t i = 0; i < src.globalCommands.size(); ++i) {
+    auto const& cmd = src.globalCommands[i];
+    computePrimitiveBounds(batch, cmd.type, cmd.index, width, height, globalBounds[i]);
   }
 
   std::vector<uint32_t> mergedCounts(tileCount, 0);
@@ -464,32 +281,8 @@ auto premerge_tile_stream(RenderBatch const& batch,
           mergedCounts[tileIndex] += 1;
         }
       } else {
-        auto const& cmd = src.globalCommands[globalCursor++];
-        CommandBounds b{};
-        if (cmd.type == CommandType::Rect) {
-          if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
-          b = rectBounds[cmd.index];
-        } else if (cmd.type == CommandType::Circle) {
-          if (cmd.index >= circleBounds.size() || !circleBounds[cmd.index].valid) continue;
-          b = circleBounds[cmd.index];
-        } else if (cmd.type == CommandType::Text) {
-          if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
-          b = textBounds[cmd.index];
-        } else if (cmd.type == CommandType::SetPixel) {
-          if (cmd.index >= pixelBounds.size() || !pixelBounds[cmd.index].valid) continue;
-          b = pixelBounds[cmd.index];
-        } else if (cmd.type == CommandType::SetPixelA) {
-          if (cmd.index >= pixelABounds.size() || !pixelABounds[cmd.index].valid) continue;
-          b = pixelABounds[cmd.index];
-        } else if (cmd.type == CommandType::Line) {
-          if (cmd.index >= lineBounds.size() || !lineBounds[cmd.index].valid) continue;
-          b = lineBounds[cmd.index];
-        } else if (cmd.type == CommandType::Image) {
-          if (cmd.index >= imageBounds.size() || !imageBounds[cmd.index].valid) continue;
-          b = imageBounds[cmd.index];
-        } else {
-          continue;
-        }
+        auto const& b = globalBounds[globalCursor++];
+        if (!b.valid) continue;
         int32_t ix0 = std::max(b.x0, tileX0);
         int32_t iy0 = std::max(b.y0, tileY0);
         int32_t ix1 = std::min(b.x1, tileX1);
@@ -589,31 +382,8 @@ auto premerge_tile_stream(RenderBatch const& batch,
         merged.commands[offset] = out;
       } else {
         auto cmd = src.globalCommands[globalCursor++];
-        CommandBounds b{};
-        if (cmd.type == CommandType::Rect) {
-          if (cmd.index >= rectBounds.size() || !rectBounds[cmd.index].valid) continue;
-          b = rectBounds[cmd.index];
-        } else if (cmd.type == CommandType::Circle) {
-          if (cmd.index >= circleBounds.size() || !circleBounds[cmd.index].valid) continue;
-          b = circleBounds[cmd.index];
-        } else if (cmd.type == CommandType::Text) {
-          if (cmd.index >= textBounds.size() || !textBounds[cmd.index].valid) continue;
-          b = textBounds[cmd.index];
-        } else if (cmd.type == CommandType::SetPixel) {
-          if (cmd.index >= pixelBounds.size() || !pixelBounds[cmd.index].valid) continue;
-          b = pixelBounds[cmd.index];
-        } else if (cmd.type == CommandType::SetPixelA) {
-          if (cmd.index >= pixelABounds.size() || !pixelABounds[cmd.index].valid) continue;
-          b = pixelABounds[cmd.index];
-        } else if (cmd.type == CommandType::Line) {
-          if (cmd.index >= lineBounds.size() || !lineBounds[cmd.index].valid) continue;
-          b = lineBounds[cmd.index];
-        } else if (cmd.type == CommandType::Image) {
-          if (cmd.index >= imageBounds.size() || !imageBounds[cmd.index].valid) continue;
-          b = imageBounds[cmd.index];
-        } else {
-          continue;
-        }
+        auto const& b = globalBounds[globalCursor - 1];
+        if (!b.valid) continue;
         int32_t ix0 = std::max(b.x0, tileX0);
         int32_t iy0 = std::max(b.y0, tileY0);
         int32_t ix1 = std::min(b.x1, tileX1);

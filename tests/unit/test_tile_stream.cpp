@@ -160,4 +160,58 @@ TEST_CASE("premerge_includes_macro_and_global_commands") {
   CHECK_MESSAGE(hasText, "text global commands merged");
 }
 
+TEST_CASE("premerge_global_image_clip_limits_tiles") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{255, 255, 255, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 4;
+
+  uint32_t imageIdx = add_image_asset(batch, 1, 1, {PackRGBA8(Color{255, 0, 0, 255})});
+  add_image_draw(batch,
+                 imageIdx,
+                 0,
+                 0,
+                 8,
+                 8,
+                 0,
+                 0,
+                 1,
+                 1,
+                 PackRGBA8(Color{255, 255, 255, 255}),
+                 255,
+                 ImageFlagClip,
+                 IntRect{4, 0, 8, 8});
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = false;
+  batch.tileStream.offsets = {0, 0, 0, 0, 0};
+  batch.tileStream.commands.clear();
+  batch.tileStream.macroOffsets = {0, 0};
+  batch.tileStream.macroCommands.clear();
+
+  TileCommand globalImage{};
+  globalImage.type = CommandType::Image;
+  globalImage.index = 0;
+  globalImage.order = 1;
+  batch.tileStream.globalCommands = {globalImage};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "premerge keeps tile stream enabled");
+  REQUIRE_MESSAGE(optimized.tileStream == &optimized.mergedTileStream, "premerge stores merged stream");
+  auto const& merged = optimized.mergedTileStream;
+  REQUIRE_MESSAGE(merged.offsets.size() == 5, "expected 2x2 tile offsets");
+  CHECK_MESSAGE(merged.offsets[1] == 0, "top-left tile has no clipped image command");
+  CHECK_MESSAGE(merged.offsets[2] == 1, "top-right tile has clipped image command");
+  CHECK_MESSAGE(merged.offsets[3] == 1, "bottom-left tile has no clipped image command");
+  CHECK_MESSAGE(merged.offsets[4] == 2, "bottom-right tile has clipped image command");
+}
+
 TEST_SUITE_END();
