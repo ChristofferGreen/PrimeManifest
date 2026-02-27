@@ -14,6 +14,62 @@ void enable_palette(RenderBatch& batch, uint32_t color = PackRGBA8(Color{0, 0, 0
   batch.palette.colorRGBA8[0] = color;
 }
 
+auto build_equivalence_scene() -> RenderBatch {
+  RenderBatch batch;
+  batch.tileSize = 8;
+
+  add_clear(batch, PackRGBA8(Color{8, 8, 8, 255}));
+  add_rect(batch, 1, 1, 14, 11, PackRGBA8(Color{20, 40, 180, 255}));
+  add_rect(batch, 8, 6, 19, 17, PackRGBA8(Color{180, 90, 40, 255}));
+  batch.rects.flags[1] = RectFlagClip;
+  batch.rects.clipX0[1] = 9;
+  batch.rects.clipY0[1] = 7;
+  batch.rects.clipX1[1] = 18;
+  batch.rects.clipY1[1] = 16;
+  add_circle(batch, 10, 8, 4, PackRGBA8(Color{220, 70, 30, 255}));
+  add_set_pixel(batch, 2, 18, PackRGBA8(Color{255, 255, 0, 255}));
+  add_set_pixel_a(batch, 20, 3, PackRGBA8(Color{255, 255, 255, 255}), 96);
+  return batch;
+}
+
+auto render_scene(RenderBatch const& batch, uint32_t width, uint32_t height) -> std::vector<uint8_t> {
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+  render_batch(target, batch);
+  return buffer;
+}
+
+auto is_draw_command(CommandType type) -> bool {
+  return type == CommandType::Rect ||
+         type == CommandType::Circle ||
+         type == CommandType::Text ||
+         type == CommandType::SetPixel ||
+         type == CommandType::SetPixelA ||
+         type == CommandType::Line ||
+         type == CommandType::Image;
+}
+
+auto build_global_manual_stream(RenderBatch const& scene, uint32_t width, uint32_t height) -> TileStream {
+  TileStream stream;
+  stream.enabled = true;
+  stream.preMerged = false;
+  uint32_t tileSize = scene.tileSize == 0 ? 32u : scene.tileSize;
+  uint32_t tilesX = (width + tileSize - 1) / tileSize;
+  uint32_t tilesY = (height + tileSize - 1) / tileSize;
+  stream.offsets.assign(static_cast<size_t>(tilesX) * tilesY + 1, 0);
+
+  for (uint32_t commandIndex = 0; commandIndex < scene.commands.size(); ++commandIndex) {
+    auto const& command = scene.commands[commandIndex];
+    if (!is_draw_command(command.type)) continue;
+    TileCommand out{};
+    out.type = command.type;
+    out.index = command.index;
+    out.order = commandIndex;
+    stream.globalCommands.push_back(out);
+  }
+  return stream;
+}
+
 } // namespace
 
 
@@ -212,6 +268,101 @@ TEST_CASE("premerge_global_image_clip_limits_tiles") {
   CHECK_MESSAGE(merged.offsets[2] == 1, "top-right tile has clipped image command");
   CHECK_MESSAGE(merged.offsets[3] == 1, "bottom-left tile has no clipped image command");
   CHECK_MESSAGE(merged.offsets[4] == 2, "bottom-right tile has clipped image command");
+}
+
+TEST_CASE("tile_stream_on_off_scene_equivalence") {
+  constexpr uint32_t width = 24;
+  constexpr uint32_t height = 20;
+
+  RenderBatch noStream = build_equivalence_scene();
+  noStream.autoTileStream = false;
+  noStream.tileStream.clear();
+  auto noStreamBuffer = render_scene(noStream, width, height);
+
+  RenderBatch autoStreamSource = build_equivalence_scene();
+  autoStreamSource.autoTileStream = true;
+  autoStreamSource.tileStream.clear();
+  std::vector<uint8_t> scratch(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(scratch), width, height, width * 4};
+  OptimizedBatch autoPrepared;
+  OptimizeRenderBatch(target, autoStreamSource, autoPrepared);
+  REQUIRE_MESSAGE(autoPrepared.valid, "auto path optimized");
+  REQUIRE_MESSAGE(autoPrepared.useTileStream, "auto path uses tile stream");
+  REQUIRE_MESSAGE(autoPrepared.tileStream != nullptr, "auto stream pointer set");
+  REQUIRE_MESSAGE(autoPrepared.tileStream->preMerged, "auto stream is premerged");
+
+  RenderBatch manualPremerged = build_equivalence_scene();
+  manualPremerged.autoTileStream = false;
+  manualPremerged.tileStream = *autoPrepared.tileStream;
+  manualPremerged.tileStream.enabled = true;
+  manualPremerged.tileStream.preMerged = true;
+  auto manualPremergedBuffer = render_scene(manualPremerged, width, height);
+
+  CHECK_MESSAGE(buffers_equal(noStreamBuffer, manualPremergedBuffer),
+                "scene output matches with tile stream disabled/enabled");
+}
+
+TEST_CASE("auto_tile_stream_on_off_scene_equivalence") {
+  constexpr uint32_t width = 24;
+  constexpr uint32_t height = 20;
+
+  RenderBatch autoOff = build_equivalence_scene();
+  autoOff.autoTileStream = false;
+  autoOff.tileStream.clear();
+  auto autoOffBuffer = render_scene(autoOff, width, height);
+
+  RenderBatch autoOn = build_equivalence_scene();
+  autoOn.autoTileStream = true;
+  autoOn.tileStream.clear();
+  std::vector<uint8_t> scratch(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(scratch), width, height, width * 4};
+  OptimizedBatch autoPrepared;
+  OptimizeRenderBatch(target, autoOn, autoPrepared);
+  REQUIRE_MESSAGE(autoPrepared.valid, "auto path optimized");
+  REQUIRE_MESSAGE(autoPrepared.useTileStream, "auto path uses tile stream");
+  auto autoOnBuffer = render_scene(autoOn, width, height);
+
+  CHECK_MESSAGE(buffers_equal(autoOffBuffer, autoOnBuffer),
+                "scene output matches with auto tile stream disabled/enabled");
+}
+
+TEST_CASE("premerged_and_manual_stream_scene_equivalence") {
+  constexpr uint32_t width = 24;
+  constexpr uint32_t height = 20;
+
+  RenderBatch autoStreamSource = build_equivalence_scene();
+  autoStreamSource.autoTileStream = true;
+  autoStreamSource.tileStream.clear();
+  std::vector<uint8_t> scratch(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(scratch), width, height, width * 4};
+  OptimizedBatch autoPrepared;
+  OptimizeRenderBatch(target, autoStreamSource, autoPrepared);
+  REQUIRE_MESSAGE(autoPrepared.valid, "auto path optimized");
+  REQUIRE_MESSAGE(autoPrepared.useTileStream, "auto path uses tile stream");
+  REQUIRE_MESSAGE(autoPrepared.tileStream != nullptr, "auto stream pointer set");
+  REQUIRE_MESSAGE(autoPrepared.tileStream->preMerged, "auto stream is premerged");
+
+  RenderBatch manualPremerged = build_equivalence_scene();
+  manualPremerged.autoTileStream = false;
+  manualPremerged.tileStream = *autoPrepared.tileStream;
+  manualPremerged.tileStream.enabled = true;
+  manualPremerged.tileStream.preMerged = true;
+
+  RenderBatch manualNonPremerged = build_equivalence_scene();
+  manualNonPremerged.autoTileStream = false;
+  manualNonPremerged.tileStream = build_global_manual_stream(manualNonPremerged, width, height);
+
+  OptimizedBatch manualPrepared;
+  OptimizeRenderBatch(target, manualNonPremerged, manualPrepared);
+  REQUIRE_MESSAGE(manualPrepared.valid, "manual stream optimized");
+  REQUIRE_MESSAGE(manualPrepared.useTileStream, "manual stream stays enabled");
+  REQUIRE_MESSAGE(manualPrepared.tileStream == &manualPrepared.mergedTileStream,
+                  "manual non-premerged stream is merged");
+
+  auto premergedBuffer = render_scene(manualPremerged, width, height);
+  auto manualBuffer = render_scene(manualNonPremerged, width, height);
+  CHECK_MESSAGE(buffers_equal(premergedBuffer, manualBuffer),
+                "scene output matches with premerged and manual streams");
 }
 
 TEST_SUITE_END();
