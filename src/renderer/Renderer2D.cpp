@@ -1764,21 +1764,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       } while (false);
     };
 
-    ScheduledTileCommand scheduled{};
-    while (scheduler.next(scheduled)) {
-      if (frontToBack && opaqueCount >= tileArea) break;
-      CommandType type = scheduled.type;
-      uint32_t idx = scheduled.index;
-      bool hasLocalBounds = scheduled.hasLocalBounds;
-      int32_t localX0 = scheduled.localX0;
-      int32_t localY0 = scheduled.localY0;
-      int32_t localX1 = scheduled.localX1;
-      int32_t localY1 = scheduled.localY1;
-      if (doProfile) {
-        ++tileCommands;
-      }
-
-      if (type == CommandType::Rect) {
+    auto renderRectKernel = [&](uint32_t idx,
+                                bool hasLocalBounds,
+                                int32_t localX0,
+                                int32_t localY0,
+                                int32_t localX1,
+                                int32_t localY1) {
+      do {
         if (idx >= batch.rects.x0.size() ||
             idx >= batch.rects.y0.size() ||
             idx >= batch.rects.x1.size() ||
@@ -2160,6 +2152,25 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           }
         }
         render_sdf_region(region.x0, region.y0, region.x1, region.y1);
+      } while (false);
+    };
+
+    ScheduledTileCommand scheduled{};
+    while (scheduler.next(scheduled)) {
+      if (frontToBack && opaqueCount >= tileArea) break;
+      CommandType type = scheduled.type;
+      uint32_t idx = scheduled.index;
+      bool hasLocalBounds = scheduled.hasLocalBounds;
+      int32_t localX0 = scheduled.localX0;
+      int32_t localY0 = scheduled.localY0;
+      int32_t localX1 = scheduled.localX1;
+      int32_t localY1 = scheduled.localY1;
+      if (doProfile) {
+        ++tileCommands;
+      }
+
+      if (type == CommandType::Rect) {
+        renderRectKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Circle) {
         renderCircleKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Text) {
