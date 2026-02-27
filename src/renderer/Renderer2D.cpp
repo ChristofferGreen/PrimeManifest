@@ -2155,25 +2155,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
       } while (false);
     };
 
-    ScheduledTileCommand scheduled{};
-    while (scheduler.next(scheduled)) {
-      if (frontToBack && opaqueCount >= tileArea) break;
-      CommandType type = scheduled.type;
-      uint32_t idx = scheduled.index;
-      bool hasLocalBounds = scheduled.hasLocalBounds;
-      int32_t localX0 = scheduled.localX0;
-      int32_t localY0 = scheduled.localY0;
-      int32_t localX1 = scheduled.localX1;
-      int32_t localY1 = scheduled.localY1;
-      if (doProfile) {
-        ++tileCommands;
-      }
-
-      if (type == CommandType::Rect) {
-        renderRectKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
-      } else if (type == CommandType::Circle) {
-        renderCircleKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
-      } else if (type == CommandType::Text) {
+    auto renderTextKernel = [&](uint32_t idx,
+                                bool hasLocalBounds,
+                                int32_t localX0,
+                                int32_t localY0,
+                                int32_t localX1,
+                                int32_t localY1) {
+      do {
         if (idx >= batch.text.x.size() ||
             idx >= batch.text.y.size() ||
             idx >= batch.text.width.size() ||
@@ -2319,6 +2307,12 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             cx1 = std::min<int32_t>(cx1, clip.x1);
             cy1 = std::min<int32_t>(cy1, clip.y1);
           }
+          if (hasLocalBounds) {
+            cx0 = std::max<int32_t>(cx0, localX0);
+            cy0 = std::max<int32_t>(cy0, localY0);
+            cx1 = std::min<int32_t>(cx1, localX1);
+            cy1 = std::min<int32_t>(cy1, localY1);
+          }
 
           if (cx1 <= cx0 || cy1 <= cy0) continue;
           if (profile) {
@@ -2429,6 +2423,29 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             }
           }
         }
+      } while (false);
+    };
+
+    ScheduledTileCommand scheduled{};
+    while (scheduler.next(scheduled)) {
+      if (frontToBack && opaqueCount >= tileArea) break;
+      CommandType type = scheduled.type;
+      uint32_t idx = scheduled.index;
+      bool hasLocalBounds = scheduled.hasLocalBounds;
+      int32_t localX0 = scheduled.localX0;
+      int32_t localY0 = scheduled.localY0;
+      int32_t localX1 = scheduled.localX1;
+      int32_t localY1 = scheduled.localY1;
+      if (doProfile) {
+        ++tileCommands;
+      }
+
+      if (type == CommandType::Rect) {
+        renderRectKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
+      } else if (type == CommandType::Circle) {
+        renderCircleKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
+      } else if (type == CommandType::Text) {
+        renderTextKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::SetPixel) {
         renderSetPixelKernel(batch,
                              idx,

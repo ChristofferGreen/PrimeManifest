@@ -15,6 +15,31 @@ void enable_palette(RenderBatch& batch, uint32_t color) {
   batch.palette.colorRGBA8[0] = color;
 }
 
+static void add_mask_glyph_run(RenderBatch& batch,
+                               uint16_t width,
+                               uint16_t height,
+                               std::vector<uint8_t> pixels) {
+  GlyphStore::GlyphBitmap bitmap;
+  bitmap.width = width;
+  bitmap.height = height;
+  bitmap.bearingX = 0;
+  bitmap.bearingY = 0;
+  bitmap.advance = static_cast<int16_t>(width);
+  bitmap.stride = static_cast<int32_t>(width);
+  bitmap.pixels = std::move(pixels);
+  batch.glyphs.bitmaps.push_back(std::move(bitmap));
+  batch.glyphs.bitmapOpaque.push_back(0);
+
+  batch.glyphs.glyphXQ8_8.push_back(0);
+  batch.glyphs.glyphYQ8_8.push_back(0);
+  batch.glyphs.bitmapIndex.push_back(0);
+
+  batch.runs.glyphStart.push_back(0);
+  batch.runs.glyphCount.push_back(1);
+  batch.runs.baselineQ8_8.push_back(0);
+  batch.runs.scaleQ8_8.push_back(256);
+}
+
 } // namespace
 
 
@@ -409,6 +434,85 @@ TEST_CASE("tile_stream_rounded_rect_respects_local_clip_bounds") {
 
   CHECK_MESSAGE(pixel_at(buffer, width, 10, 8) == drawColor, "rounded rect pixel inside local clip bounds is rendered");
   CHECK_MESSAGE(pixel_at(buffer, width, 6, 8) == 0u, "rounded rect pixel outside local clip bounds is skipped");
+}
+
+TEST_CASE("tile_stream_text_respects_local_clip_bounds") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_mask_glyph_run(batch, 2, 1, {255, 255});
+  uint32_t drawColor = PackRGBA8(Color{15, 210, 100, 255});
+  add_text(batch, 1, 1, 2, 1, drawColor, 0);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Text;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 2;
+  cmd.y = 1;
+  cmd.wMinus1 = 0;
+  cmd.hMinus1 = 0;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 1) == drawColor, "text pixel inside local clip bounds is rendered");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == 0u, "text pixel outside local clip bounds is skipped");
+}
+
+TEST_CASE("tile_stream_text_respects_local_and_text_clip_bounds") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_mask_glyph_run(batch, 3, 1, {255, 255, 255});
+  uint32_t drawColor = PackRGBA8(Color{230, 120, 20, 255});
+  add_text(batch, 1, 1, 3, 1, drawColor, 0);
+  batch.text.flags[0] = TextFlagClip;
+  batch.text.clipX0[0] = 1;
+  batch.text.clipY0[0] = 1;
+  batch.text.clipX1[0] = 2;
+  batch.text.clipY1[0] = 2;
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Text;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 2;
+  cmd.y = 1;
+  cmd.wMinus1 = 1;
+  cmd.hMinus1 = 0;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == 0u, "text clip-only pixel is excluded by local bounds");
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 1) == 0u, "local-bounds pixel is excluded by text clip");
 }
 
 TEST_CASE("tile_stream_circle_respects_local_clip_bounds_small_radius") {

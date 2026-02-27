@@ -10,6 +10,6 @@
 8. [x] Refactor `RenderOptimizedImpl` phase 2 by extracting `Line`/`Image` kernels and routing them through scheduler-based dispatch.
 9. [x] Complete `RenderOptimizedImpl` `Circle` kernel extraction and route `CommandType::Circle` through kernel dispatch.
 10. [x] Complete `RenderOptimizedImpl` `Rect` kernel extraction and route `CommandType::Rect` through kernel dispatch.
-11. Complete `RenderOptimizedImpl` `Text` kernel extraction and finish dispatch cleanup.
+11. [x] Complete `RenderOptimizedImpl` `Text` kernel extraction and finish dispatch cleanup.
 12. Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
 13. Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
