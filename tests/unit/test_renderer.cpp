@@ -338,4 +338,78 @@ TEST_CASE("tile_stream_image_respects_local_clip_bounds") {
   CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == 0u, "image outside local clip bounds is skipped");
 }
 
+TEST_CASE("tile_stream_circle_respects_local_clip_bounds_small_radius") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 16;
+
+  uint32_t drawColor = PackRGBA8(Color{40, 220, 120, 255});
+  add_circle(batch, 6, 6, 3, drawColor);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Circle;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 7;
+  cmd.y = 4;
+  cmd.wMinus1 = 2;
+  cmd.hMinus1 = 3;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 16;
+  uint32_t height = 16;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 8, 6) != 0u, "circle pixel inside local clip bounds is rendered");
+  CHECK_MESSAGE(pixel_at(buffer, width, 6, 6) == 0u, "circle pixel outside local clip bounds is skipped");
+}
+
+TEST_CASE("tile_stream_circle_respects_local_clip_bounds_large_radius") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 16;
+
+  uint32_t drawColor = PackRGBA8(Color{220, 80, 20, 255});
+  add_circle(batch, 8, 8, 10, drawColor);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Circle;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 0;
+  cmd.y = 0;
+  cmd.wMinus1 = 4;
+  cmd.hMinus1 = 15;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 16;
+  uint32_t height = 16;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 8) == drawColor, "large-radius circle pixel inside local clip bounds is rendered");
+  CHECK_MESSAGE(pixel_at(buffer, width, 8, 8) == 0u, "large-radius circle pixel outside local clip bounds is skipped");
+}
+
 TEST_SUITE_END();

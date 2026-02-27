@@ -8,6 +8,7 @@
 6. [x] Add malformed-batch robustness tests to verify deterministic behavior (fail-fast in strict mode, safe skip in permissive mode).
 7. [x] Refactor `RenderOptimizedImpl` phase 1 into a tile command scheduler/orchestrator layer plus extracted `SetPixel`/`SetPixelA` kernels.
 8. [x] Refactor `RenderOptimizedImpl` phase 2 by extracting `Line`/`Image` kernels and routing them through scheduler-based dispatch.
-9. Complete `RenderOptimizedImpl` kernel extraction for `Rect`/`Circle`/`Text` paths and finish dispatch cleanup.
-10. Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
-11. Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
+9. [x] Complete `RenderOptimizedImpl` `Circle` kernel extraction and route `CommandType::Circle` through kernel dispatch.
+10. Complete `RenderOptimizedImpl` kernel extraction for `Rect`/`Text` paths and finish dispatch cleanup.
+11. Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
+12. Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.

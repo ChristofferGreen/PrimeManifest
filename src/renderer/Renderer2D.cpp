@@ -1262,404 +1262,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
         }
       }
     };
-
-    ScheduledTileCommand scheduled{};
-    while (scheduler.next(scheduled)) {
-      if (frontToBack && opaqueCount >= tileArea) break;
-      CommandType type = scheduled.type;
-      uint32_t idx = scheduled.index;
-      bool hasLocalBounds = scheduled.hasLocalBounds;
-      int32_t localX0 = scheduled.localX0;
-      int32_t localY0 = scheduled.localY0;
-      int32_t localX1 = scheduled.localX1;
-      int32_t localY1 = scheduled.localY1;
-      if (doProfile) {
-        ++tileCommands;
-      }
-
-      if (type == CommandType::Rect) {
-        if (idx >= batch.rects.x0.size() ||
-            idx >= batch.rects.y0.size() ||
-            idx >= batch.rects.x1.size() ||
-            idx >= batch.rects.y1.size() ||
-            idx >= batch.rects.colorIndex.size()) {
-          continue;
-        }
-
-        int32_t x0 = batch.rects.x0[idx];
-        int32_t y0 = batch.rects.y0[idx];
-        int32_t x1 = batch.rects.x1[idx];
-        int32_t y1 = batch.rects.y1[idx];
-
-        int32_t drawX0 = hasLocalBounds ? localX0 : x0;
-        int32_t drawY0 = hasLocalBounds ? localY0 : y0;
-        int32_t drawX1 = hasLocalBounds ? localX1 : x1;
-        int32_t drawY1 = hasLocalBounds ? localY1 : y1;
-
-        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
-        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
-        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
-        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
-        if (rx1 <= rx0 || ry1 <= ry0) continue;
-        if (profile) {
-          ++tileRects;
-          tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
-        }
-
-        uint16_t radiusQ = idx < batch.rects.radiusQ8_8.size() ? batch.rects.radiusQ8_8[idx] : 0;
-        float radius = static_cast<float>(radiusQ) / 256.0f;
-        int16_t rotationQ = idx < batch.rects.rotationQ8_8.size() ? batch.rects.rotationQ8_8[idx] : 0;
-        bool axisAligned = (rotationQ == 0);
-        float rotation = axisAligned ? 0.0f : static_cast<float>(rotationQ) / 256.0f;
-        uint8_t opacity = idx < batch.rects.opacity.size() ? batch.rects.opacity[idx] : 255u;
-        uint8_t flags = idx < batch.rects.flags.size() ? batch.rects.flags[idx] : 0u;
-
-        uint32_t color = fetch_color(batch.rects.colorIndex, idx, 0u);
-        uint8_t cR = 0;
-        uint8_t cG = 0;
-        uint8_t cB = 0;
-        uint8_t cA = 0;
-        if (idx < rectColorR.size()) {
-          cR = rectColorR[idx];
-          cG = rectColorG[idx];
-          cB = rectColorB[idx];
-          cA = rectColorA[idx];
-        } else {
-          cR = static_cast<uint8_t>(color & 0xFFu);
-          cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
-          cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
-          cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
-        }
-
-        uint8_t gR = cR;
-        uint8_t gG = cG;
-        uint8_t gB = cB;
-        uint8_t gA = cA;
-        Vec2f gradDir{0.0f, 1.0f};
-        float gradMin = 0.0f;
-        float gradInvRange = 1.0f;
-        bool hasGradient = false;
-        if (idx < rectHasGradient.size() && rectHasGradient[idx] != 0) {
-          hasGradient = true;
-          gradDir.x = rectGradDirX[idx];
-          gradDir.y = rectGradDirY[idx];
-          gradMin = rectGradMin[idx];
-          gradInvRange = rectGradInvRange[idx];
-        } else if ((flags & RectFlagGradient) != 0u &&
-                   idx < batch.rects.gradientColor1Index.size() &&
-                   idx < batch.rects.gradientDirX.size() &&
-                   idx < batch.rects.gradientDirY.size()) {
-          hasGradient = true;
-          gradDir.x = static_cast<float>(batch.rects.gradientDirX[idx]) / 256.0f;
-          gradDir.y = static_cast<float>(batch.rects.gradientDirY[idx]) / 256.0f;
-          gradDir = normalize_or_default(gradDir, Vec2f{0.0f, 1.0f});
-          Vec2f p0{static_cast<float>(x0), static_cast<float>(y0)};
-          Vec2f p1{static_cast<float>(x1), static_cast<float>(y0)};
-          Vec2f p2{static_cast<float>(x0), static_cast<float>(y1)};
-          Vec2f p3{static_cast<float>(x1), static_cast<float>(y1)};
-          float gmin = std::min({dot(p0, gradDir), dot(p1, gradDir), dot(p2, gradDir), dot(p3, gradDir)});
-          float gmax = std::max({dot(p0, gradDir), dot(p1, gradDir), dot(p2, gradDir), dot(p3, gradDir)});
-          if (std::abs(gmax - gmin) < 1e-5f) {
-            gradMin = 0.0f;
-            gradInvRange = 1.0f;
-          } else {
-            gradMin = gmin;
-            gradInvRange = 1.0f / (gmax - gmin);
-          }
-        }
-        if (hasGradient) {
-          if (idx < rectGradColorR.size()) {
-            gR = rectGradColorR[idx];
-            gG = rectGradColorG[idx];
-            gB = rectGradColorB[idx];
-            gA = rectGradColorA[idx];
-          } else if (idx < batch.rects.gradientColor1Index.size()) {
-            uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, idx, 0u);
-            gR = static_cast<uint8_t>(g1 & 0xFFu);
-            gG = static_cast<uint8_t>((g1 >> 8) & 0xFFu);
-            gB = static_cast<uint8_t>((g1 >> 16) & 0xFFu);
-            gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
-          } else {
-            hasGradient = false;
-          }
-        } else {
-          hasGradient = false;
-        }
-        if (!hasGradient) {
-          if (opacity == 0 || cA == 0) continue;
-        } else {
-          if (opacity == 0 || (cA == 0 && gA == 0)) continue;
-        }
-
-        bool clipEnabled = false;
-        IntRect clip{};
-        if (idx < rectClipEnabled.size() && rectClipEnabled[idx] != 0u) {
-          clipEnabled = true;
-          clip.x0 = rectClipX0[idx];
-          clip.y0 = rectClipY0[idx];
-          clip.x1 = rectClipX1[idx];
-          clip.y1 = rectClipY1[idx];
-        } else if ((flags & RectFlagClip) != 0u &&
-                   idx < batch.rects.clipX0.size() &&
-                   idx < batch.rects.clipY0.size() &&
-                   idx < batch.rects.clipX1.size() &&
-                   idx < batch.rects.clipY1.size()) {
-          clipEnabled = true;
-          clip.x0 = batch.rects.clipX0[idx];
-          clip.y0 = batch.rects.clipY0[idx];
-          clip.x1 = batch.rects.clipX1[idx];
-          clip.y1 = batch.rects.clipY1[idx];
-        }
-        if (clipEnabled) {
-          if (clip.x1 <= drawX0 || clip.x0 >= drawX1 || clip.y1 <= drawY0 || clip.y0 >= drawY1) continue;
-        }
-
-        float cx = (static_cast<float>(x0) + static_cast<float>(x1)) * 0.5f;
-        float cy = (static_cast<float>(y0) + static_cast<float>(y1)) * 0.5f;
-        Vec2f rectCenter{cx, cy};
-        float cosA = 1.0f;
-        float sinA = 0.0f;
-        if (!axisAligned) {
-          cosA = std::cos(rotation);
-          sinA = std::sin(rotation);
-        }
-        Vec2f halfExtents{(static_cast<float>(x1) - static_cast<float>(x0)) * 0.5f,
-                          (static_cast<float>(y1) - static_cast<float>(y0)) * 0.5f};
-
-        IntRect clipRect{};
-        if (clipEnabled) {
-          clipRect.x0 = std::max<int32_t>(clip.x0, drawX0);
-          clipRect.y0 = std::max<int32_t>(clip.y0, drawY0);
-          clipRect.x1 = std::min<int32_t>(clip.x1, drawX1);
-          clipRect.y1 = std::min<int32_t>(clip.y1, drawY1);
-          if (clipRect.x1 <= clipRect.x0 || clipRect.y1 <= clipRect.y0) continue;
-        } else {
-          clipRect.x0 = drawX0;
-          clipRect.y0 = drawY0;
-          clipRect.x1 = drawX1;
-          clipRect.y1 = drawY1;
-        }
-
-        IntRect region{};
-        region.x0 = std::max<int32_t>(clipRect.x0, static_cast<int32_t>(tx0));
-        region.y0 = std::max<int32_t>(clipRect.y0, static_cast<int32_t>(ty0));
-        region.x1 = std::min<int32_t>(clipRect.x1, static_cast<int32_t>(tx1));
-        region.y1 = std::min<int32_t>(clipRect.y1, static_cast<int32_t>(ty1));
-        if (region.x1 <= region.x0 || region.y1 <= region.y0) continue;
-
-        bool useEdgeTable = (idx < rectEdgeOffset.size() && rectEdgeOffset[idx] != 0xFFFFFFFFu);
-        uint32_t edgeOffset = useEdgeTable ? rectEdgeOffset[idx] : 0u;
-
-        bool gradientVertical = false;
-        float gradSign = 1.0f;
-        if (hasGradient) {
-          constexpr float GradEpsilon = 1e-4f;
-          if (std::abs(gradDir.x) <= GradEpsilon &&
-              std::abs(std::abs(gradDir.y) - 1.0f) <= GradEpsilon) {
-            gradientVertical = true;
-            gradSign = gradDir.y >= 0.0f ? 1.0f : -1.0f;
-          }
-        }
-
-        bool smoothBlend = (flags & RectFlagSmoothBlend) != 0u;
-        uint8_t baseAlpha = idx < rectBaseAlpha.size() ? rectBaseAlpha[idx] : cA;
-        auto fill_opaque_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
-          if (x1f <= x0f || y1f <= y0f) return;
-          if (frontToBack) {
-            for (int32_t y = y0f; y < y1f; ++y) {
-              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
-              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
-                write_px(row, cR, cG, cB);
-              }
-            }
-          } else {
-            uint32_t packed = color;
-            for (int32_t y = y0f; y < y1f; ++y) {
-              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
-              if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
-                auto* row32 = reinterpret_cast<uint32_t*>(row);
-                std::fill(row32, row32 + (x1f - x0f), packed);
-              } else {
-                for (int32_t x = x0f; x < x1f; ++x, row += 4) {
-                  row[0] = cR;
-                  row[1] = cG;
-                  row[2] = cB;
-                  row[3] = 255u;
-                }
-              }
-            }
-          }
-        };
-        auto render_sdf_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
-          if (x1f <= x0f || y1f <= y0f) return;
-          if (hasGradient && gradientVertical) {
-            for (int32_t y = y0f; y < y1f; ++y) {
-              float dotBase = gradSign * (static_cast<float>(y) + 0.5f);
-              float t = clamp01((dotBase - gradMin) * gradInvRange);
-              uint8_t rowR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
-              uint8_t rowG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
-              uint8_t rowB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
-              uint8_t rowA = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
-              uint8_t alpha = apply_opacity(rowA, opacity);
-              if (alpha == 0) continue;
-              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
-              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
-                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
-                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-                if (!axisAligned) {
-                  local = rotate_point(local, cosA, -sinA);
-                }
-                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
-                if (dist > 1.0f) continue;
-                uint8_t cov = coverage_from_dist(dist);
-                if (cov == 0) continue;
-                uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
-                if (alphaCov == 0) continue;
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(rowR) * alphaCov + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(rowG) * alphaCov + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(rowB) * alphaCov + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, alphaCov);
-              }
-            }
-          } else if (hasGradient) {
-            for (int32_t y = y0f; y < y1f; ++y) {
-              float dotBase = gradDir.x * (static_cast<float>(x0f) + 0.5f) +
-                              gradDir.y * (static_cast<float>(y) + 0.5f);
-              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
-              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
-                float t = clamp01((dotBase - gradMin) * gradInvRange);
-                dotBase += gradDir.x;
-                uint8_t r = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
-                uint8_t g = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
-                uint8_t b = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
-                uint8_t a = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
-                uint8_t alpha = apply_opacity(a, opacity);
-                if (alpha == 0) continue;
-                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
-                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-                if (!axisAligned) {
-                  local = rotate_point(local, cosA, -sinA);
-                }
-                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
-                if (dist > 1.0f) continue;
-                uint8_t cov = coverage_from_dist(dist);
-                if (cov == 0) continue;
-                uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
-                if (alphaCov == 0) continue;
-                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(r) * alphaCov + 127u) / 255u);
-                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(g) * alphaCov + 127u) / 255u);
-                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(b) * alphaCov + 127u) / 255u);
-                blend_px(row, pmR, pmG, pmB, alphaCov);
-              }
-            }
-          } else {
-            for (int32_t y = y0f; y < y1f; ++y) {
-              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
-              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
-                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
-                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
-                if (!axisAligned) {
-                  local = rotate_point(local, cosA, -sinA);
-                }
-                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
-                if (dist > 1.0f) continue;
-                uint8_t cov = coverage_from_dist(dist);
-                if (cov == 0) continue;
-
-                uint8_t finalA = baseAlpha;
-                if (cov != 255u) {
-                  finalA = apply_coverage(baseAlpha, cov);
-                }
-                if (finalA == 0) continue;
-
-                if (smoothBlend) {
-                  uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
-                  uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
-                  uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                  blend_px(row, pmR, pmG, pmB, finalA);
-                } else if (useEdgeTable && cov != 255u && baseAlpha == 255u) {
-                  uint8_t pmR = rectEdgePmRStore[edgeOffset + cov];
-                  uint8_t pmG = rectEdgePmGStore[edgeOffset + cov];
-                  uint8_t pmB = rectEdgePmBStore[edgeOffset + cov];
-                  blend_px(row, pmR, pmG, pmB, cov);
-                } else {
-                  uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
-                  uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
-                  uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
-                  blend_px(row, pmR, pmG, pmB, finalA);
-                }
-              }
-            }
-          }
-        };
-        if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&
-            rotation == 0.0f && radius <= 0.0f) {
-          fill_opaque_region(region.x0, region.y0, region.x1, region.y1);
-          continue;
-        }
-        if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&
-            rotation == 0.0f && radius > 0.0f) {
-          float inset = radius + 0.5f;
-          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
-          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
-          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
-          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
-          if (coreX1 > coreX0 && coreY1 > coreY0) {
-            fill_opaque_region(coreX0, coreY0, coreX1, coreY1);
-            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
-            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
-            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
-            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
-            continue;
-          }
-        }
-        if (!batch.disableOpaqueRectFastPath && hasGradient && gradientVertical && !smoothBlend &&
-            rotation == 0.0f && radius > 0.0f && opacity == 255u && cA == 255u && gA == 255u) {
-          float inset = radius + 0.5f;
-          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
-          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
-          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
-          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
-          if (coreX1 > coreX0 && coreY1 > coreY0) {
-            for (int32_t y = coreY0; y < coreY1; ++y) {
-              float dotBase = gradSign * (static_cast<float>(y) + 0.5f);
-              float t = clamp01((dotBase - gradMin) * gradInvRange);
-              uint8_t rowR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
-              uint8_t rowG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
-              uint8_t rowB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
-              if (frontToBack) {
-                uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * coreX0);
-                for (int32_t x = coreX0; x < coreX1; ++x, row += 4) {
-                  write_px(row, rowR, rowG, rowB);
-                }
-              } else {
-                uint32_t packed = static_cast<uint32_t>(rowR) |
-                                  (static_cast<uint32_t>(rowG) << 8) |
-                                  (static_cast<uint32_t>(rowB) << 16) |
-                                  (255u << 24);
-                uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * coreX0);
-                if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
-                  auto* row32 = reinterpret_cast<uint32_t*>(row);
-                  std::fill(row32, row32 + (coreX1 - coreX0), packed);
-                } else {
-                  for (int32_t x = coreX0; x < coreX1; ++x, row += 4) {
-                    row[0] = rowR;
-                    row[1] = rowG;
-                    row[2] = rowB;
-                    row[3] = 255u;
-                  }
-                }
-              }
-            }
-            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
-            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
-            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
-            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
-            continue;
-          }
-        }
-        render_sdf_region(region.x0, region.y0, region.x1, region.y1);
-      } else if (type == CommandType::Circle) {
+    auto renderCircleKernel = [&](uint32_t idx,
+                                  bool hasLocalBounds,
+                                  int32_t localX0,
+                                  int32_t localY0,
+                                  int32_t localX1,
+                                  int32_t localY1) {
+      do {
         if (!circleArraysPacked) {
           if (idx >= batch.circles.centerX.size() ||
               idx >= batch.circles.centerY.size() ||
@@ -1703,11 +1312,16 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           int32_t size = uniformCircleMask ? uniformMaskSize : (r * 2 + 1);
           int32_t maskX0 = cx - r;
           int32_t maskY0 = cy - r;
-          bool fullInside = maskX0 >= static_cast<int32_t>(tx0) &&
-                            maskY0 >= static_cast<int32_t>(ty0) &&
-                            (maskX0 + size) <= static_cast<int32_t>(tx1) &&
-                            (maskY0 + size) <= static_cast<int32_t>(ty1);
-          if (fullInside && cA == 255) {
+          bool fullInsideTile = maskX0 >= static_cast<int32_t>(tx0) &&
+                                maskY0 >= static_cast<int32_t>(ty0) &&
+                                (maskX0 + size) <= static_cast<int32_t>(tx1) &&
+                                (maskY0 + size) <= static_cast<int32_t>(ty1);
+          bool fullInsideLocalBounds = !hasLocalBounds ||
+                                       (maskX0 >= localX0 &&
+                                        maskY0 >= localY0 &&
+                                        (maskX0 + size) <= localX1 &&
+                                        (maskY0 + size) <= localY1);
+          if (fullInsideTile && fullInsideLocalBounds && cA == 255) {
             if (profile) {
               ++tileRects;
               tileRectPixels += static_cast<uint64_t>(size) * static_cast<uint64_t>(size);
@@ -2147,6 +1761,407 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
             }
           }
         }
+      } while (false);
+    };
+
+    ScheduledTileCommand scheduled{};
+    while (scheduler.next(scheduled)) {
+      if (frontToBack && opaqueCount >= tileArea) break;
+      CommandType type = scheduled.type;
+      uint32_t idx = scheduled.index;
+      bool hasLocalBounds = scheduled.hasLocalBounds;
+      int32_t localX0 = scheduled.localX0;
+      int32_t localY0 = scheduled.localY0;
+      int32_t localX1 = scheduled.localX1;
+      int32_t localY1 = scheduled.localY1;
+      if (doProfile) {
+        ++tileCommands;
+      }
+
+      if (type == CommandType::Rect) {
+        if (idx >= batch.rects.x0.size() ||
+            idx >= batch.rects.y0.size() ||
+            idx >= batch.rects.x1.size() ||
+            idx >= batch.rects.y1.size() ||
+            idx >= batch.rects.colorIndex.size()) {
+          continue;
+        }
+
+        int32_t x0 = batch.rects.x0[idx];
+        int32_t y0 = batch.rects.y0[idx];
+        int32_t x1 = batch.rects.x1[idx];
+        int32_t y1 = batch.rects.y1[idx];
+
+        int32_t drawX0 = hasLocalBounds ? localX0 : x0;
+        int32_t drawY0 = hasLocalBounds ? localY0 : y0;
+        int32_t drawX1 = hasLocalBounds ? localX1 : x1;
+        int32_t drawY1 = hasLocalBounds ? localY1 : y1;
+
+        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+        if (rx1 <= rx0 || ry1 <= ry0) continue;
+        if (profile) {
+          ++tileRects;
+          tileRectPixels += static_cast<uint64_t>(rx1 - rx0) * static_cast<uint64_t>(ry1 - ry0);
+        }
+
+        uint16_t radiusQ = idx < batch.rects.radiusQ8_8.size() ? batch.rects.radiusQ8_8[idx] : 0;
+        float radius = static_cast<float>(radiusQ) / 256.0f;
+        int16_t rotationQ = idx < batch.rects.rotationQ8_8.size() ? batch.rects.rotationQ8_8[idx] : 0;
+        bool axisAligned = (rotationQ == 0);
+        float rotation = axisAligned ? 0.0f : static_cast<float>(rotationQ) / 256.0f;
+        uint8_t opacity = idx < batch.rects.opacity.size() ? batch.rects.opacity[idx] : 255u;
+        uint8_t flags = idx < batch.rects.flags.size() ? batch.rects.flags[idx] : 0u;
+
+        uint32_t color = fetch_color(batch.rects.colorIndex, idx, 0u);
+        uint8_t cR = 0;
+        uint8_t cG = 0;
+        uint8_t cB = 0;
+        uint8_t cA = 0;
+        if (idx < rectColorR.size()) {
+          cR = rectColorR[idx];
+          cG = rectColorG[idx];
+          cB = rectColorB[idx];
+          cA = rectColorA[idx];
+        } else {
+          cR = static_cast<uint8_t>(color & 0xFFu);
+          cG = static_cast<uint8_t>((color >> 8) & 0xFFu);
+          cB = static_cast<uint8_t>((color >> 16) & 0xFFu);
+          cA = static_cast<uint8_t>((color >> 24) & 0xFFu);
+        }
+
+        uint8_t gR = cR;
+        uint8_t gG = cG;
+        uint8_t gB = cB;
+        uint8_t gA = cA;
+        Vec2f gradDir{0.0f, 1.0f};
+        float gradMin = 0.0f;
+        float gradInvRange = 1.0f;
+        bool hasGradient = false;
+        if (idx < rectHasGradient.size() && rectHasGradient[idx] != 0) {
+          hasGradient = true;
+          gradDir.x = rectGradDirX[idx];
+          gradDir.y = rectGradDirY[idx];
+          gradMin = rectGradMin[idx];
+          gradInvRange = rectGradInvRange[idx];
+        } else if ((flags & RectFlagGradient) != 0u &&
+                   idx < batch.rects.gradientColor1Index.size() &&
+                   idx < batch.rects.gradientDirX.size() &&
+                   idx < batch.rects.gradientDirY.size()) {
+          hasGradient = true;
+          gradDir.x = static_cast<float>(batch.rects.gradientDirX[idx]) / 256.0f;
+          gradDir.y = static_cast<float>(batch.rects.gradientDirY[idx]) / 256.0f;
+          gradDir = normalize_or_default(gradDir, Vec2f{0.0f, 1.0f});
+          Vec2f p0{static_cast<float>(x0), static_cast<float>(y0)};
+          Vec2f p1{static_cast<float>(x1), static_cast<float>(y0)};
+          Vec2f p2{static_cast<float>(x0), static_cast<float>(y1)};
+          Vec2f p3{static_cast<float>(x1), static_cast<float>(y1)};
+          float gmin = std::min({dot(p0, gradDir), dot(p1, gradDir), dot(p2, gradDir), dot(p3, gradDir)});
+          float gmax = std::max({dot(p0, gradDir), dot(p1, gradDir), dot(p2, gradDir), dot(p3, gradDir)});
+          if (std::abs(gmax - gmin) < 1e-5f) {
+            gradMin = 0.0f;
+            gradInvRange = 1.0f;
+          } else {
+            gradMin = gmin;
+            gradInvRange = 1.0f / (gmax - gmin);
+          }
+        }
+        if (hasGradient) {
+          if (idx < rectGradColorR.size()) {
+            gR = rectGradColorR[idx];
+            gG = rectGradColorG[idx];
+            gB = rectGradColorB[idx];
+            gA = rectGradColorA[idx];
+          } else if (idx < batch.rects.gradientColor1Index.size()) {
+            uint32_t g1 = fetch_color(batch.rects.gradientColor1Index, idx, 0u);
+            gR = static_cast<uint8_t>(g1 & 0xFFu);
+            gG = static_cast<uint8_t>((g1 >> 8) & 0xFFu);
+            gB = static_cast<uint8_t>((g1 >> 16) & 0xFFu);
+            gA = static_cast<uint8_t>((g1 >> 24) & 0xFFu);
+          } else {
+            hasGradient = false;
+          }
+        } else {
+          hasGradient = false;
+        }
+        if (!hasGradient) {
+          if (opacity == 0 || cA == 0) continue;
+        } else {
+          if (opacity == 0 || (cA == 0 && gA == 0)) continue;
+        }
+
+        bool clipEnabled = false;
+        IntRect clip{};
+        if (idx < rectClipEnabled.size() && rectClipEnabled[idx] != 0u) {
+          clipEnabled = true;
+          clip.x0 = rectClipX0[idx];
+          clip.y0 = rectClipY0[idx];
+          clip.x1 = rectClipX1[idx];
+          clip.y1 = rectClipY1[idx];
+        } else if ((flags & RectFlagClip) != 0u &&
+                   idx < batch.rects.clipX0.size() &&
+                   idx < batch.rects.clipY0.size() &&
+                   idx < batch.rects.clipX1.size() &&
+                   idx < batch.rects.clipY1.size()) {
+          clipEnabled = true;
+          clip.x0 = batch.rects.clipX0[idx];
+          clip.y0 = batch.rects.clipY0[idx];
+          clip.x1 = batch.rects.clipX1[idx];
+          clip.y1 = batch.rects.clipY1[idx];
+        }
+        if (clipEnabled) {
+          if (clip.x1 <= drawX0 || clip.x0 >= drawX1 || clip.y1 <= drawY0 || clip.y0 >= drawY1) continue;
+        }
+
+        float cx = (static_cast<float>(x0) + static_cast<float>(x1)) * 0.5f;
+        float cy = (static_cast<float>(y0) + static_cast<float>(y1)) * 0.5f;
+        Vec2f rectCenter{cx, cy};
+        float cosA = 1.0f;
+        float sinA = 0.0f;
+        if (!axisAligned) {
+          cosA = std::cos(rotation);
+          sinA = std::sin(rotation);
+        }
+        Vec2f halfExtents{(static_cast<float>(x1) - static_cast<float>(x0)) * 0.5f,
+                          (static_cast<float>(y1) - static_cast<float>(y0)) * 0.5f};
+
+        IntRect clipRect{};
+        if (clipEnabled) {
+          clipRect.x0 = std::max<int32_t>(clip.x0, drawX0);
+          clipRect.y0 = std::max<int32_t>(clip.y0, drawY0);
+          clipRect.x1 = std::min<int32_t>(clip.x1, drawX1);
+          clipRect.y1 = std::min<int32_t>(clip.y1, drawY1);
+          if (clipRect.x1 <= clipRect.x0 || clipRect.y1 <= clipRect.y0) continue;
+        } else {
+          clipRect.x0 = drawX0;
+          clipRect.y0 = drawY0;
+          clipRect.x1 = drawX1;
+          clipRect.y1 = drawY1;
+        }
+
+        IntRect region{};
+        region.x0 = std::max<int32_t>(clipRect.x0, static_cast<int32_t>(tx0));
+        region.y0 = std::max<int32_t>(clipRect.y0, static_cast<int32_t>(ty0));
+        region.x1 = std::min<int32_t>(clipRect.x1, static_cast<int32_t>(tx1));
+        region.y1 = std::min<int32_t>(clipRect.y1, static_cast<int32_t>(ty1));
+        if (region.x1 <= region.x0 || region.y1 <= region.y0) continue;
+
+        bool useEdgeTable = (idx < rectEdgeOffset.size() && rectEdgeOffset[idx] != 0xFFFFFFFFu);
+        uint32_t edgeOffset = useEdgeTable ? rectEdgeOffset[idx] : 0u;
+
+        bool gradientVertical = false;
+        float gradSign = 1.0f;
+        if (hasGradient) {
+          constexpr float GradEpsilon = 1e-4f;
+          if (std::abs(gradDir.x) <= GradEpsilon &&
+              std::abs(std::abs(gradDir.y) - 1.0f) <= GradEpsilon) {
+            gradientVertical = true;
+            gradSign = gradDir.y >= 0.0f ? 1.0f : -1.0f;
+          }
+        }
+
+        bool smoothBlend = (flags & RectFlagSmoothBlend) != 0u;
+        uint8_t baseAlpha = idx < rectBaseAlpha.size() ? rectBaseAlpha[idx] : cA;
+        auto fill_opaque_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
+          if (x1f <= x0f || y1f <= y0f) return;
+          if (frontToBack) {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                write_px(row, cR, cG, cB);
+              }
+            }
+          } else {
+            uint32_t packed = color;
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
+                auto* row32 = reinterpret_cast<uint32_t*>(row);
+                std::fill(row32, row32 + (x1f - x0f), packed);
+              } else {
+                for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                  row[0] = cR;
+                  row[1] = cG;
+                  row[2] = cB;
+                  row[3] = 255u;
+                }
+              }
+            }
+          }
+        };
+        auto render_sdf_region = [&](int32_t x0f, int32_t y0f, int32_t x1f, int32_t y1f) {
+          if (x1f <= x0f || y1f <= y0f) return;
+          if (hasGradient && gradientVertical) {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              float dotBase = gradSign * (static_cast<float>(y) + 0.5f);
+              float t = clamp01((dotBase - gradMin) * gradInvRange);
+              uint8_t rowR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+              uint8_t rowG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+              uint8_t rowB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+              uint8_t rowA = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
+              uint8_t alpha = apply_opacity(rowA, opacity);
+              if (alpha == 0) continue;
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
+                if (!axisAligned) {
+                  local = rotate_point(local, cosA, -sinA);
+                }
+                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
+                if (dist > 1.0f) continue;
+                uint8_t cov = coverage_from_dist(dist);
+                if (cov == 0) continue;
+                uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
+                if (alphaCov == 0) continue;
+                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(rowR) * alphaCov + 127u) / 255u);
+                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(rowG) * alphaCov + 127u) / 255u);
+                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(rowB) * alphaCov + 127u) / 255u);
+                blend_px(row, pmR, pmG, pmB, alphaCov);
+              }
+            }
+          } else if (hasGradient) {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              float dotBase = gradDir.x * (static_cast<float>(x0f) + 0.5f) +
+                              gradDir.y * (static_cast<float>(y) + 0.5f);
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                float t = clamp01((dotBase - gradMin) * gradInvRange);
+                dotBase += gradDir.x;
+                uint8_t r = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+                uint8_t g = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+                uint8_t b = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+                uint8_t a = static_cast<uint8_t>(static_cast<float>(cA) + t * (static_cast<float>(gA) - cA));
+                uint8_t alpha = apply_opacity(a, opacity);
+                if (alpha == 0) continue;
+                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
+                if (!axisAligned) {
+                  local = rotate_point(local, cosA, -sinA);
+                }
+                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
+                if (dist > 1.0f) continue;
+                uint8_t cov = coverage_from_dist(dist);
+                if (cov == 0) continue;
+                uint8_t alphaCov = cov != 255u ? apply_coverage(alpha, cov) : alpha;
+                if (alphaCov == 0) continue;
+                uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(r) * alphaCov + 127u) / 255u);
+                uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(g) * alphaCov + 127u) / 255u);
+                uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(b) * alphaCov + 127u) / 255u);
+                blend_px(row, pmR, pmG, pmB, alphaCov);
+              }
+            }
+          } else {
+            for (int32_t y = y0f; y < y1f; ++y) {
+              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0f);
+              for (int32_t x = x0f; x < x1f; ++x, row += 4) {
+                Vec2f p{static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f};
+                Vec2f local{p.x - rectCenter.x, p.y - rectCenter.y};
+                if (!axisAligned) {
+                  local = rotate_point(local, cosA, -sinA);
+                }
+                float dist = sdf_round_rect(local, halfExtents.x, halfExtents.y, radius);
+                if (dist > 1.0f) continue;
+                uint8_t cov = coverage_from_dist(dist);
+                if (cov == 0) continue;
+
+                uint8_t finalA = baseAlpha;
+                if (cov != 255u) {
+                  finalA = apply_coverage(baseAlpha, cov);
+                }
+                if (finalA == 0) continue;
+
+                if (smoothBlend) {
+                  uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
+                  uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
+                  uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
+                  blend_px(row, pmR, pmG, pmB, finalA);
+                } else if (useEdgeTable && cov != 255u && baseAlpha == 255u) {
+                  uint8_t pmR = rectEdgePmRStore[edgeOffset + cov];
+                  uint8_t pmG = rectEdgePmGStore[edgeOffset + cov];
+                  uint8_t pmB = rectEdgePmBStore[edgeOffset + cov];
+                  blend_px(row, pmR, pmG, pmB, cov);
+                } else {
+                  uint8_t pmR = static_cast<uint8_t>((static_cast<uint16_t>(cR) * finalA + 127u) / 255u);
+                  uint8_t pmG = static_cast<uint8_t>((static_cast<uint16_t>(cG) * finalA + 127u) / 255u);
+                  uint8_t pmB = static_cast<uint8_t>((static_cast<uint16_t>(cB) * finalA + 127u) / 255u);
+                  blend_px(row, pmR, pmG, pmB, finalA);
+                }
+              }
+            }
+          }
+        };
+        if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&
+            rotation == 0.0f && radius <= 0.0f) {
+          fill_opaque_region(region.x0, region.y0, region.x1, region.y1);
+          continue;
+        }
+        if (!batch.disableOpaqueRectFastPath && !hasGradient && baseAlpha == 255u && !smoothBlend &&
+            rotation == 0.0f && radius > 0.0f) {
+          float inset = radius + 0.5f;
+          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
+          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
+          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
+          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
+          if (coreX1 > coreX0 && coreY1 > coreY0) {
+            fill_opaque_region(coreX0, coreY0, coreX1, coreY1);
+            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
+            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
+            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
+            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
+            continue;
+          }
+        }
+        if (!batch.disableOpaqueRectFastPath && hasGradient && gradientVertical && !smoothBlend &&
+            rotation == 0.0f && radius > 0.0f && opacity == 255u && cA == 255u && gA == 255u) {
+          float inset = radius + 0.5f;
+          int32_t coreX0 = std::max(region.x0, static_cast<int32_t>(std::ceil(static_cast<float>(x0) + inset)));
+          int32_t coreY0 = std::max(region.y0, static_cast<int32_t>(std::ceil(static_cast<float>(y0) + inset)));
+          int32_t coreX1 = std::min(region.x1, static_cast<int32_t>(std::floor(static_cast<float>(x1) - inset)));
+          int32_t coreY1 = std::min(region.y1, static_cast<int32_t>(std::floor(static_cast<float>(y1) - inset)));
+          if (coreX1 > coreX0 && coreY1 > coreY0) {
+            for (int32_t y = coreY0; y < coreY1; ++y) {
+              float dotBase = gradSign * (static_cast<float>(y) + 0.5f);
+              float t = clamp01((dotBase - gradMin) * gradInvRange);
+              uint8_t rowR = static_cast<uint8_t>(static_cast<float>(cR) + t * (static_cast<float>(gR) - cR));
+              uint8_t rowG = static_cast<uint8_t>(static_cast<float>(cG) + t * (static_cast<float>(gG) - cG));
+              uint8_t rowB = static_cast<uint8_t>(static_cast<float>(cB) + t * (static_cast<float>(gB) - cB));
+              if (frontToBack) {
+                uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * coreX0);
+                for (int32_t x = coreX0; x < coreX1; ++x, row += 4) {
+                  write_px(row, rowR, rowG, rowB);
+                }
+              } else {
+                uint32_t packed = static_cast<uint32_t>(rowR) |
+                                  (static_cast<uint32_t>(rowG) << 8) |
+                                  (static_cast<uint32_t>(rowB) << 16) |
+                                  (255u << 24);
+                uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * coreX0);
+                if ((reinterpret_cast<uintptr_t>(row) % alignof(uint32_t)) == 0) {
+                  auto* row32 = reinterpret_cast<uint32_t*>(row);
+                  std::fill(row32, row32 + (coreX1 - coreX0), packed);
+                } else {
+                  for (int32_t x = coreX0; x < coreX1; ++x, row += 4) {
+                    row[0] = rowR;
+                    row[1] = rowG;
+                    row[2] = rowB;
+                    row[3] = 255u;
+                  }
+                }
+              }
+            }
+            render_sdf_region(region.x0, region.y0, region.x1, coreY0);
+            render_sdf_region(region.x0, coreY1, region.x1, region.y1);
+            render_sdf_region(region.x0, coreY0, coreX0, coreY1);
+            render_sdf_region(coreX1, coreY0, region.x1, coreY1);
+            continue;
+          }
+        }
+        render_sdf_region(region.x0, region.y0, region.x1, region.y1);
+      } else if (type == CommandType::Circle) {
+        renderCircleKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Text) {
         if (idx >= batch.text.x.size() ||
             idx >= batch.text.y.size() ||
