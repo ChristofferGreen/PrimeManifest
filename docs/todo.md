@@ -14,4 +14,5 @@
 12. [x] Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
 13. [x] Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
 14. [x] Add optimizer-side skip diagnostics reasons so culling/invalid-command drops are split from render-stage skips.
-15. Add tile-stream/premerge optimizer diagnostics so malformed tile-command drops are attributed before render dispatch.
+15. [x] Add tile-stream/premerge optimizer diagnostics so malformed tile-command drops are attributed before render dispatch.
+16. Add dedicated optimizer skip reasons for tile-local bounds sanitization vs command-data sanitization in tile streams.

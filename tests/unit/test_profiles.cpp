@@ -131,12 +131,13 @@ TEST_CASE("profile_tracks_invalid_command_data_skips") {
   RenderOptimized(target, batch, optimized);
 
   size_t rectType = static_cast<size_t>(CommandType::Rect);
-  size_t invalidDataReason = static_cast<size_t>(SkippedCommandReason::InvalidCommandData);
-  CHECK_MESSAGE(profile.skippedCommands.total >= 1, "total skipped commands recorded");
-  CHECK_MESSAGE(profile.skippedCommands.byType[rectType] >= 1, "rect skipped command counted");
-  CHECK_MESSAGE(profile.skippedCommands.byReason[invalidDataReason] >= 1, "invalid data reason counted");
-  CHECK_MESSAGE(profile.skippedCommands.byTypeAndReason[rectType][invalidDataReason] >= 1,
-                "rect+invalid-data matrix counted");
+  size_t invalidDataReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer skipped commands recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer rect skipped command counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidDataReason] >= 1, "optimizer invalid-data reason counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byTypeAndReason[rectType][invalidDataReason] >= 1,
+                "optimizer rect+invalid-data matrix counted");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
 }
 
 TEST_CASE("profile_tracks_unsupported_command_type_skips") {
@@ -178,12 +179,59 @@ TEST_CASE("profile_tracks_unsupported_command_type_skips") {
   RenderOptimized(target, batch, optimized);
 
   size_t clearType = static_cast<size_t>(CommandType::Clear);
-  size_t unsupportedReason = static_cast<size_t>(SkippedCommandReason::UnsupportedCommandType);
-  CHECK_MESSAGE(profile.skippedCommands.total >= 1, "skipped commands recorded");
-  CHECK_MESSAGE(profile.skippedCommands.byType[clearType] >= 1, "clear type skipped command counted");
-  CHECK_MESSAGE(profile.skippedCommands.byReason[unsupportedReason] >= 1, "unsupported reason counted");
-  CHECK_MESSAGE(profile.skippedCommands.byTypeAndReason[clearType][unsupportedReason] >= 1,
-                "clear+unsupported matrix counted");
+  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer skipped commands recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[clearType] >= 1, "optimizer clear type skipped counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1, "optimizer invalid reason counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byTypeAndReason[clearType][invalidReason] >= 1,
+                "optimizer clear+invalid matrix counted");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
+}
+
+TEST_CASE("premerge_tile_stream_skips_counted_in_optimizer") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  add_rect(batch, 0, 0, 8, 8, PackRGBA8(Color{180, 60, 40, 255}));
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = false;
+  batch.tileStream.offsets = {0, 2};
+  TileCommand valid{};
+  valid.type = CommandType::Rect;
+  valid.index = 0;
+  valid.order = 0;
+  valid.x = 0;
+  valid.y = 0;
+  valid.wMinus1 = 7;
+  valid.hMinus1 = 7;
+  TileCommand invalid = valid;
+  invalid.index = 77;
+  invalid.order = 1;
+  batch.tileStream.commands = {valid, invalid};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  RendererProfile profile;
+  batch.profile = &profile;
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds with malformed premerge stream");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream stays enabled");
+  RenderOptimized(target, batch, optimized);
+
+  size_t rectType = static_cast<size_t>(CommandType::Rect);
+  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer skipped premerge tile command recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer premerge rect skip counted");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1, "optimizer premerge invalid reason counted");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage counters remain zero");
 }
 
 TEST_CASE("optimizer_invalid_data_skips_are_separate") {

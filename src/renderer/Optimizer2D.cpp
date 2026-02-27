@@ -207,6 +207,64 @@ auto mapOptimizerSkipReason(CommandAnalysisSkipReason reason, SkippedCommandReas
   return false;
 }
 
+auto hasRequiredCommandData(RenderBatch const& batch, CommandType type, uint32_t index) -> bool {
+  switch (type) {
+    case CommandType::Rect:
+      return index < batch.rects.x0.size() &&
+             index < batch.rects.y0.size() &&
+             index < batch.rects.x1.size() &&
+             index < batch.rects.y1.size() &&
+             index < batch.rects.colorIndex.size();
+    case CommandType::Circle:
+      return index < batch.circles.centerX.size() &&
+             index < batch.circles.centerY.size() &&
+             index < batch.circles.radius.size() &&
+             index < batch.circles.colorIndex.size();
+    case CommandType::Text:
+      return index < batch.text.x.size() &&
+             index < batch.text.y.size() &&
+             index < batch.text.width.size() &&
+             index < batch.text.height.size() &&
+             index < batch.text.colorIndex.size() &&
+             index < batch.text.opacity.size() &&
+             index < batch.text.runIndex.size();
+    case CommandType::SetPixel:
+      return index < batch.pixels.x.size() &&
+             index < batch.pixels.y.size() &&
+             index < batch.pixels.colorIndex.size();
+    case CommandType::SetPixelA:
+      return index < batch.pixelsA.x.size() &&
+             index < batch.pixelsA.y.size() &&
+             index < batch.pixelsA.colorIndex.size() &&
+             index < batch.pixelsA.alpha.size();
+    case CommandType::Line:
+      return index < batch.lines.x0.size() &&
+             index < batch.lines.y0.size() &&
+             index < batch.lines.x1.size() &&
+             index < batch.lines.y1.size() &&
+             index < batch.lines.widthQ8_8.size() &&
+             index < batch.lines.colorIndex.size() &&
+             index < batch.lines.opacity.size();
+    case CommandType::Image:
+      return index < batch.imageDraws.x0.size() &&
+             index < batch.imageDraws.y0.size() &&
+             index < batch.imageDraws.x1.size() &&
+             index < batch.imageDraws.y1.size() &&
+             index < batch.imageDraws.srcX0.size() &&
+             index < batch.imageDraws.srcY0.size() &&
+             index < batch.imageDraws.srcX1.size() &&
+             index < batch.imageDraws.srcY1.size() &&
+             index < batch.imageDraws.imageIndex.size() &&
+             index < batch.imageDraws.tintColorIndex.size() &&
+             index < batch.imageDraws.opacity.size();
+    case CommandType::Clear:
+    case CommandType::DebugTiles:
+    case CommandType::ClearPattern:
+      return false;
+  }
+  return false;
+}
+
 struct TileGrid {
   uint32_t tilesX = 0;
   uint32_t tilesY = 0;
@@ -896,6 +954,60 @@ auto optimize_batch(RenderTarget target,
       } else {
         tileStream = &prepared.mergedTileStream;
       }
+    }
+  }
+  if (useTileStream) {
+    TileStream sanitized;
+    sanitized.enabled = true;
+    sanitized.preMerged = true;
+    sanitized.offsets.assign(tileCount + 1, 0);
+    sanitized.commands.reserve(tileStream->commands.size());
+    bool hasDrops = false;
+    for (uint32_t tileIndex = 0; tileIndex < tileCount; ++tileIndex) {
+      uint32_t start = tileStream->offsets[tileIndex];
+      uint32_t end = tileStream->offsets[tileIndex + 1];
+      sanitized.offsets[tileIndex] = static_cast<uint32_t>(sanitized.commands.size());
+      uint32_t tx = tileIndex % grid.tilesX;
+      uint32_t ty = tileIndex / grid.tilesX;
+      int32_t tileX0 = static_cast<int32_t>(tx * grid.tileSize);
+      int32_t tileY0 = static_cast<int32_t>(ty * grid.tileSize);
+      int32_t tileX1 = std::min(tileX0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(target.width));
+      int32_t tileY1 = std::min(tileY0 + static_cast<int32_t>(grid.tileSize), static_cast<int32_t>(target.height));
+      for (uint32_t i = start; i < end; ++i) {
+        auto const& cmd = tileStream->commands[i];
+        bool keep = true;
+        SkippedCommandReason reason = SkippedCommandReason::OptimizerInvalidCommandData;
+        if (!isDrawCommandType(cmd.type) || !hasRequiredCommandData(batch, cmd.type, cmd.index)) {
+          keep = false;
+          reason = SkippedCommandReason::OptimizerInvalidCommandData;
+        } else {
+          int32_t drawX0 = tileX0 + static_cast<int32_t>(cmd.x);
+          int32_t drawY0 = tileY0 + static_cast<int32_t>(cmd.y);
+          int32_t drawX1 = drawX0 + static_cast<int32_t>(cmd.wMinus1) + 1;
+          int32_t drawY1 = drawY0 + static_cast<int32_t>(cmd.hMinus1) + 1;
+          int32_t ix0 = std::max(drawX0, tileX0);
+          int32_t iy0 = std::max(drawY0, tileY0);
+          int32_t ix1 = std::min(drawX1, tileX1);
+          int32_t iy1 = std::min(drawY1, tileY1);
+          if (ix1 <= ix0 || iy1 <= iy0) {
+            keep = false;
+            reason = SkippedCommandReason::OptimizerCulledByBounds;
+          }
+        }
+        if (keep) {
+          sanitized.commands.push_back(cmd);
+        } else {
+          hasDrops = true;
+          if (profile) {
+            profile->optimizerSkippedCommands.add(cmd.type, reason);
+          }
+        }
+      }
+      sanitized.offsets[tileIndex + 1] = static_cast<uint32_t>(sanitized.commands.size());
+    }
+    if (hasDrops) {
+      prepared.generatedTileStream = std::move(sanitized);
+      tileStream = &prepared.generatedTileStream;
     }
   }
   bool useTileBuffer = useTileStream;
