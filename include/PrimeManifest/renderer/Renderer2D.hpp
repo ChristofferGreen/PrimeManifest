@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <span>
 #include <vector>
 
@@ -60,6 +61,41 @@ enum class SkippedCommandReason : uint8_t {
 };
 
 constexpr size_t SkippedCommandReasonCount = static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamCulledByLocalBounds) + 1u;
+
+constexpr auto skippedCommandReasonName(SkippedCommandReason reason) -> std::string_view {
+  switch (reason) {
+    case SkippedCommandReason::InvalidTileReference:
+      return "InvalidTileReference";
+    case SkippedCommandReason::MissingAnalyzedCommand:
+      return "MissingAnalyzedCommand";
+    case SkippedCommandReason::InactiveAnalyzedCommand:
+      return "InactiveAnalyzedCommand";
+    case SkippedCommandReason::InvalidLocalBounds:
+      return "InvalidLocalBounds";
+    case SkippedCommandReason::InvalidCommandData:
+      return "InvalidCommandData";
+    case SkippedCommandReason::UnsupportedCommandType:
+      return "UnsupportedCommandType";
+    case SkippedCommandReason::OptimizerInvalidCommandData:
+      return "OptimizerInvalidCommandData";
+    case SkippedCommandReason::OptimizerCulledByBounds:
+      return "OptimizerCulledByBounds";
+    case SkippedCommandReason::OptimizerCulledByAlpha:
+      return "OptimizerCulledByAlpha";
+    case SkippedCommandReason::OptimizerTileStreamInvalidCommandData:
+      return "OptimizerTileStreamInvalidCommandData";
+    case SkippedCommandReason::OptimizerTileStreamCulledByLocalBounds:
+      return "OptimizerTileStreamCulledByLocalBounds";
+  }
+  return "UnknownSkippedCommandReason";
+}
+
+constexpr auto skippedCommandReasonName(size_t reasonIndex) -> std::string_view {
+  if (reasonIndex >= SkippedCommandReasonCount) {
+    return "OutOfRangeSkippedCommandReason";
+  }
+  return skippedCommandReasonName(static_cast<SkippedCommandReason>(reasonIndex));
+}
 
 struct SkippedCommandDiagnostics {
   uint64_t total = 0;
