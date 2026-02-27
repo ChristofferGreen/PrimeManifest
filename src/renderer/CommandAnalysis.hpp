@@ -17,6 +17,14 @@ struct PrimitiveBounds {
   bool valid = false;
 };
 
+enum class CommandAnalysisSkipReason : uint8_t {
+  None = 0,
+  InvalidCommandData = 1,
+  CulledByBounds = 2,
+  CulledByAlpha = 3,
+  UnsupportedCommandType = 4,
+};
+
 struct AnalyzedCommand {
   CommandType type{CommandType::Rect};
   uint32_t index = 0;
@@ -32,6 +40,7 @@ struct AnalyzedCommand {
   uint32_t ty0 = 0;
   uint32_t tx1 = 0;
   uint32_t ty1 = 0;
+  CommandAnalysisSkipReason skipReason = CommandAnalysisSkipReason::None;
   bool valid = false;
 };
 

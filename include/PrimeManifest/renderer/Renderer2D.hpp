@@ -52,9 +52,12 @@ enum class SkippedCommandReason : uint8_t {
   InvalidLocalBounds = 3,
   InvalidCommandData = 4,
   UnsupportedCommandType = 5,
+  OptimizerInvalidCommandData = 6,
+  OptimizerCulledByBounds = 7,
+  OptimizerCulledByAlpha = 8,
 };
 
-constexpr size_t SkippedCommandReasonCount = static_cast<size_t>(SkippedCommandReason::UnsupportedCommandType) + 1u;
+constexpr size_t SkippedCommandReasonCount = static_cast<size_t>(SkippedCommandReason::OptimizerCulledByAlpha) + 1u;
 
 struct SkippedCommandDiagnostics {
   uint64_t total = 0;
@@ -219,6 +222,7 @@ struct RendererProfile {
   uint64_t renderedRectPixels = 0;
   uint64_t renderedTextPixels = 0;
   uint64_t renderedTileBufferPixels = 0;
+  SkippedCommandDiagnostics optimizerSkippedCommands;
   SkippedCommandDiagnostics skippedCommands;
   std::vector<uint64_t> workerNs;
   std::vector<uint32_t> workerTiles;
@@ -249,6 +253,7 @@ struct RendererProfile {
     renderedRectPixels = 0;
     renderedTextPixels = 0;
     renderedTileBufferPixels = 0;
+    optimizerSkippedCommands.clear();
     skippedCommands.clear();
     workerNs.clear();
     workerTiles.clear();

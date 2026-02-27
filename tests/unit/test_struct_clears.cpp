@@ -41,6 +41,11 @@ TEST_CASE("renderer_profile_clear_resets") {
   profile.renderNs = 1;
   profile.buildNs = 2;
   profile.tileCount = 3;
+  profile.optimizerSkippedCommands.total = 7;
+  profile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] = 5;
+  profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerCulledByBounds)] = 2;
+  profile.optimizerSkippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Rect)]
+                                             [static_cast<size_t>(SkippedCommandReason::OptimizerCulledByBounds)] = 2;
   profile.skippedCommands.total = 6;
   profile.skippedCommands.unknownType = 2;
   profile.skippedCommands.byType[static_cast<size_t>(CommandType::Rect)] = 4;
@@ -55,6 +60,14 @@ TEST_CASE("renderer_profile_clear_resets") {
   CHECK_MESSAGE(profile.renderNs == 0, "renderNs reset");
   CHECK_MESSAGE(profile.buildNs == 0, "buildNs reset");
   CHECK_MESSAGE(profile.tileCount == 0, "tileCount reset");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total == 0, "optimizer skipped total reset");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 0,
+                "optimizer skipped by-type reset");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerCulledByBounds)] == 0,
+                "optimizer skipped by-reason reset");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Rect)]
+                                                        [static_cast<size_t>(SkippedCommandReason::OptimizerCulledByBounds)] == 0,
+                "optimizer skipped matrix reset");
   CHECK_MESSAGE(profile.skippedCommands.total == 0, "skipped command total reset");
   CHECK_MESSAGE(profile.skippedCommands.unknownType == 0, "skipped command unknown type reset");
   CHECK_MESSAGE(profile.skippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 0,

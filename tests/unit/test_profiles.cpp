@@ -186,4 +186,59 @@ TEST_CASE("profile_tracks_unsupported_command_type_skips") {
                 "clear+unsupported matrix counted");
 }
 
+TEST_CASE("optimizer_invalid_data_skips_are_separate") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  add_clear(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  add_rect(batch, 0, 0, 8, 8, PackRGBA8(Color{200, 80, 30, 255}));
+  batch.commands.push_back(RenderCommand{CommandType::Rect, 999});
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  RendererProfile profile;
+  batch.profile = &profile;
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  RenderOptimized(target, batch, optimized);
+
+  size_t rectType = static_cast<size_t>(CommandType::Rect);
+  size_t invalidReason = static_cast<size_t>(SkippedCommandReason::OptimizerInvalidCommandData);
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer recorded skipped command");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer by-type count recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[invalidReason] >= 1, "optimizer invalid-data reason recorded");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage skips remain separate");
+}
+
+TEST_CASE("optimizer_bounds_cull_skips_are_separate") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  add_clear(batch, PackRGBA8(Color{5, 10, 15, 255}));
+  add_rect(batch, -20, -20, -10, -10, PackRGBA8(Color{220, 40, 10, 255}));
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  RendererProfile profile;
+  batch.profile = &profile;
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  RenderOptimized(target, batch, optimized);
+
+  size_t rectType = static_cast<size_t>(CommandType::Rect);
+  size_t culledReason = static_cast<size_t>(SkippedCommandReason::OptimizerCulledByBounds);
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.total >= 1, "optimizer cull recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byType[rectType] >= 1, "optimizer by-type count recorded");
+  CHECK_MESSAGE(profile.optimizerSkippedCommands.byReason[culledReason] >= 1, "optimizer bounds-cull reason recorded");
+  CHECK_MESSAGE(profile.skippedCommands.total == 0, "render-stage skips remain separate");
+}
+
 TEST_SUITE_END();

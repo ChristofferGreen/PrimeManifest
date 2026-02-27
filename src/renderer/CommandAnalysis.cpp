@@ -62,6 +62,81 @@ void finalizeAnalyzedCommand(AnalyzedCommand& analyzed, CommandAnalysisConfig co
   analyzed.valid = true;
 }
 
+auto isDrawCommandType(CommandType type) -> bool {
+  switch (type) {
+    case CommandType::Rect:
+    case CommandType::Circle:
+    case CommandType::Text:
+    case CommandType::SetPixel:
+    case CommandType::SetPixelA:
+    case CommandType::Line:
+    case CommandType::Image:
+      return true;
+    case CommandType::Clear:
+    case CommandType::DebugTiles:
+    case CommandType::ClearPattern:
+      return false;
+  }
+  return false;
+}
+
+auto hasRequiredCommandData(RenderBatch const& batch, CommandType type, uint32_t index) -> bool {
+  switch (type) {
+    case CommandType::Rect:
+      return index < batch.rects.x0.size() &&
+             index < batch.rects.y0.size() &&
+             index < batch.rects.x1.size() &&
+             index < batch.rects.y1.size() &&
+             index < batch.rects.colorIndex.size();
+    case CommandType::Circle:
+      return index < batch.circles.centerX.size() &&
+             index < batch.circles.centerY.size() &&
+             index < batch.circles.radius.size() &&
+             index < batch.circles.colorIndex.size();
+    case CommandType::Text:
+      return index < batch.text.x.size() &&
+             index < batch.text.y.size() &&
+             index < batch.text.width.size() &&
+             index < batch.text.height.size() &&
+             index < batch.text.colorIndex.size() &&
+             index < batch.text.opacity.size();
+    case CommandType::SetPixel:
+      return index < batch.pixels.x.size() &&
+             index < batch.pixels.y.size() &&
+             index < batch.pixels.colorIndex.size();
+    case CommandType::SetPixelA:
+      return index < batch.pixelsA.x.size() &&
+             index < batch.pixelsA.y.size() &&
+             index < batch.pixelsA.colorIndex.size() &&
+             index < batch.pixelsA.alpha.size();
+    case CommandType::Line:
+      return index < batch.lines.x0.size() &&
+             index < batch.lines.y0.size() &&
+             index < batch.lines.x1.size() &&
+             index < batch.lines.y1.size() &&
+             index < batch.lines.widthQ8_8.size() &&
+             index < batch.lines.colorIndex.size() &&
+             index < batch.lines.opacity.size();
+    case CommandType::Image:
+      return index < batch.imageDraws.x0.size() &&
+             index < batch.imageDraws.y0.size() &&
+             index < batch.imageDraws.x1.size() &&
+             index < batch.imageDraws.y1.size() &&
+             index < batch.imageDraws.srcX0.size() &&
+             index < batch.imageDraws.srcY0.size() &&
+             index < batch.imageDraws.srcX1.size() &&
+             index < batch.imageDraws.srcY1.size() &&
+             index < batch.imageDraws.imageIndex.size() &&
+             index < batch.imageDraws.tintColorIndex.size() &&
+             index < batch.imageDraws.opacity.size();
+    case CommandType::Clear:
+    case CommandType::DebugTiles:
+    case CommandType::ClearPattern:
+      return false;
+  }
+  return false;
+}
+
 } // namespace
 
 void computePrimitiveBounds(RenderBatch const& batch,
@@ -254,6 +329,16 @@ void analyzeCommands(RenderBatch const& batch,
     analyzed.type = cmd.type;
     analyzed.index = cmd.index;
     analyzed.order = order;
+    if (!isDrawCommandType(cmd.type)) {
+      analyzed.skipReason = CommandAnalysisSkipReason::UnsupportedCommandType;
+      out[order] = analyzed;
+      continue;
+    }
+    if (!hasRequiredCommandData(batch, cmd.type, cmd.index)) {
+      analyzed.skipReason = CommandAnalysisSkipReason::InvalidCommandData;
+      out[order] = analyzed;
+      continue;
+    }
 
     PrimitiveBounds bounds{};
     computePrimitiveBounds(batch,
@@ -263,6 +348,7 @@ void analyzeCommands(RenderBatch const& batch,
                            config.targetHeight,
                            bounds);
     if (!bounds.valid) {
+      analyzed.skipReason = CommandAnalysisSkipReason::CulledByBounds;
       out[order] = analyzed;
       continue;
     }
@@ -274,12 +360,14 @@ void analyzeCommands(RenderBatch const& batch,
         uint8_t flags = cmd.index < batch.rects.flags.size() ? batch.rects.flags[cmd.index] : 0u;
         uint8_t opacity = cmd.index < batch.rects.opacity.size() ? batch.rects.opacity[cmd.index] : 255u;
         if (opacity == 0u) {
+          analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
           out[order] = analyzed;
           continue;
         }
 
         bool hasGradient = (flags & RectFlagGradient) != 0u;
         if (hasGradient && cmd.index >= batch.rects.gradientColor1Index.size()) {
+          analyzed.skipReason = CommandAnalysisSkipReason::InvalidCommandData;
           out[order] = analyzed;
           continue;
         }
@@ -288,11 +376,13 @@ void analyzeCommands(RenderBatch const& batch,
           uint32_t color = fetchColor(batch, batch.rects.colorIndex, cmd.index, 0u);
           colorAlpha = static_cast<uint8_t>((color >> 24) & 0xFFu);
           if (opacity != 255u && combinedAlphaIsZero(colorAlpha, opacity)) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
           if (!hasGradient) {
             if (colorAlpha == 0u) {
+              analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
               out[order] = analyzed;
               continue;
             }
@@ -300,6 +390,7 @@ void analyzeCommands(RenderBatch const& batch,
             uint32_t gradientColor = fetchColor(batch, batch.rects.gradientColor1Index, cmd.index, 0u);
             uint8_t gradientAlpha = static_cast<uint8_t>((gradientColor >> 24) & 0xFFu);
             if (colorAlpha == 0u && gradientAlpha == 0u) {
+              analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
               out[order] = analyzed;
               continue;
             }
@@ -314,6 +405,7 @@ void analyzeCommands(RenderBatch const& batch,
           uint32_t color = fetchColor(batch, batch.circles.colorIndex, cmd.index, 0u);
           colorAlpha = static_cast<uint8_t>((color >> 24) & 0xFFu);
           if (colorAlpha == 0u) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
@@ -325,6 +417,7 @@ void analyzeCommands(RenderBatch const& batch,
       case CommandType::Text: {
         uint8_t opacity = batch.text.opacity[cmd.index];
         if (opacity == 0u) {
+          analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
           out[order] = analyzed;
           continue;
         }
@@ -332,10 +425,12 @@ void analyzeCommands(RenderBatch const& batch,
           uint32_t color = fetchColor(batch, batch.text.colorIndex, cmd.index, 0u);
           colorAlpha = static_cast<uint8_t>((color >> 24) & 0xFFu);
           if (opacity != 255u && combinedAlphaIsZero(colorAlpha, opacity)) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
           if (opacity == 255u && colorAlpha == 0u) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
@@ -356,6 +451,7 @@ void analyzeCommands(RenderBatch const& batch,
       case CommandType::SetPixelA: {
         uint8_t alpha = batch.pixelsA.alpha[cmd.index];
         if (alpha == 0u) {
+          analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
           out[order] = analyzed;
           continue;
         }
@@ -364,10 +460,12 @@ void analyzeCommands(RenderBatch const& batch,
           colorAlpha = static_cast<uint8_t>((color >> 24) & 0xFFu);
           if (alpha != 255u) {
             if (combinedAlphaIsZero(colorAlpha, alpha)) {
+              analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
               out[order] = analyzed;
               continue;
             }
           } else if (colorAlpha == 0u) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
@@ -380,6 +478,7 @@ void analyzeCommands(RenderBatch const& batch,
         uint16_t widthQ = batch.lines.widthQ8_8[cmd.index];
         uint8_t opacity = batch.lines.opacity[cmd.index];
         if (widthQ == 0u || opacity == 0u) {
+          analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
           out[order] = analyzed;
           continue;
         }
@@ -388,10 +487,12 @@ void analyzeCommands(RenderBatch const& batch,
           colorAlpha = static_cast<uint8_t>((color >> 24) & 0xFFu);
           if (opacity != 255u) {
             if (combinedAlphaIsZero(colorAlpha, opacity)) {
+              analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
               out[order] = analyzed;
               continue;
             }
           } else if (colorAlpha == 0u) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
@@ -403,6 +504,7 @@ void analyzeCommands(RenderBatch const& batch,
       case CommandType::Image: {
         uint8_t opacity = batch.imageDraws.opacity[cmd.index];
         if (opacity == 0u) {
+          analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
           out[order] = analyzed;
           continue;
         }
@@ -411,10 +513,12 @@ void analyzeCommands(RenderBatch const& batch,
           colorAlpha = static_cast<uint8_t>((color >> 24) & 0xFFu);
           if (opacity != 255u) {
             if (combinedAlphaIsZero(colorAlpha, opacity)) {
+              analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
               out[order] = analyzed;
               continue;
             }
           } else if (colorAlpha == 0u) {
+            analyzed.skipReason = CommandAnalysisSkipReason::CulledByAlpha;
             out[order] = analyzed;
             continue;
           }
@@ -427,6 +531,7 @@ void analyzeCommands(RenderBatch const& batch,
       case CommandType::ClearPattern:
       case CommandType::DebugTiles:
       default:
+        analyzed.skipReason = CommandAnalysisSkipReason::UnsupportedCommandType;
         break;
     }
     if (!include) {

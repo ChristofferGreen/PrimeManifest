@@ -171,6 +171,42 @@ auto choose_tile_size(RenderBatch const& batch, CommandTypeCounts const& counts)
   return tileSize;
 }
 
+auto isDrawCommandType(CommandType type) -> bool {
+  switch (type) {
+    case CommandType::Rect:
+    case CommandType::Circle:
+    case CommandType::Text:
+    case CommandType::SetPixel:
+    case CommandType::SetPixelA:
+    case CommandType::Line:
+    case CommandType::Image:
+      return true;
+    case CommandType::Clear:
+    case CommandType::DebugTiles:
+    case CommandType::ClearPattern:
+      return false;
+  }
+  return false;
+}
+
+auto mapOptimizerSkipReason(CommandAnalysisSkipReason reason, SkippedCommandReason& out) -> bool {
+  switch (reason) {
+    case CommandAnalysisSkipReason::InvalidCommandData:
+      out = SkippedCommandReason::OptimizerInvalidCommandData;
+      return true;
+    case CommandAnalysisSkipReason::CulledByBounds:
+      out = SkippedCommandReason::OptimizerCulledByBounds;
+      return true;
+    case CommandAnalysisSkipReason::CulledByAlpha:
+      out = SkippedCommandReason::OptimizerCulledByAlpha;
+      return true;
+    case CommandAnalysisSkipReason::None:
+    case CommandAnalysisSkipReason::UnsupportedCommandType:
+      return false;
+  }
+  return false;
+}
+
 struct TileGrid {
   uint32_t tilesX = 0;
   uint32_t tilesY = 0;
@@ -1064,19 +1100,40 @@ auto optimize_batch(RenderTarget target,
         mark_active(tileStream->commands);
       } else {
         auto binStart = profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        auto recordAnalyzedSkips = [&](std::vector<AnalyzedCommand> const& analyzedCommands) {
+          if (!profile) return;
+          for (auto const& analyzed : analyzedCommands) {
+            if (analyzed.valid || !isDrawCommandType(analyzed.type)) continue;
+            SkippedCommandReason profileReason{};
+            if (!mapOptimizerSkipReason(analyzed.skipReason, profileReason)) continue;
+            profile->optimizerSkippedCommands.add(analyzed.type, profileReason);
+          }
+        };
         tileCounts.assign(tileCount, 0);
         if (useCircleRefs) {
-        size_t circleCount = std::min({batch.circles.centerX.size(),
-                                       batch.circles.centerY.size(),
-                                       batch.circles.radius.size(),
-                                       batch.circles.colorIndex.size()});
-        auto const* centerX = batch.circles.centerX.data();
-        auto const* centerY = batch.circles.centerY.data();
-        auto const* radius = batch.circles.radius.data();
-        int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
-        int32_t maxX = static_cast<int32_t>(target.width);
-        int32_t maxY = static_cast<int32_t>(target.height);
-        auto bin_circles = [&](auto&& compute_span) {
+          if (profile) {
+            CommandAnalysisConfig analysisConfig{};
+            analysisConfig.targetWidth = target.width;
+            analysisConfig.targetHeight = target.height;
+            analysisConfig.tileSize = grid.tileSize;
+            analysisConfig.tilePow2 = tilePow2;
+            analysisConfig.tileShift = tileShift;
+            analysisConfig.paletteOpaque = paletteOpaque;
+            std::vector<AnalyzedCommand> analyzedCommands;
+            analyzeCommands(batch, analysisConfig, analyzedCommands);
+            recordAnalyzedSkips(analyzedCommands);
+          }
+          size_t circleCount = std::min({batch.circles.centerX.size(),
+                                         batch.circles.centerY.size(),
+                                         batch.circles.radius.size(),
+                                         batch.circles.colorIndex.size()});
+          auto const* centerX = batch.circles.centerX.data();
+          auto const* centerY = batch.circles.centerY.data();
+          auto const* radius = batch.circles.radius.data();
+          int32_t circlePad = static_cast<int32_t>(batch.circleBoundsPad);
+          int32_t maxX = static_cast<int32_t>(target.width);
+          int32_t maxY = static_cast<int32_t>(target.height);
+          auto bin_circles = [&](auto&& compute_span) {
           for (uint32_t i = 0; i < circleCount; ++i) {
             uint32_t tx0 = 0;
             uint32_t ty0 = 0;
@@ -1121,7 +1178,7 @@ auto optimize_batch(RenderTarget target,
             }
           }
         };
-        auto bin_circles_parallel = [&](auto&& compute_span) {
+          auto bin_circles_parallel = [&](auto&& compute_span) {
           constexpr size_t kParallelCircleThreshold = 50000u;
           auto& pool = binning_pool();
           uint32_t threadCount =
@@ -1214,8 +1271,8 @@ auto optimize_batch(RenderTarget target,
           });
         };
 
-        if (paletteOpaque) {
-          if (circleRadiusUniform) {
+          if (paletteOpaque) {
+            if (circleRadiusUniform) {
             int32_t r = static_cast<int32_t>(circleRadiusValue);
             int32_t rPad = r + circlePad;
             int32_t rPadPlus = rPad + 1;
@@ -1274,8 +1331,8 @@ auto optimize_batch(RenderTarget target,
               };
               bin_circles_parallel(compute_span);
             }
-          } else {
-            auto compute_span = [&](uint32_t i,
+            } else {
+              auto compute_span = [&](uint32_t i,
                                     uint32_t& tx0,
                                     uint32_t& ty0,
                                     uint32_t& tx1,
@@ -1308,10 +1365,10 @@ auto optimize_batch(RenderTarget target,
               }
               return true;
             };
-            bin_circles_parallel(compute_span);
-          }
-        } else {
-          if (circleRadiusUniform) {
+              bin_circles_parallel(compute_span);
+            }
+          } else {
+            if (circleRadiusUniform) {
             int32_t r = static_cast<int32_t>(circleRadiusValue);
             int32_t rPad = r + circlePad;
             int32_t rPadPlus = rPad + 1;
@@ -1351,8 +1408,8 @@ auto optimize_batch(RenderTarget target,
               return true;
             };
             bin_circles_parallel(compute_span);
-          } else {
-            auto compute_span = [&](uint32_t i,
+            } else {
+              auto compute_span = [&](uint32_t i,
                                     uint32_t& tx0,
                                     uint32_t& ty0,
                                     uint32_t& tx1,
@@ -1388,9 +1445,9 @@ auto optimize_batch(RenderTarget target,
               }
               return true;
             };
-            bin_circles_parallel(compute_span);
+              bin_circles_parallel(compute_span);
+            }
           }
-        }
       } else {
         cmdTiles.resize(batch.commands.size());
         cmdActive.assign(batch.commands.size(), 0);
@@ -1405,6 +1462,7 @@ auto optimize_batch(RenderTarget target,
 
         std::vector<AnalyzedCommand> analyzedCommands;
         analyzeCommands(batch, analysisConfig, analyzedCommands);
+        recordAnalyzedSkips(analyzedCommands);
 
         for (uint32_t i = 0; i < analyzedCommands.size(); ++i) {
           auto const& analyzed = analyzedCommands[i];
