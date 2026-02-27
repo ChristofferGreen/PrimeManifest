@@ -22,6 +22,7 @@ function(pm_require_cxx23 target)
 endfunction()
 
 set(PRIMEMANIFEST_SOURCES
+  src/renderer/BatchBuilder.cpp
   src/renderer/CommandAnalysis.cpp
   src/renderer/Optimizer2D.cpp
   src/renderer/Renderer2D.cpp
@@ -52,6 +53,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
 
   add_executable(PrimeManifest_tests
     tests/unit/test_batch.cpp
+    tests/unit/test_batch_builder.cpp
     tests/unit/test_bitmap_font.cpp
     tests/unit/test_clear.cpp
     tests/unit/test_circle.cpp
@@ -98,6 +100,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
   pm_require_cxx23(PrimeManifest_tests)
   set(PrimeManifestTestSuites
     primemanifest.batch
+    primemanifest.batch_builder
     primemanifest.bitmap_font
     primemanifest.circle
     primemanifest.clear

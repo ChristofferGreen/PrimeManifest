@@ -554,6 +554,8 @@ struct PaletteStore {
 };
 
 struct RenderBatch {
+  // Advanced/unsafe: direct writes to raw stores bypass typed append/build APIs and
+  // can violate invariants. Prefer APIs in PrimeManifest/renderer/BatchBuilder.hpp.
   std::vector<RenderCommand> commands;
   ClearStore clear;
   ClearPatternStore clearPattern;
