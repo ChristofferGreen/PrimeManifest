@@ -7,6 +7,7 @@
 5. [x] Add cross-path equivalence tests: same scene output for `tileStream on/off`, `autoTileStream on/off`, and premerged/manual streams.
 6. [x] Add malformed-batch robustness tests to verify deterministic behavior (fail-fast in strict mode, safe skip in permissive mode).
 7. [x] Refactor `RenderOptimizedImpl` phase 1 into a tile command scheduler/orchestrator layer plus extracted `SetPixel`/`SetPixelA` kernels.
-8. Complete `RenderOptimizedImpl` per-primitive kernel extraction for rect/circle/text/line/image paths and finish scheduler cleanup.
-9. Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
-10. Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.
+8. [x] Refactor `RenderOptimizedImpl` phase 2 by extracting `Line`/`Image` kernels and routing them through scheduler-based dispatch.
+9. Complete `RenderOptimizedImpl` kernel extraction for `Rect`/`Circle`/`Text` paths and finish dispatch cleanup.
+10. Refactor `optimize_batch` into explicit pipeline stages (scan, binning, cache build, render-tile selection) with clear interfaces.
+11. Add skipped-command diagnostics counters (by command type and reason) into `RendererProfile` for runtime observability.

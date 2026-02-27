@@ -257,4 +257,85 @@ TEST_CASE("tile_stream_set_pixel_a_uses_local_bounds") {
   CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == 0u, "source store coordinate remains untouched");
 }
 
+TEST_CASE("tile_stream_line_respects_local_clip_bounds") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+  add_line(batch, 0, 0, 7, 0, 1.0f, PackRGBA8(Color{255, 0, 0, 255}), 255);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Line;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 0;
+  cmd.y = 5;
+  cmd.wMinus1 = 7;
+  cmd.hMinus1 = 2;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 0) == 0u, "line outside local clip bounds is skipped");
+}
+
+TEST_CASE("tile_stream_image_respects_local_clip_bounds") {
+  RenderBatch batch;
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+
+  uint32_t imageIdx = add_image_asset(batch, 1, 1, {PackRGBA8(Color{255, 0, 0, 255})});
+  add_image_draw(batch,
+                 imageIdx,
+                 0,
+                 0,
+                 4,
+                 4,
+                 0,
+                 0,
+                 1,
+                 1,
+                 PackRGBA8(Color{255, 255, 255, 255}),
+                 255);
+
+  batch.tileStream.enabled = true;
+  batch.tileStream.preMerged = true;
+  batch.tileStream.offsets = {0, 1};
+  TileCommand cmd{};
+  cmd.type = CommandType::Image;
+  cmd.index = 0;
+  cmd.order = 0;
+  cmd.x = 4;
+  cmd.y = 4;
+  cmd.wMinus1 = 3;
+  cmd.hMinus1 = 3;
+  batch.tileStream.commands = {cmd};
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(optimized.useTileStream, "tile stream path enabled");
+
+  RenderOptimized(target, batch, optimized);
+
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 1) == 0u, "image outside local clip bounds is skipped");
+}
+
 TEST_SUITE_END();

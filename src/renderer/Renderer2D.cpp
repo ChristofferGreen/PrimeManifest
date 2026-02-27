@@ -922,6 +922,347 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                                    tileIndex,
                                    tx0,
                                    ty0);
+    auto renderLineKernel = [&](uint32_t idx,
+                                bool hasLocalBounds,
+                                int32_t localX0,
+                                int32_t localY0,
+                                int32_t localX1,
+                                int32_t localY1) {
+      if (idx >= batch.lines.x0.size() ||
+          idx >= batch.lines.y0.size() ||
+          idx >= batch.lines.x1.size() ||
+          idx >= batch.lines.y1.size() ||
+          idx >= batch.lines.widthQ8_8.size() ||
+          idx >= batch.lines.colorIndex.size() ||
+          idx >= batch.lines.opacity.size()) {
+        return;
+      }
+      uint16_t widthQ = batch.lines.widthQ8_8[idx];
+      if (widthQ == 0) return;
+      uint8_t opacity = batch.lines.opacity[idx];
+      if (opacity == 0) return;
+      uint8_t paletteIndex = batch.lines.colorIndex[idx];
+      if (!paletteFull && paletteIndex >= batch.palette.size) return;
+      uint8_t cR = paletteR[paletteIndex];
+      uint8_t cG = paletteG[paletteIndex];
+      uint8_t cB = paletteB[paletteIndex];
+      uint8_t cA = paletteA[paletteIndex];
+      uint8_t baseAlpha = apply_opacity(cA, opacity);
+      if (baseAlpha == 0) return;
+
+      float fx0 = static_cast<float>(batch.lines.x0[idx]);
+      float fy0 = static_cast<float>(batch.lines.y0[idx]);
+      float fx1 = static_cast<float>(batch.lines.x1[idx]);
+      float fy1 = static_cast<float>(batch.lines.y1[idx]);
+      float widthPx = static_cast<float>(widthQ) / 256.0f;
+      float radius = widthPx * 0.5f;
+      float pad = radius + 1.0f;
+      int32_t boundsX0 = static_cast<int32_t>(std::floor(std::min(fx0, fx1) - pad));
+      int32_t boundsY0 = static_cast<int32_t>(std::floor(std::min(fy0, fy1) - pad));
+      int32_t boundsX1 = static_cast<int32_t>(std::ceil(std::max(fx0, fx1) + pad));
+      int32_t boundsY1 = static_cast<int32_t>(std::ceil(std::max(fy0, fy1) + pad));
+      int32_t drawX0 = hasLocalBounds ? localX0 : boundsX0;
+      int32_t drawY0 = hasLocalBounds ? localY0 : boundsY0;
+      int32_t drawX1 = hasLocalBounds ? localX1 : boundsX1;
+      int32_t drawY1 = hasLocalBounds ? localY1 : boundsY1;
+      int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+      int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+      int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+      int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+      if (rx1 <= rx0 || ry1 <= ry0) return;
+
+      float dx = fx1 - fx0;
+      float dy = fy1 - fy0;
+      if (std::abs(dx) <= 1e-4f || std::abs(dy) <= 1e-4f) {
+        bool horizontal = std::abs(dy) <= 1e-4f;
+        float minX = std::min(fx0, fx1);
+        float maxX = std::max(fx0, fx1);
+        float minY = std::min(fy0, fy1);
+        float maxY = std::max(fy0, fy1);
+
+        int32_t xStart = static_cast<int32_t>(std::ceil(minX - 0.5f));
+        int32_t xEnd = static_cast<int32_t>(std::floor(maxX - 0.5f));
+        int32_t yStart = static_cast<int32_t>(std::ceil(minY - 0.5f));
+        int32_t yEnd = static_cast<int32_t>(std::floor(maxY - 0.5f));
+        if (horizontal) {
+          float centerY = fy0;
+          yStart = static_cast<int32_t>(std::ceil(centerY - radius - 0.5f));
+          yEnd = static_cast<int32_t>(std::floor(centerY + radius - 0.5f));
+        } else {
+          float centerX = fx0;
+          xStart = static_cast<int32_t>(std::ceil(centerX - radius - 0.5f));
+          xEnd = static_cast<int32_t>(std::floor(centerX + radius - 0.5f));
+        }
+
+        int32_t x0i = std::max<int32_t>(xStart, rx0);
+        int32_t x1i = std::min<int32_t>(xEnd, rx1 - 1);
+        int32_t y0i = std::max<int32_t>(yStart, ry0);
+        int32_t y1i = std::min<int32_t>(yEnd, ry1 - 1);
+        if (x0i <= x1i && y0i <= y1i) {
+          uint8_t pmR = mul_div_255(cR, baseAlpha);
+          uint8_t pmG = mul_div_255(cG, baseAlpha);
+          uint8_t pmB = mul_div_255(cB, baseAlpha);
+          for (int32_t y = y0i; y <= y1i; ++y) {
+            uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0i);
+            if (baseAlpha == 255u) {
+              for (int32_t x = x0i; x <= x1i; ++x, row += 4) {
+                write_px(row, cR, cG, cB);
+              }
+            } else {
+              for (int32_t x = x0i; x <= x1i; ++x, row += 4) {
+                blend_px(row, pmR, pmG, pmB, baseAlpha);
+              }
+            }
+          }
+        }
+        return;
+      }
+      Vec2f a{fx0, fy0};
+      Vec2f b{fx1, fy1};
+      Vec2f ab{b.x - a.x, b.y - a.y};
+      float abLen2 = ab.x * ab.x + ab.y * ab.y;
+      float invLen2 = (abLen2 > 1e-6f) ? (1.0f / abLen2) : 0.0f;
+      std::array<uint32_t, 256> linePmLocal{};
+      uint32_t const* pmTable = nullptr;
+      if (opacity == 255u) {
+        size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
+        pmTable = palettePmCache.data() + pmOffset;
+      } else {
+        for (uint32_t cov = 0; cov < 256u; ++cov) {
+          uint8_t srcA = apply_coverage(baseAlpha, static_cast<uint8_t>(cov));
+          if (srcA == 0) {
+            linePmLocal[cov] = 0u;
+            continue;
+          }
+          uint8_t pmR = mul_div_255(cR, srcA);
+          uint8_t pmG = mul_div_255(cG, srcA);
+          uint8_t pmB = mul_div_255(cB, srcA);
+          linePmLocal[cov] =
+            static_cast<uint32_t>(pmR) |
+            (static_cast<uint32_t>(pmG) << 8) |
+            (static_cast<uint32_t>(pmB) << 16) |
+            (static_cast<uint32_t>(srcA) << 24);
+        }
+        pmTable = linePmLocal.data();
+      }
+      for (int32_t y = ry0; y < ry1; ++y) {
+        float py = static_cast<float>(y) + 0.5f;
+        uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
+        for (int32_t x = rx0; x < rx1; ++x, row += 4) {
+          float px = static_cast<float>(x) + 0.5f;
+          Vec2f ap{px - a.x, py - a.y};
+          float t = invLen2 > 0.0f ? (ap.x * ab.x + ap.y * ab.y) * invLen2 : 0.0f;
+          t = std::min(1.0f, std::max(0.0f, t));
+          float cx = a.x + ab.x * t;
+          float cy = a.y + ab.y * t;
+          float dx = px - cx;
+          float dy = py - cy;
+          float dist = std::sqrt(dx * dx + dy * dy) - radius;
+          uint8_t coverage = coverage_from_dist(dist);
+          if (coverage == 0) continue;
+          uint32_t pm = pmTable[coverage];
+          uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
+          if (srcA == 0) continue;
+          if (srcA == 255u) {
+            write_px(row,
+                     static_cast<uint8_t>(pm & 0xFFu),
+                     static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                     static_cast<uint8_t>((pm >> 16) & 0xFFu));
+          } else {
+            blend_px(row,
+                     static_cast<uint8_t>(pm & 0xFFu),
+                     static_cast<uint8_t>((pm >> 8) & 0xFFu),
+                     static_cast<uint8_t>((pm >> 16) & 0xFFu),
+                     srcA);
+          }
+        }
+      }
+    };
+
+    auto renderImageKernel = [&](uint32_t idx,
+                                 bool hasLocalBounds,
+                                 int32_t localX0,
+                                 int32_t localY0,
+                                 int32_t localX1,
+                                 int32_t localY1) {
+      if (idx >= batch.imageDraws.x0.size() ||
+          idx >= batch.imageDraws.y0.size() ||
+          idx >= batch.imageDraws.x1.size() ||
+          idx >= batch.imageDraws.y1.size() ||
+          idx >= batch.imageDraws.srcX0.size() ||
+          idx >= batch.imageDraws.srcY0.size() ||
+          idx >= batch.imageDraws.srcX1.size() ||
+          idx >= batch.imageDraws.srcY1.size() ||
+          idx >= batch.imageDraws.imageIndex.size() ||
+          idx >= batch.imageDraws.tintColorIndex.size() ||
+          idx >= batch.imageDraws.opacity.size()) {
+        return;
+      }
+      uint8_t opacity = batch.imageDraws.opacity[idx];
+      if (opacity == 0) return;
+      uint8_t paletteIndex = batch.imageDraws.tintColorIndex[idx];
+      if (!paletteFull && paletteIndex >= batch.palette.size) return;
+      uint8_t cR = paletteR[paletteIndex];
+      uint8_t cG = paletteG[paletteIndex];
+      uint8_t cB = paletteB[paletteIndex];
+      uint8_t cA = paletteA[paletteIndex];
+      uint8_t tintAlpha = apply_opacity(cA, opacity);
+      if (tintAlpha == 0) return;
+
+      uint32_t imageIndex = batch.imageDraws.imageIndex[idx];
+      if (imageIndex >= batch.images.width.size() ||
+          imageIndex >= batch.images.height.size() ||
+          imageIndex >= batch.images.strideBytes.size() ||
+          imageIndex >= batch.images.dataOffset.size()) {
+        return;
+      }
+      uint16_t imageWidth = batch.images.width[imageIndex];
+      uint16_t imageHeight = batch.images.height[imageIndex];
+      uint32_t strideBytes = batch.images.strideBytes[imageIndex];
+      uint32_t dataOffset = batch.images.dataOffset[imageIndex];
+      if (imageWidth == 0 || imageHeight == 0 || strideBytes == 0) return;
+      size_t imageBytes = static_cast<size_t>(strideBytes) * imageHeight;
+      if (static_cast<size_t>(dataOffset) + imageBytes > batch.images.data.size()) return;
+      uint8_t const* imageBase = batch.images.data.data() + dataOffset;
+
+      int32_t dstX0 = batch.imageDraws.x0[idx];
+      int32_t dstY0 = batch.imageDraws.y0[idx];
+      int32_t dstX1 = batch.imageDraws.x1[idx];
+      int32_t dstY1 = batch.imageDraws.y1[idx];
+      if (dstX1 <= dstX0 || dstY1 <= dstY0) return;
+
+      int32_t srcX0 = batch.imageDraws.srcX0[idx];
+      int32_t srcY0 = batch.imageDraws.srcY0[idx];
+      int32_t srcX1 = batch.imageDraws.srcX1[idx];
+      int32_t srcY1 = batch.imageDraws.srcY1[idx];
+      srcX0 = std::max<int32_t>(0, std::min(srcX0, static_cast<int32_t>(imageWidth)));
+      srcY0 = std::max<int32_t>(0, std::min(srcY0, static_cast<int32_t>(imageHeight)));
+      srcX1 = std::max<int32_t>(0, std::min(srcX1, static_cast<int32_t>(imageWidth)));
+      srcY1 = std::max<int32_t>(0, std::min(srcY1, static_cast<int32_t>(imageHeight)));
+      if (srcX1 <= srcX0 || srcY1 <= srcY0) return;
+
+      uint8_t flags = idx < batch.imageDraws.flags.size() ? batch.imageDraws.flags[idx] : 0u;
+      int32_t drawX0 = hasLocalBounds ? localX0 : dstX0;
+      int32_t drawY0 = hasLocalBounds ? localY0 : dstY0;
+      int32_t drawX1 = hasLocalBounds ? localX1 : dstX1;
+      int32_t drawY1 = hasLocalBounds ? localY1 : dstY1;
+      if ((flags & ImageFlagClip) != 0u &&
+          idx < batch.imageDraws.clipX0.size() &&
+          idx < batch.imageDraws.clipY0.size() &&
+          idx < batch.imageDraws.clipX1.size() &&
+          idx < batch.imageDraws.clipY1.size()) {
+        drawX0 = std::max(drawX0, static_cast<int32_t>(batch.imageDraws.clipX0[idx]));
+        drawY0 = std::max(drawY0, static_cast<int32_t>(batch.imageDraws.clipY0[idx]));
+        drawX1 = std::min(drawX1, static_cast<int32_t>(batch.imageDraws.clipX1[idx]));
+        drawY1 = std::min(drawY1, static_cast<int32_t>(batch.imageDraws.clipY1[idx]));
+      }
+      int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
+      int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
+      int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
+      int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
+      if (rx1 <= rx0 || ry1 <= ry0) return;
+      int32_t srcW = srcX1 - srcX0;
+      int32_t srcH = srcY1 - srcY0;
+      int32_t dstW = dstX1 - dstX0;
+      int32_t dstH = dstY1 - dstY0;
+      if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
+
+      float scaleX = static_cast<float>(srcW) / static_cast<float>(dstW);
+      float scaleY = static_cast<float>(srcH) / static_cast<float>(dstH);
+      bool wrapU = (flags & ImageFlagWrapU) != 0u;
+      bool wrapV = (flags & ImageFlagWrapV) != 0u;
+
+      for (int32_t y = ry0; y < ry1; ++y) {
+        float v = (static_cast<float>(y) + 0.5f - static_cast<float>(dstY0)) * scaleY;
+        float sy = v + static_cast<float>(srcY0) - 0.5f;
+        float syWrapped = sy;
+        int32_t y0 = 0;
+        int32_t y1 = 0;
+        float fy = 0.0f;
+        if (wrapV) {
+          float local = sy - static_cast<float>(srcY0);
+          float wrapped = std::fmod(local, static_cast<float>(srcH));
+          if (wrapped < 0.0f) wrapped += static_cast<float>(srcH);
+          syWrapped = wrapped + static_cast<float>(srcY0);
+          y0 = static_cast<int32_t>(std::floor(syWrapped));
+          fy = syWrapped - static_cast<float>(y0);
+          y1 = y0 + 1;
+          if (y1 >= srcY1) y1 = srcY0;
+        } else {
+          float clampMin = static_cast<float>(srcY0);
+          float clampMax = static_cast<float>(srcY1 - 1);
+          syWrapped = std::min(std::max(sy, clampMin), clampMax);
+          y0 = static_cast<int32_t>(std::floor(syWrapped));
+          fy = syWrapped - static_cast<float>(y0);
+          y1 = std::min(y0 + 1, srcY1 - 1);
+        }
+        uint8_t const* row0 = imageBase + static_cast<size_t>(y0) * strideBytes;
+        uint8_t const* row1 = imageBase + static_cast<size_t>(y1) * strideBytes;
+        uint8_t* rowDst = row_ptr(y) + static_cast<size_t>(4u * rx0);
+        float uStart = (static_cast<float>(rx0) + 0.5f - static_cast<float>(dstX0)) * scaleX;
+        for (int32_t x = rx0; x < rx1; ++x, rowDst += 4, uStart += scaleX) {
+          float sx = uStart + static_cast<float>(srcX0) - 0.5f;
+          float sxWrapped = sx;
+          int32_t x0 = 0;
+          int32_t x1 = 0;
+          float fx = 0.0f;
+          if (wrapU) {
+            float local = sx - static_cast<float>(srcX0);
+            float wrapped = std::fmod(local, static_cast<float>(srcW));
+            if (wrapped < 0.0f) wrapped += static_cast<float>(srcW);
+            sxWrapped = wrapped + static_cast<float>(srcX0);
+            x0 = static_cast<int32_t>(std::floor(sxWrapped));
+            fx = sxWrapped - static_cast<float>(x0);
+            x1 = x0 + 1;
+            if (x1 >= srcX1) x1 = srcX0;
+          } else {
+            float clampMin = static_cast<float>(srcX0);
+            float clampMax = static_cast<float>(srcX1 - 1);
+            sxWrapped = std::min(std::max(sx, clampMin), clampMax);
+            x0 = static_cast<int32_t>(std::floor(sxWrapped));
+            fx = sxWrapped - static_cast<float>(x0);
+            x1 = std::min(x0 + 1, srcX1 - 1);
+          }
+
+          const uint8_t* p00 = row0 + static_cast<size_t>(x0) * 4u;
+          const uint8_t* p10 = row0 + static_cast<size_t>(x1) * 4u;
+          const uint8_t* p01 = row1 + static_cast<size_t>(x0) * 4u;
+          const uint8_t* p11 = row1 + static_cast<size_t>(x1) * 4u;
+
+          float w00 = (1.0f - fx) * (1.0f - fy);
+          float w10 = fx * (1.0f - fy);
+          float w01 = (1.0f - fx) * fy;
+          float w11 = fx * fy;
+
+          float sR = p00[0] * w00 + p10[0] * w10 + p01[0] * w01 + p11[0] * w11;
+          float sG = p00[1] * w00 + p10[1] * w10 + p01[1] * w01 + p11[1] * w11;
+          float sB = p00[2] * w00 + p10[2] * w10 + p01[2] * w01 + p11[2] * w11;
+          float sA = p00[3] * w00 + p10[3] * w10 + p01[3] * w01 + p11[3] * w11;
+
+          uint8_t srcA = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sA)));
+          if (srcA == 0) continue;
+          uint8_t srcR = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sR)));
+          uint8_t srcG = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sG)));
+          uint8_t srcB = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sB)));
+
+          uint8_t outA = mul_div_255(srcA, tintAlpha);
+          if (outA == 0) continue;
+          uint8_t outR = mul_div_255(srcR, cR);
+          uint8_t outG = mul_div_255(srcG, cG);
+          uint8_t outB = mul_div_255(srcB, cB);
+          outR = mul_div_255(outR, tintAlpha);
+          outG = mul_div_255(outG, tintAlpha);
+          outB = mul_div_255(outB, tintAlpha);
+
+          if (outA == 255u) {
+            write_px(rowDst, outR, outG, outB);
+          } else {
+            blend_px(rowDst, outR, outG, outB, outA);
+          }
+        }
+      }
+    };
+
     ScheduledTileCommand scheduled{};
     while (scheduler.next(scheduled)) {
       if (frontToBack && opaqueCount >= tileArea) break;
@@ -2100,332 +2441,9 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
                               write_px,
                               blend_px);
       } else if (type == CommandType::Line) {
-        if (idx >= batch.lines.x0.size() ||
-            idx >= batch.lines.y0.size() ||
-            idx >= batch.lines.x1.size() ||
-            idx >= batch.lines.y1.size() ||
-            idx >= batch.lines.widthQ8_8.size() ||
-            idx >= batch.lines.colorIndex.size() ||
-            idx >= batch.lines.opacity.size()) {
-          continue;
-        }
-        uint16_t widthQ = batch.lines.widthQ8_8[idx];
-        if (widthQ == 0) continue;
-        uint8_t opacity = batch.lines.opacity[idx];
-        if (opacity == 0) continue;
-        uint8_t paletteIndex = batch.lines.colorIndex[idx];
-        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
-        uint8_t cR = paletteR[paletteIndex];
-        uint8_t cG = paletteG[paletteIndex];
-        uint8_t cB = paletteB[paletteIndex];
-        uint8_t cA = paletteA[paletteIndex];
-        uint8_t baseAlpha = apply_opacity(cA, opacity);
-        if (baseAlpha == 0) continue;
-
-        float fx0 = static_cast<float>(batch.lines.x0[idx]);
-        float fy0 = static_cast<float>(batch.lines.y0[idx]);
-        float fx1 = static_cast<float>(batch.lines.x1[idx]);
-        float fy1 = static_cast<float>(batch.lines.y1[idx]);
-        float widthPx = static_cast<float>(widthQ) / 256.0f;
-        float radius = widthPx * 0.5f;
-        float pad = radius + 1.0f;
-        int32_t boundsX0 = static_cast<int32_t>(std::floor(std::min(fx0, fx1) - pad));
-        int32_t boundsY0 = static_cast<int32_t>(std::floor(std::min(fy0, fy1) - pad));
-        int32_t boundsX1 = static_cast<int32_t>(std::ceil(std::max(fx0, fx1) + pad));
-        int32_t boundsY1 = static_cast<int32_t>(std::ceil(std::max(fy0, fy1) + pad));
-        int32_t drawX0 = hasLocalBounds ? localX0 : boundsX0;
-        int32_t drawY0 = hasLocalBounds ? localY0 : boundsY0;
-        int32_t drawX1 = hasLocalBounds ? localX1 : boundsX1;
-        int32_t drawY1 = hasLocalBounds ? localY1 : boundsY1;
-        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
-        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
-        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
-        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
-        if (rx1 <= rx0 || ry1 <= ry0) continue;
-
-        float dx = fx1 - fx0;
-        float dy = fy1 - fy0;
-        if (std::abs(dx) <= 1e-4f || std::abs(dy) <= 1e-4f) {
-          bool horizontal = std::abs(dy) <= 1e-4f;
-          float minX = std::min(fx0, fx1);
-          float maxX = std::max(fx0, fx1);
-          float minY = std::min(fy0, fy1);
-          float maxY = std::max(fy0, fy1);
-
-          int32_t xStart = static_cast<int32_t>(std::ceil(minX - 0.5f));
-          int32_t xEnd = static_cast<int32_t>(std::floor(maxX - 0.5f));
-          int32_t yStart = static_cast<int32_t>(std::ceil(minY - 0.5f));
-          int32_t yEnd = static_cast<int32_t>(std::floor(maxY - 0.5f));
-          if (horizontal) {
-            float centerY = fy0;
-            yStart = static_cast<int32_t>(std::ceil(centerY - radius - 0.5f));
-            yEnd = static_cast<int32_t>(std::floor(centerY + radius - 0.5f));
-          } else {
-            float centerX = fx0;
-            xStart = static_cast<int32_t>(std::ceil(centerX - radius - 0.5f));
-            xEnd = static_cast<int32_t>(std::floor(centerX + radius - 0.5f));
-          }
-
-          int32_t x0i = std::max<int32_t>(xStart, rx0);
-          int32_t x1i = std::min<int32_t>(xEnd, rx1 - 1);
-          int32_t y0i = std::max<int32_t>(yStart, ry0);
-          int32_t y1i = std::min<int32_t>(yEnd, ry1 - 1);
-          if (x0i <= x1i && y0i <= y1i) {
-            uint8_t pmR = mul_div_255(cR, baseAlpha);
-            uint8_t pmG = mul_div_255(cG, baseAlpha);
-            uint8_t pmB = mul_div_255(cB, baseAlpha);
-            for (int32_t y = y0i; y <= y1i; ++y) {
-              uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * x0i);
-              if (baseAlpha == 255u) {
-                for (int32_t x = x0i; x <= x1i; ++x, row += 4) {
-                  write_px(row, cR, cG, cB);
-                }
-              } else {
-                for (int32_t x = x0i; x <= x1i; ++x, row += 4) {
-                  blend_px(row, pmR, pmG, pmB, baseAlpha);
-                }
-              }
-            }
-          }
-          continue;
-        }
-        Vec2f a{fx0, fy0};
-        Vec2f b{fx1, fy1};
-        Vec2f ab{b.x - a.x, b.y - a.y};
-        float abLen2 = ab.x * ab.x + ab.y * ab.y;
-        float invLen2 = (abLen2 > 1e-6f) ? (1.0f / abLen2) : 0.0f;
-        std::array<uint32_t, 256> linePmLocal{};
-        uint32_t const* pmTable = nullptr;
-        if (opacity == 255u) {
-          size_t pmOffset = static_cast<size_t>(paletteIndex) * 256u;
-          pmTable = palettePmCache.data() + pmOffset;
-        } else {
-          for (uint32_t cov = 0; cov < 256u; ++cov) {
-            uint8_t srcA = apply_coverage(baseAlpha, static_cast<uint8_t>(cov));
-            if (srcA == 0) {
-              linePmLocal[cov] = 0u;
-              continue;
-            }
-            uint8_t pmR = mul_div_255(cR, srcA);
-            uint8_t pmG = mul_div_255(cG, srcA);
-            uint8_t pmB = mul_div_255(cB, srcA);
-            linePmLocal[cov] =
-              static_cast<uint32_t>(pmR) |
-              (static_cast<uint32_t>(pmG) << 8) |
-              (static_cast<uint32_t>(pmB) << 16) |
-              (static_cast<uint32_t>(srcA) << 24);
-          }
-          pmTable = linePmLocal.data();
-        }
-        for (int32_t y = ry0; y < ry1; ++y) {
-          float py = static_cast<float>(y) + 0.5f;
-          uint8_t* row = row_ptr(y) + static_cast<size_t>(4u * rx0);
-          for (int32_t x = rx0; x < rx1; ++x, row += 4) {
-            float px = static_cast<float>(x) + 0.5f;
-            Vec2f ap{px - a.x, py - a.y};
-            float t = invLen2 > 0.0f ? (ap.x * ab.x + ap.y * ab.y) * invLen2 : 0.0f;
-            t = std::min(1.0f, std::max(0.0f, t));
-            float cx = a.x + ab.x * t;
-            float cy = a.y + ab.y * t;
-            float dx = px - cx;
-            float dy = py - cy;
-            float dist = std::sqrt(dx * dx + dy * dy) - radius;
-            uint8_t coverage = coverage_from_dist(dist);
-            if (coverage == 0) continue;
-            uint32_t pm = pmTable[coverage];
-            uint8_t srcA = static_cast<uint8_t>((pm >> 24) & 0xFFu);
-            if (srcA == 0) continue;
-            if (srcA == 255u) {
-              write_px(row,
-                       static_cast<uint8_t>(pm & 0xFFu),
-                       static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                       static_cast<uint8_t>((pm >> 16) & 0xFFu));
-            } else {
-              blend_px(row,
-                       static_cast<uint8_t>(pm & 0xFFu),
-                       static_cast<uint8_t>((pm >> 8) & 0xFFu),
-                       static_cast<uint8_t>((pm >> 16) & 0xFFu),
-                       srcA);
-            }
-          }
-        }
+        renderLineKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       } else if (type == CommandType::Image) {
-        if (idx >= batch.imageDraws.x0.size() ||
-            idx >= batch.imageDraws.y0.size() ||
-            idx >= batch.imageDraws.x1.size() ||
-            idx >= batch.imageDraws.y1.size() ||
-            idx >= batch.imageDraws.srcX0.size() ||
-            idx >= batch.imageDraws.srcY0.size() ||
-            idx >= batch.imageDraws.srcX1.size() ||
-            idx >= batch.imageDraws.srcY1.size() ||
-            idx >= batch.imageDraws.imageIndex.size() ||
-            idx >= batch.imageDraws.tintColorIndex.size() ||
-            idx >= batch.imageDraws.opacity.size()) {
-          continue;
-        }
-        uint8_t opacity = batch.imageDraws.opacity[idx];
-        if (opacity == 0) continue;
-        uint8_t paletteIndex = batch.imageDraws.tintColorIndex[idx];
-        if (!paletteFull && paletteIndex >= batch.palette.size) continue;
-        uint8_t cR = paletteR[paletteIndex];
-        uint8_t cG = paletteG[paletteIndex];
-        uint8_t cB = paletteB[paletteIndex];
-        uint8_t cA = paletteA[paletteIndex];
-        uint8_t tintAlpha = apply_opacity(cA, opacity);
-        if (tintAlpha == 0) continue;
-
-        uint32_t imageIndex = batch.imageDraws.imageIndex[idx];
-        if (imageIndex >= batch.images.width.size() ||
-            imageIndex >= batch.images.height.size() ||
-            imageIndex >= batch.images.strideBytes.size() ||
-            imageIndex >= batch.images.dataOffset.size()) {
-          continue;
-        }
-        uint16_t imageWidth = batch.images.width[imageIndex];
-        uint16_t imageHeight = batch.images.height[imageIndex];
-        uint32_t strideBytes = batch.images.strideBytes[imageIndex];
-        uint32_t dataOffset = batch.images.dataOffset[imageIndex];
-        if (imageWidth == 0 || imageHeight == 0 || strideBytes == 0) continue;
-        size_t imageBytes = static_cast<size_t>(strideBytes) * imageHeight;
-        if (static_cast<size_t>(dataOffset) + imageBytes > batch.images.data.size()) continue;
-        uint8_t const* imageBase = batch.images.data.data() + dataOffset;
-
-        int32_t dstX0 = batch.imageDraws.x0[idx];
-        int32_t dstY0 = batch.imageDraws.y0[idx];
-        int32_t dstX1 = batch.imageDraws.x1[idx];
-        int32_t dstY1 = batch.imageDraws.y1[idx];
-        if (dstX1 <= dstX0 || dstY1 <= dstY0) continue;
-
-        int32_t srcX0 = batch.imageDraws.srcX0[idx];
-        int32_t srcY0 = batch.imageDraws.srcY0[idx];
-        int32_t srcX1 = batch.imageDraws.srcX1[idx];
-        int32_t srcY1 = batch.imageDraws.srcY1[idx];
-        srcX0 = std::max<int32_t>(0, std::min(srcX0, static_cast<int32_t>(imageWidth)));
-        srcY0 = std::max<int32_t>(0, std::min(srcY0, static_cast<int32_t>(imageHeight)));
-        srcX1 = std::max<int32_t>(0, std::min(srcX1, static_cast<int32_t>(imageWidth)));
-        srcY1 = std::max<int32_t>(0, std::min(srcY1, static_cast<int32_t>(imageHeight)));
-        if (srcX1 <= srcX0 || srcY1 <= srcY0) continue;
-
-        uint8_t flags = idx < batch.imageDraws.flags.size() ? batch.imageDraws.flags[idx] : 0u;
-        int32_t drawX0 = hasLocalBounds ? localX0 : dstX0;
-        int32_t drawY0 = hasLocalBounds ? localY0 : dstY0;
-        int32_t drawX1 = hasLocalBounds ? localX1 : dstX1;
-        int32_t drawY1 = hasLocalBounds ? localY1 : dstY1;
-        if ((flags & ImageFlagClip) != 0u &&
-            idx < batch.imageDraws.clipX0.size() &&
-            idx < batch.imageDraws.clipY0.size() &&
-            idx < batch.imageDraws.clipX1.size() &&
-            idx < batch.imageDraws.clipY1.size()) {
-          drawX0 = std::max(drawX0, static_cast<int32_t>(batch.imageDraws.clipX0[idx]));
-          drawY0 = std::max(drawY0, static_cast<int32_t>(batch.imageDraws.clipY0[idx]));
-          drawX1 = std::min(drawX1, static_cast<int32_t>(batch.imageDraws.clipX1[idx]));
-          drawY1 = std::min(drawY1, static_cast<int32_t>(batch.imageDraws.clipY1[idx]));
-        }
-        int32_t rx0 = std::max<int32_t>(drawX0, static_cast<int32_t>(tx0));
-        int32_t ry0 = std::max<int32_t>(drawY0, static_cast<int32_t>(ty0));
-        int32_t rx1 = std::min<int32_t>(drawX1, static_cast<int32_t>(tx1));
-        int32_t ry1 = std::min<int32_t>(drawY1, static_cast<int32_t>(ty1));
-        if (rx1 <= rx0 || ry1 <= ry0) continue;
-        int32_t srcW = srcX1 - srcX0;
-        int32_t srcH = srcY1 - srcY0;
-        int32_t dstW = dstX1 - dstX0;
-        int32_t dstH = dstY1 - dstY0;
-        if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) continue;
-
-        float scaleX = static_cast<float>(srcW) / static_cast<float>(dstW);
-        float scaleY = static_cast<float>(srcH) / static_cast<float>(dstH);
-        bool wrapU = (flags & ImageFlagWrapU) != 0u;
-        bool wrapV = (flags & ImageFlagWrapV) != 0u;
-
-        for (int32_t y = ry0; y < ry1; ++y) {
-          float v = (static_cast<float>(y) + 0.5f - static_cast<float>(dstY0)) * scaleY;
-          float sy = v + static_cast<float>(srcY0) - 0.5f;
-          float syWrapped = sy;
-          int32_t y0 = 0;
-          int32_t y1 = 0;
-          float fy = 0.0f;
-          if (wrapV) {
-            float local = sy - static_cast<float>(srcY0);
-            float wrapped = std::fmod(local, static_cast<float>(srcH));
-            if (wrapped < 0.0f) wrapped += static_cast<float>(srcH);
-            syWrapped = wrapped + static_cast<float>(srcY0);
-            y0 = static_cast<int32_t>(std::floor(syWrapped));
-            fy = syWrapped - static_cast<float>(y0);
-            y1 = y0 + 1;
-            if (y1 >= srcY1) y1 = srcY0;
-          } else {
-            float clampMin = static_cast<float>(srcY0);
-            float clampMax = static_cast<float>(srcY1 - 1);
-            syWrapped = std::min(std::max(sy, clampMin), clampMax);
-            y0 = static_cast<int32_t>(std::floor(syWrapped));
-            fy = syWrapped - static_cast<float>(y0);
-            y1 = std::min(y0 + 1, srcY1 - 1);
-          }
-          uint8_t const* row0 = imageBase + static_cast<size_t>(y0) * strideBytes;
-          uint8_t const* row1 = imageBase + static_cast<size_t>(y1) * strideBytes;
-          uint8_t* rowDst = row_ptr(y) + static_cast<size_t>(4u * rx0);
-          float uStart = (static_cast<float>(rx0) + 0.5f - static_cast<float>(dstX0)) * scaleX;
-          for (int32_t x = rx0; x < rx1; ++x, rowDst += 4, uStart += scaleX) {
-            float sx = uStart + static_cast<float>(srcX0) - 0.5f;
-            float sxWrapped = sx;
-            int32_t x0 = 0;
-            int32_t x1 = 0;
-            float fx = 0.0f;
-            if (wrapU) {
-              float local = sx - static_cast<float>(srcX0);
-              float wrapped = std::fmod(local, static_cast<float>(srcW));
-              if (wrapped < 0.0f) wrapped += static_cast<float>(srcW);
-              sxWrapped = wrapped + static_cast<float>(srcX0);
-              x0 = static_cast<int32_t>(std::floor(sxWrapped));
-              fx = sxWrapped - static_cast<float>(x0);
-              x1 = x0 + 1;
-              if (x1 >= srcX1) x1 = srcX0;
-            } else {
-              float clampMin = static_cast<float>(srcX0);
-              float clampMax = static_cast<float>(srcX1 - 1);
-              sxWrapped = std::min(std::max(sx, clampMin), clampMax);
-              x0 = static_cast<int32_t>(std::floor(sxWrapped));
-              fx = sxWrapped - static_cast<float>(x0);
-              x1 = std::min(x0 + 1, srcX1 - 1);
-            }
-
-            const uint8_t* p00 = row0 + static_cast<size_t>(x0) * 4u;
-            const uint8_t* p10 = row0 + static_cast<size_t>(x1) * 4u;
-            const uint8_t* p01 = row1 + static_cast<size_t>(x0) * 4u;
-            const uint8_t* p11 = row1 + static_cast<size_t>(x1) * 4u;
-
-            float w00 = (1.0f - fx) * (1.0f - fy);
-            float w10 = fx * (1.0f - fy);
-            float w01 = (1.0f - fx) * fy;
-            float w11 = fx * fy;
-
-            float sR = p00[0] * w00 + p10[0] * w10 + p01[0] * w01 + p11[0] * w11;
-            float sG = p00[1] * w00 + p10[1] * w10 + p01[1] * w01 + p11[1] * w11;
-            float sB = p00[2] * w00 + p10[2] * w10 + p01[2] * w01 + p11[2] * w11;
-            float sA = p00[3] * w00 + p10[3] * w10 + p01[3] * w01 + p11[3] * w11;
-
-            uint8_t srcA = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sA)));
-            if (srcA == 0) continue;
-            uint8_t srcR = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sR)));
-            uint8_t srcG = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sG)));
-            uint8_t srcB = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, sB)));
-
-            uint8_t outA = mul_div_255(srcA, tintAlpha);
-            if (outA == 0) continue;
-            uint8_t outR = mul_div_255(srcR, cR);
-            uint8_t outG = mul_div_255(srcG, cG);
-            uint8_t outB = mul_div_255(srcB, cB);
-            outR = mul_div_255(outR, tintAlpha);
-            outG = mul_div_255(outG, tintAlpha);
-            outB = mul_div_255(outB, tintAlpha);
-
-            if (outA == 255u) {
-              write_px(rowDst, outR, outG, outB);
-            } else {
-              blend_px(rowDst, outR, outG, outB, outA);
-            }
-          }
-        }
+        renderImageKernel(idx, hasLocalBounds, localX0, localY0, localX1, localY1);
       }
     }
 
