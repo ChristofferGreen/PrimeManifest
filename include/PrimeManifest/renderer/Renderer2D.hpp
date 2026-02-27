@@ -298,6 +298,42 @@ struct RendererProfile {
   }
 };
 
+inline auto appendSkippedCommandDiagnosticsSummary(std::string& out,
+                                                   std::string_view label,
+                                                   SkippedCommandDiagnostics const& diagnostics) -> bool {
+  if (diagnostics.total == 0) return false;
+  if (!out.empty()) out += '\n';
+  out += label;
+  out += "(total=";
+  out += std::to_string(diagnostics.total);
+  if (diagnostics.unknownType != 0) {
+    out += ", unknownType=";
+    out += std::to_string(diagnostics.unknownType);
+  }
+  out += ")";
+
+  bool firstBucket = true;
+  for (size_t reasonIndex = 0; reasonIndex < diagnostics.byReason.size(); ++reasonIndex) {
+    uint64_t count = diagnostics.byReason[reasonIndex];
+    if (count == 0) continue;
+    out += firstBucket ? ": " : ", ";
+    out += skippedCommandReasonName(reasonIndex);
+    out += "=";
+    out += std::to_string(count);
+    firstBucket = false;
+  }
+  if (firstBucket) out += ": none";
+  return true;
+}
+
+inline auto rendererProfileSkipDiagnosticsDump(RendererProfile const& profile) -> std::string {
+  std::string out;
+  appendSkippedCommandDiagnosticsSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+  appendSkippedCommandDiagnosticsSummary(out, "skippedCommands", profile.skippedCommands);
+  if (out.empty()) return "skip diagnostics: none";
+  return out;
+}
+
 struct ClearStore {
   std::vector<uint8_t> colorIndex;
 

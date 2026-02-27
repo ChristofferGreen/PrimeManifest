@@ -54,4 +54,28 @@ TEST_CASE("skipped_command_reason_name_formatter") {
                 "out-of-range index fallback");
 }
 
+TEST_CASE("renderer_profile_skip_diagnostics_dump_none") {
+  RendererProfile profile;
+  CHECK_MESSAGE(rendererProfileSkipDiagnosticsDump(profile) == std::string("skip diagnostics: none"),
+                "empty profile emits none summary");
+}
+
+TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
+  RendererProfile profile;
+  profile.optimizerSkippedCommands.total = 3;
+  profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerCulledByAlpha)] = 1;
+  profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData)] = 2;
+  profile.skippedCommands.total = 3;
+  profile.skippedCommands.unknownType = 2;
+  profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 1;
+
+  auto dump = rendererProfileSkipDiagnosticsDump(profile);
+  CHECK_MESSAGE(dump ==
+                  std::string("optimizerSkippedCommands(total=3): OptimizerCulledByAlpha=1, OptimizerTileStreamInvalidCommandData=2\n")
+                    + "skippedCommands(total=3, unknownType=2): InvalidCommandData=1",
+                "dump includes non-zero reason buckets with labels");
+  CHECK_MESSAGE(dump.find("OptimizerInvalidCommandData=0") == std::string::npos,
+                "zero buckets omitted from dump");
+}
+
 TEST_SUITE_END();
