@@ -221,4 +221,34 @@ TEST_CASE("clear_command_sets_color") {
   CHECK_MESSAGE(optimized.clearColor == PackRGBA8(Color{10, 20, 30, 255}), "clear color cached");
 }
 
+TEST_CASE("image_tint_alpha_zero_skips_draw") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+
+  std::vector<uint32_t> pixels = {PackRGBA8(Color{255, 0, 0, 255})};
+  uint32_t imageIdx = add_image_asset(batch, 1, 1, pixels);
+  add_image_draw(batch,
+                 imageIdx,
+                 0,
+                 0,
+                 2,
+                 2,
+                 0,
+                 0,
+                 1,
+                 1,
+                 PackRGBA8(Color{255, 255, 255, 0}),
+                 255);
+
+  uint32_t width = 4;
+  uint32_t height = 4;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  CHECK_MESSAGE(!optimized.valid, "fully transparent tint yields no work");
+}
+
 TEST_SUITE_END();

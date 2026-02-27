@@ -154,4 +154,35 @@ TEST_CASE("gradient_dir_normalized_in_renderer") {
   CHECK_MESSAGE(top != bottom, "normalized gradient affects output");
 }
 
+TEST_CASE("non_tile_stream_uses_clipped_bounds") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+
+  add_rect(batch, 0, 0, 6, 6, PackRGBA8(Color{80, 160, 240, 255}));
+  batch.rects.flags[0] = RectFlagClip;
+  batch.rects.clipX0[0] = 2;
+  batch.rects.clipY0[0] = 1;
+  batch.rects.clipX1[0] = 4;
+  batch.rects.clipY1[0] = 5;
+
+  uint32_t width = 8;
+  uint32_t height = 8;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  CHECK_MESSAGE(!optimized.useTileStream, "non-tile-stream path is active");
+
+  RenderOptimized(target, batch, optimized);
+
+  uint32_t drawColor = PackRGBA8(Color{80, 160, 240, 255});
+  CHECK_MESSAGE(pixel_at(buffer, width, 2, 2) == drawColor, "pixel inside clip rendered");
+  CHECK_MESSAGE(pixel_at(buffer, width, 1, 2) == 0u, "pixel left of clip skipped");
+  CHECK_MESSAGE(pixel_at(buffer, width, 4, 2) == 0u, "pixel right of clip skipped");
+}
+
 TEST_SUITE_END();

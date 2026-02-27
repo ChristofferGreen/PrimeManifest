@@ -1,5 +1,6 @@
 #include "PrimeManifest/renderer/Optimizer2D.hpp"
 #include "PrimeManifest/renderer/Renderer2D.hpp"
+#include "CommandAnalysis.hpp"
 
 #include <algorithm>
 #include <array>
@@ -358,9 +359,13 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
   static CircleEdgePmCache circleEdgePm;
   size_t paletteSize = static_cast<size_t>(batch.palette.size);
   uint64_t paletteHash = 1469598103934665603ull;
+  bool paletteOpaque = true;
   for (size_t i = 0; i < paletteSize; ++i) {
     paletteHash ^= static_cast<uint64_t>(batch.palette.colorRGBA8[i]);
     paletteHash *= 1099511628211ull;
+    if ((batch.palette.colorRGBA8[i] & 0xFF000000u) != 0xFF000000u) {
+      paletteOpaque = false;
+    }
   }
   if (palettePm.size != batch.palette.size || palettePm.hash != paletteHash) {
     palettePm.size = batch.palette.size;
@@ -599,6 +604,17 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
     profile->commandCount = useTileStream ? static_cast<uint32_t>(tileStream->commands.size())
                                           : static_cast<uint32_t>(batch.commands.size());
   }
+  std::vector<AnalyzedCommand> analyzedCommands;
+  if (!useTileStream && !prepared.tileRefsAreCircleIndices && !batch.commands.empty()) {
+    CommandAnalysisConfig analysisConfig{};
+    analysisConfig.targetWidth = target.width;
+    analysisConfig.targetHeight = target.height;
+    analysisConfig.tileSize = tileSize;
+    analysisConfig.tilePow2 = tilePow2;
+    analysisConfig.tileShift = tileShift;
+    analysisConfig.paletteOpaque = paletteOpaque;
+    analyzeCommands(batch, analysisConfig, analyzedCommands);
+  }
   bool doProfile = profile != nullptr;
 
   if (renderTiles.empty() && !debugTiles) return;
@@ -742,6 +758,16 @@ void RenderOptimizedImpl(RenderTarget target, RenderBatch const& batch, Optimize
           auto const& cmd = batch.commands[cmdIndex];
           type = cmd.type;
           idx = cmd.index;
+          if (!analyzedCommands.empty()) {
+            if (cmdIndex >= analyzedCommands.size()) continue;
+            auto const& analyzed = analyzedCommands[cmdIndex];
+            if (!analyzed.valid) continue;
+            hasLocalBounds = true;
+            localX0 = analyzed.x0;
+            localY0 = analyzed.y0;
+            localX1 = analyzed.x1;
+            localY1 = analyzed.y1;
+          }
         }
       }
       if (doProfile) {

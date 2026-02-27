@@ -80,6 +80,42 @@ TEST_CASE("auto_tile_stream_generates") {
   CHECK_MESSAGE(!optimized.tileStream->commands.empty(), "auto tile stream has commands");
 }
 
+TEST_CASE("clipped_rect_normalizes_tile_span") {
+  RenderBatch batch;
+  enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
+  batch.autoTileStream = false;
+  batch.tileSize = 8;
+
+  add_rect(batch, -10, 2, 14, 15, PackRGBA8(Color{200, 40, 20, 255}));
+  batch.rects.flags[0] = RectFlagClip;
+  batch.rects.clipX0[0] = 4;
+  batch.rects.clipY0[0] = 1;
+  batch.rects.clipX1[0] = 9;
+  batch.rects.clipY1[0] = 7;
+
+  uint32_t width = 16;
+  uint32_t height = 16;
+  std::vector<uint8_t> buffer(width * height * 4, 0);
+  RenderTarget target{std::span<uint8_t>(buffer), width, height, width * 4};
+
+  OptimizedBatch optimized;
+  OptimizeRenderBatch(target, batch, optimized);
+
+  REQUIRE_MESSAGE(optimized.valid, "optimizer succeeds");
+  REQUIRE_MESSAGE(!optimized.cmdTiles.empty(), "command tile info produced");
+  REQUIRE_MESSAGE(!optimized.cmdActive.empty(), "command active mask produced");
+  CHECK_MESSAGE(optimized.cmdActive[0] == 1u, "command kept active");
+  auto const& info = optimized.cmdTiles[0];
+  CHECK_MESSAGE(info.x0 == 4, "x0 clipped and clamped");
+  CHECK_MESSAGE(info.y0 == 2, "y0 clipped and clamped");
+  CHECK_MESSAGE(info.x1 == 9, "x1 clipped and clamped");
+  CHECK_MESSAGE(info.y1 == 7, "y1 clipped and clamped");
+  CHECK_MESSAGE(info.tx0 == 0, "left tile index");
+  CHECK_MESSAGE(info.ty0 == 0, "top tile index");
+  CHECK_MESSAGE(info.tx1 == 1, "right tile index");
+  CHECK_MESSAGE(info.ty1 == 0, "bottom tile index");
+}
+
 TEST_CASE("invalid_tile_stream_disabled") {
   RenderBatch batch;
   enable_palette(batch, PackRGBA8(Color{0, 0, 0, 255}));
