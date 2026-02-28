@@ -84,4 +84,5 @@
 82. [x] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics classify mixed valid-non-ASCII plus trailing-malformed tokens when malformed-UTF-8 rejection is disabled.
 83. [x] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics do not classify tokens where malformed UTF-8 appears before any valid non-ASCII code point when malformed-UTF-8 rejection is disabled.
 84. [x] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics classify mixed valid-non-ASCII plus interior-malformed tokens when malformed-UTF-8 rejection is disabled.
-85. [ ] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics classify mixed valid-non-ASCII tokens with multiple interior malformed segments when malformed-UTF-8 rejection is disabled.
+85. [x] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics classify mixed valid-non-ASCII tokens with multiple interior malformed segments when malformed-UTF-8 rejection is disabled.
+86. [ ] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics do not classify mixed tokens when the first non-ASCII bytes are malformed and all subsequent non-ASCII bytes are whitespace-only.
