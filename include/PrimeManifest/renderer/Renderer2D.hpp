@@ -358,6 +358,59 @@ enum class SkipDiagnosticsDumpFormat : uint8_t {
   KeyValue = 1,
 };
 
+enum class SkipDiagnosticsParseErrorReason : uint8_t {
+  None = 0,
+  EmptyInput = 1,
+  MalformedNonePayload = 2,
+  EmptyField = 3,
+  MissingEquals = 4,
+  EmptyKey = 5,
+  EmptyValue = 6,
+  InvalidValue = 7,
+  UnknownSection = 8,
+  UnknownKey = 9,
+  UnknownReasonName = 10,
+  UnknownTypeName = 11,
+  MalformedTypeReasonKey = 12,
+};
+
+struct SkipDiagnosticsParseError {
+  size_t fieldIndex = 0;
+  SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
+};
+
+constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
+  switch (reason) {
+    case SkipDiagnosticsParseErrorReason::None:
+      return "None";
+    case SkipDiagnosticsParseErrorReason::EmptyInput:
+      return "EmptyInput";
+    case SkipDiagnosticsParseErrorReason::MalformedNonePayload:
+      return "MalformedNonePayload";
+    case SkipDiagnosticsParseErrorReason::EmptyField:
+      return "EmptyField";
+    case SkipDiagnosticsParseErrorReason::MissingEquals:
+      return "MissingEquals";
+    case SkipDiagnosticsParseErrorReason::EmptyKey:
+      return "EmptyKey";
+    case SkipDiagnosticsParseErrorReason::EmptyValue:
+      return "EmptyValue";
+    case SkipDiagnosticsParseErrorReason::InvalidValue:
+      return "InvalidValue";
+    case SkipDiagnosticsParseErrorReason::UnknownSection:
+      return "UnknownSection";
+    case SkipDiagnosticsParseErrorReason::UnknownKey:
+      return "UnknownKey";
+    case SkipDiagnosticsParseErrorReason::UnknownReasonName:
+      return "UnknownReasonName";
+    case SkipDiagnosticsParseErrorReason::UnknownTypeName:
+      return "UnknownTypeName";
+    case SkipDiagnosticsParseErrorReason::MalformedTypeReasonKey:
+      return "MalformedTypeReasonKey";
+  }
+  return "UnknownParseErrorReason";
+}
+
 inline void appendKeyValueField(std::string& out,
                                 bool& first,
                                 std::string_view key,
@@ -569,30 +622,62 @@ inline auto parseUnsignedDecimal(std::string_view text, uint64_t& out) -> bool {
   return true;
 }
 
+inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
+  if (!errorOut) return;
+  errorOut->fieldIndex = 0;
+  errorOut->reason = SkipDiagnosticsParseErrorReason::None;
+}
+
+inline auto failSkipDiagnosticsParse(SkipDiagnosticsParseError* errorOut,
+                                     size_t fieldIndex,
+                                     SkipDiagnosticsParseErrorReason reason) -> bool {
+  if (errorOut) {
+    errorOut->fieldIndex = fieldIndex;
+    errorOut->reason = reason;
+  }
+  return false;
+}
+
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         SkippedCommandDiagnostics& optimizerOut,
-                                                        SkippedCommandDiagnostics& skippedOut) -> bool {
+                                                        SkippedCommandDiagnostics& skippedOut,
+                                                        SkipDiagnosticsParseError* errorOut) -> bool {
   optimizerOut.clear();
   skippedOut.clear();
+  clearSkipDiagnosticsParseError(errorOut);
   if (dump == "skip_diagnostics=none") return true;
-  if (dump.empty()) return false;
+  if (dump.empty()) return failSkipDiagnosticsParse(errorOut, 0, SkipDiagnosticsParseErrorReason::EmptyInput);
+  if (dump.starts_with("skip_diagnostics=none")) {
+    return failSkipDiagnosticsParse(errorOut, 0, SkipDiagnosticsParseErrorReason::MalformedNonePayload);
+  }
 
   constexpr std::string_view OptimizerPrefix = "optimizerSkippedCommands.";
   constexpr std::string_view RendererPrefix = "skippedCommands.";
 
   size_t start = 0;
+  size_t fieldIndex = 0;
   while (start <= dump.size()) {
     size_t end = dump.find(';', start);
     if (end == std::string_view::npos) end = dump.size();
-    if (end <= start) return false;
+    if (end <= start) return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyField);
     std::string_view field = dump.substr(start, end - start);
 
     size_t equals = field.find('=');
-    if (equals == std::string_view::npos || equals == 0 || equals + 1 >= field.size()) return false;
+    if (equals == std::string_view::npos) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::MissingEquals);
+    }
+    if (equals == 0) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyKey);
+    }
+    if (equals + 1 >= field.size()) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyValue);
+    }
     std::string_view key = field.substr(0, equals);
     std::string_view valueText = field.substr(equals + 1);
     uint64_t value = 0;
-    if (!parseUnsignedDecimal(valueText, value)) return false;
+    if (!parseUnsignedDecimal(valueText, value)) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+    }
 
     SkippedCommandDiagnostics* diagnostics = nullptr;
     std::string_view tail;
@@ -603,7 +688,7 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
       diagnostics = &skippedOut;
       tail = key.substr(RendererPrefix.size());
     } else {
-      return false;
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownSection);
     }
 
     if (tail == "total") {
@@ -616,39 +701,64 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
         // Marker from compact dump when totals exist but reason buckets are all zero.
       } else {
         SkippedCommandReason reason{};
-        if (!skippedCommandReasonFromName(reasonName, reason)) return false;
+        if (!skippedCommandReasonFromName(reasonName, reason)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonName);
+        }
         diagnostics->byReason[static_cast<size_t>(reason)] = value;
       }
     } else if (tail.starts_with("type.")) {
       std::string_view typeName = tail.substr(5);
       CommandType type{};
-      if (!commandTypeFromName(typeName, type)) return false;
+      if (!commandTypeFromName(typeName, type)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownTypeName);
+      }
       diagnostics->byType[static_cast<size_t>(type)] = value;
     } else if (tail.starts_with("typeReason.")) {
       std::string_view pair = tail.substr(11);
       size_t separator = pair.find('.');
-      if (separator == std::string_view::npos || separator == 0 || separator + 1 >= pair.size()) return false;
+      if (separator == std::string_view::npos || separator == 0 || separator + 1 >= pair.size()) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::MalformedTypeReasonKey);
+      }
       std::string_view typeName = pair.substr(0, separator);
       std::string_view reasonName = pair.substr(separator + 1);
       CommandType type{};
       SkippedCommandReason reason{};
-      if (!commandTypeFromName(typeName, type) || !skippedCommandReasonFromName(reasonName, reason)) return false;
+      if (!commandTypeFromName(typeName, type)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownTypeName);
+      }
+      if (!skippedCommandReasonFromName(reasonName, reason)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonName);
+      }
       diagnostics->byTypeAndReason[static_cast<size_t>(type)][static_cast<size_t>(reason)] = value;
     } else {
-      return false;
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
     }
 
     if (end == dump.size()) break;
     start = end + 1;
+    fieldIndex += 1;
   }
   return true;
 }
 
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
-                                                        RendererProfile& profileOut) -> bool {
+                                                        SkippedCommandDiagnostics& optimizerOut,
+                                                        SkippedCommandDiagnostics& skippedOut) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump, optimizerOut, skippedOut, nullptr);
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        RendererProfile& profileOut,
+                                                        SkipDiagnosticsParseError* errorOut) -> bool {
   return parseRendererProfileSkipDiagnosticsKeyValue(dump,
                                                      profileOut.optimizerSkippedCommands,
-                                                     profileOut.skippedCommands);
+                                                     profileOut.skippedCommands,
+                                                     errorOut);
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        RendererProfile& profileOut) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump, profileOut, nullptr);
 }
 
 struct ClearStore {

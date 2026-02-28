@@ -189,8 +189,11 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   CHECK_MESSAGE(keyValueDump.find('\n') == std::string::npos, "verbose key-value dump is single-line");
 
   RendererProfile parsedProfile;
-  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(keyValueDump, parsedProfile),
+  SkipDiagnosticsParseError parseError{99, SkipDiagnosticsParseErrorReason::UnknownKey};
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(keyValueDump, parsedProfile, &parseError),
                 "verbose key-value parse succeeds");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "parse error output cleared on success");
   CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.total == 3, "parsed verbose optimizer total");
   CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 2,
                 "parsed verbose optimizer by-type");
@@ -206,10 +209,44 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
 
 TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
   RendererProfile profile;
-  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("optimizerSkippedCommands.reason.NotAReason=1", profile),
+  SkipDiagnosticsParseError parseError;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("optimizerSkippedCommands.reason.NotAReason=1", profile, &parseError),
                 "parse rejects unknown reason name");
-  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("skip_diagnostics=none;extra=1", profile),
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "unknown reason index reported");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "unknown reason error kind reported");
+
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("skip_diagnostics=none;extra=1", profile, &parseError),
                 "parse rejects malformed none payload");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "malformed none index reported");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::MalformedNonePayload,
+                "malformed none error kind reported");
+
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(
+                  "optimizerSkippedCommands.total=1;skippedCommands.type.NotAType=4",
+                  profile,
+                  &parseError),
+                "parse rejects unknown type name");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "unknown type field index reported");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownTypeName,
+                "unknown type error kind reported");
+
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("optimizerSkippedCommands.total=abc", profile, &parseError),
+                "parse rejects invalid numeric value");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "invalid value field index reported");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InvalidValue,
+                "invalid value error kind reported");
+}
+
+TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::None) == std::string_view("None"),
+                "none parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::MalformedTypeReasonKey) ==
+                  std::string_view("MalformedTypeReasonKey"),
+                "malformed type-reason parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<SkipDiagnosticsParseErrorReason>(255)) ==
+                  std::string_view("UnknownParseErrorReason"),
+                "unknown parse error name fallback");
 }
 
 TEST_SUITE_END();
