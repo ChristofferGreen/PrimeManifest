@@ -1207,6 +1207,18 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "all-CESU-8-surrogate reason-token modes treat fallback-like suffix tokens as unknown names instead of fallback tokens");
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "all-CESU-8-surrogate reason-token modes report reason field index for fallback-like suffix tokens");
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=PrefixUnknownParseErrorReason",
+                  parsedViolations,
+                  allCesu8SurrogateStrictReasonTokenOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes treat fallback-like prefix tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "all-CESU-8-surrogate reason-token modes do not classify fallback-like prefix tokens as fallback tokens");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for fallback-like prefix tokens");
 
   SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateAndMalformedReasonOptions = allCesu8SurrogateReasonOptions;
   allCesu8SurrogateAndMalformedReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;

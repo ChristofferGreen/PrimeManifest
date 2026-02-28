@@ -65,3 +65,4 @@
 63. [x] Add strict-violation reason-token tests verifying malformed UTF-8 diagnostics take precedence over `UnknownParseErrorReason` fallback-token rejection when both checks are enabled.
 64. [x] Add strict-violation reason-token tests verifying surrogate diagnostics take precedence over malformed-UTF-8 diagnostics when both checks are enabled and both conditions occur in one token.
 65. [x] Add strict-violation reason-token tests verifying `rejectUnknownReasonFallbackToken` only rejects exact `UnknownParseErrorReason` matches (not fallback-like prefixes/suffixes).
+66. [x] Add strict-violation reason-token tests verifying fallback-like prefix tokens are treated as unknown names (not fallback tokens) when `rejectUnknownReasonFallbackToken` is enabled.
