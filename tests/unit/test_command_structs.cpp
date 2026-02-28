@@ -686,6 +686,41 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
                 "duplicate-reject mode clears parse error on valid payload");
 
+  SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
+  countCapOptions.enforceMaxViolationCount = true;
+  countCapOptions.maxViolationCount = 2;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(keyValueDump, parsedViolations, countCapOptions, &parseError),
+                "count-cap mode rejects payloads above configured max count");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded,
+                "count-cap mode reports count-limit reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "count-cap mode reports count field index");
+
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=2;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.1.fieldIndex=11;"
+                  "strictViolations.1.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  countCapOptions,
+                  &parseError),
+                "count-cap mode accepts payloads at configured max count");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "count-cap mode clears parse error on accepted payload");
+  CHECK_MESSAGE(parsedViolations.size() == 2, "count-cap mode preserves accepted entry count");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.2.fieldIndex=7;"
+                  "strictViolations.2.reason=InconsistentReasonTotal;"
+                  "strictViolations.count=3",
+                  parsedViolations,
+                  countCapOptions,
+                  &parseError),
+                "count-cap mode rejects out-of-cap index entries before count");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded,
+                "count-cap mode reports index-limit reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "count-cap mode reports offending index field");
+
   CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none", parsedViolations, &parseError),
                 "strict-violation parser accepts none sentinel");
   CHECK_MESSAGE(parsedViolations.empty(), "none sentinel clears parsed strict-violation list");
@@ -760,6 +795,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken) ==
                   std::string_view("UnknownReasonFallbackToken"),
                 "unknown-reason fallback-token parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded) ==
+                  std::string_view("ViolationCountLimitExceeded"),
+                "count-limit strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

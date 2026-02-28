@@ -381,10 +381,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   DuplicateViolationConflict = 19,
   DuplicateViolationEntry = 20,
   UnknownReasonFallbackToken = 21,
+  ViolationCountLimitExceeded = 22,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -427,6 +428,8 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectConflictingDuplicateIndices = false;
   bool rejectDuplicateIndices = false;
   bool rejectUnknownReasonFallbackToken = false;
+  bool enforceMaxViolationCount = false;
+  size_t maxViolationCount = 0;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -475,6 +478,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "DuplicateViolationEntry";
     case SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken:
       return "UnknownReasonFallbackToken";
+    case SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded:
+      return "ViolationCountLimitExceeded";
   }
   return "UnknownParseErrorReason";
 }
@@ -840,6 +845,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       if (!parseUnsignedDecimal(valueText, expectedCount)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
       }
+      if (options.enforceMaxViolationCount &&
+          expectedCount > static_cast<uint64_t>(options.maxViolationCount)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded);
+      }
       hasExpectedCount = true;
     } else if (key.starts_with(StrictViolationPrefix)) {
       std::string_view tail = key.substr(StrictViolationPrefix.size());
@@ -857,6 +866,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       }
       if (violationIndex64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+      }
+      if (options.enforceMaxViolationCount &&
+          violationIndex64 >= static_cast<uint64_t>(options.maxViolationCount)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded);
       }
       if (hasExpectedCount && violationIndex64 >= expectedCount) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
