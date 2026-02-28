@@ -1303,6 +1303,21 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "all-CESU-8-surrogate reason-token modes report ASCII-control reason before fallback-token reason when both checks are enabled");
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "all-CESU-8-surrogate reason-token modes report reason field index for ASCII-control-over-fallback precedence");
+  SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateFallbackAndNonAsciiControlOptions =
+    allCesu8SurrogateStrictReasonTokenOptions;
+  allCesu8SurrogateFallbackAndNonAsciiControlOptions.rejectReasonNameNonAsciiUnicodeControlCharacterTokens = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=UnknownParseErrorReason\xE2\x80\x8F",
+                  parsedViolations,
+                  allCesu8SurrogateFallbackAndNonAsciiControlOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes prioritize non-ASCII Unicode-control diagnostics over fallback-token rejection when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken,
+                "all-CESU-8-surrogate reason-token modes report non-ASCII Unicode-control reason before fallback-token reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for non-ASCII-Unicode-control-over-fallback precedence");
 
   SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateAndMalformedReasonOptions = allCesu8SurrogateReasonOptions;
   allCesu8SurrogateAndMalformedReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
