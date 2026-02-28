@@ -1132,6 +1132,89 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
                 "same-order-CESU-8-surrogate reason-token mode does not classify mixed-order surrogate pairs as same-order");
 
+  SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateReasonOptions;
+  allCesu8SurrogateReasonOptions.rejectReasonNameLoneCesu8SurrogateTokens = true;
+  allCesu8SurrogateReasonOptions.rejectReasonNamePairedCesu8SurrogateTokens = true;
+  allCesu8SurrogateReasonOptions.rejectReasonNameMixedOrderCesu8SurrogateTokens = true;
+  allCesu8SurrogateReasonOptions.rejectReasonNameSameOrderCesu8SurrogateTokens = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\x80Total",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes classify lone high-surrogate tokens as lone surrogates");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameLoneCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report lone-surrogate reason for lone high-surrogate tokens");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for lone high-surrogate tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xB0\x80Total",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes classify lone low-surrogate tokens as lone surrogates");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameLoneCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report lone-surrogate reason for lone low-surrogate tokens");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for lone low-surrogate tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\xBD\xED\xB8\x80Total",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes classify high-before-low surrogate pairs as paired surrogates");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNamePairedCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report paired-surrogate reason for high-before-low surrogate pairs");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for high-before-low surrogate pairs");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xB8\x80\xED\xA0\xBDTotal",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes classify low-before-high surrogate pairs as mixed-order surrogates");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMixedOrderCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report mixed-order-surrogate reason for low-before-high surrogate pairs");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for low-before-high surrogate pairs");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\x80\xED\xA0\xBDTotal",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes classify high-before-high surrogate pairs as same-order surrogates");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report same-order-surrogate reason for high-before-high surrogate pairs");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for high-before-high surrogate pairs");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xB0\x80\xED\xB8\x80Total",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes classify low-before-low surrogate pairs as same-order surrogates");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report same-order-surrogate reason for low-before-low surrogate pairs");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for low-before-low surrogate pairs");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
