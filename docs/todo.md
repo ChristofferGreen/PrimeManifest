@@ -42,4 +42,5 @@
 40. [x] Add strict-violation decode option to require `strictViolations.count` appear before indexed entries in defensive mode for earlier bound validation.
 41. [x] Add strict-violation decode option to reject zero-padded numeric tokens (`strictViolations.count`, index, and `fieldIndex`) in defensive mode.
 42. [x] Add strict-violation decode option to reject explicit plus-prefixed numeric tokens (`+1`) in defensive mode for canonical token enforcement.
-43. Add strict-violation decode option to emit dedicated diagnostics for minus-prefixed numeric tokens in defensive canonical-token mode.
+43. [x] Add strict-violation decode option to emit dedicated diagnostics for minus-prefixed numeric tokens in defensive canonical-token mode.
+44. Add strict-violation decode option to reject non-canonical positive zero (`-0`) tokens in defensive canonical-token mode with dedicated diagnostics.

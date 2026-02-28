@@ -389,10 +389,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ViolationCountFieldOrder = 27,
   ZeroPaddedNumericToken = 28,
   PlusPrefixedNumericToken = 29,
+  MinusPrefixedNumericToken = 30,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::MinusPrefixedNumericToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -441,6 +442,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool requireCountFieldBeforeEntries = false;
   bool rejectZeroPaddedNumericTokens = false;
   bool rejectPlusPrefixedNumericTokens = false;
+  bool rejectMinusPrefixedNumericTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -511,6 +513,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ZeroPaddedNumericToken";
     case SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken:
       return "PlusPrefixedNumericToken";
+    case SkipDiagnosticsParseErrorReason::MinusPrefixedNumericToken:
+      return "MinusPrefixedNumericToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -797,6 +801,15 @@ inline auto isPlusPrefixedUnsignedToken(std::string_view text) -> bool {
   return true;
 }
 
+inline auto isMinusPrefixedUnsignedToken(std::string_view text) -> bool {
+  if (text.size() <= 1u || text[0] != '-') return false;
+  for (size_t index = 1; index < text.size(); ++index) {
+    char c = text[index];
+    if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -901,6 +914,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           isPlusPrefixedUnsignedToken(valueText)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken);
       }
+      if (options.rejectMinusPrefixedNumericTokens &&
+          isMinusPrefixedUnsignedToken(valueText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::MinusPrefixedNumericToken);
+      }
       if (!parseUnsignedDecimal(valueText, expectedCount)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
       }
@@ -930,6 +947,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       if (options.rejectPlusPrefixedNumericTokens &&
           isPlusPrefixedUnsignedToken(violationIndexText)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken);
+      }
+      if (options.rejectMinusPrefixedNumericTokens &&
+          isMinusPrefixedUnsignedToken(violationIndexText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::MinusPrefixedNumericToken);
       }
       uint64_t violationIndex64 = 0;
       if (!parseUnsignedDecimal(violationIndexText, violationIndex64)) {
@@ -972,6 +993,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectPlusPrefixedNumericTokens &&
             isPlusPrefixedUnsignedToken(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken);
+        }
+        if (options.rejectMinusPrefixedNumericTokens &&
+            isMinusPrefixedUnsignedToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::MinusPrefixedNumericToken);
         }
         uint64_t parsedFieldIndex = 0;
         if (!parseUnsignedDecimal(valueText, parsedFieldIndex)) {
