@@ -46,6 +46,39 @@ enum class CommandType : uint8_t {
 
 constexpr size_t RendererProfileCommandTypeBuckets = static_cast<size_t>(CommandType::Image) + 1u;
 
+constexpr auto commandTypeName(CommandType type) -> std::string_view {
+  switch (type) {
+    case CommandType::Clear:
+      return "Clear";
+    case CommandType::Rect:
+      return "Rect";
+    case CommandType::Text:
+      return "Text";
+    case CommandType::DebugTiles:
+      return "DebugTiles";
+    case CommandType::ClearPattern:
+      return "ClearPattern";
+    case CommandType::Circle:
+      return "Circle";
+    case CommandType::SetPixel:
+      return "SetPixel";
+    case CommandType::SetPixelA:
+      return "SetPixelA";
+    case CommandType::Line:
+      return "Line";
+    case CommandType::Image:
+      return "Image";
+  }
+  return "UnknownCommandType";
+}
+
+constexpr auto commandTypeName(size_t typeIndex) -> std::string_view {
+  if (typeIndex >= RendererProfileCommandTypeBuckets) {
+    return "OutOfRangeCommandType";
+  }
+  return commandTypeName(static_cast<CommandType>(typeIndex));
+}
+
 enum class SkippedCommandReason : uint8_t {
   InvalidTileReference = 0,
   MissingAnalyzedCommand = 1,
@@ -330,6 +363,66 @@ inline auto rendererProfileSkipDiagnosticsDump(RendererProfile const& profile) -
   std::string out;
   appendSkippedCommandDiagnosticsSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
   appendSkippedCommandDiagnosticsSummary(out, "skippedCommands", profile.skippedCommands);
+  if (out.empty()) return "skip diagnostics: none";
+  return out;
+}
+
+inline auto appendSkippedCommandTypeSummary(std::string& out,
+                                            std::string_view label,
+                                            SkippedCommandDiagnostics const& diagnostics) -> bool {
+  bool firstBucket = true;
+  for (size_t typeIndex = 0; typeIndex < diagnostics.byType.size(); ++typeIndex) {
+    uint64_t count = diagnostics.byType[typeIndex];
+    if (count == 0) continue;
+    if (firstBucket) {
+      if (!out.empty()) out += '\n';
+      out += label;
+      out += ".byType: ";
+    } else {
+      out += ", ";
+    }
+    out += commandTypeName(typeIndex);
+    out += "=";
+    out += std::to_string(count);
+    firstBucket = false;
+  }
+  return !firstBucket;
+}
+
+inline auto appendSkippedCommandTypeReasonMatrixSummary(std::string& out,
+                                                        std::string_view label,
+                                                        SkippedCommandDiagnostics const& diagnostics) -> bool {
+  bool firstBucket = true;
+  for (size_t typeIndex = 0; typeIndex < diagnostics.byTypeAndReason.size(); ++typeIndex) {
+    for (size_t reasonIndex = 0; reasonIndex < diagnostics.byTypeAndReason[typeIndex].size(); ++reasonIndex) {
+      uint64_t count = diagnostics.byTypeAndReason[typeIndex][reasonIndex];
+      if (count == 0) continue;
+      if (firstBucket) {
+        if (!out.empty()) out += '\n';
+        out += label;
+        out += ".byTypeAndReason: ";
+      } else {
+        out += ", ";
+      }
+      out += commandTypeName(typeIndex);
+      out += "/";
+      out += skippedCommandReasonName(reasonIndex);
+      out += "=";
+      out += std::to_string(count);
+      firstBucket = false;
+    }
+  }
+  return !firstBucket;
+}
+
+inline auto rendererProfileSkipDiagnosticsDumpVerbose(RendererProfile const& profile) -> std::string {
+  std::string out;
+  appendSkippedCommandDiagnosticsSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+  appendSkippedCommandDiagnosticsSummary(out, "skippedCommands", profile.skippedCommands);
+  appendSkippedCommandTypeSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+  appendSkippedCommandTypeSummary(out, "skippedCommands", profile.skippedCommands);
+  appendSkippedCommandTypeReasonMatrixSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+  appendSkippedCommandTypeReasonMatrixSummary(out, "skippedCommands", profile.skippedCommands);
   if (out.empty()) return "skip diagnostics: none";
   return out;
 }

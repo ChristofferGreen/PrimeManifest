@@ -18,4 +18,5 @@
 16. [x] Add dedicated optimizer skip reasons for tile-local bounds sanitization vs command-data sanitization in tile streams.
 17. [x] Add a small `SkippedCommandReason` name formatter for diagnostics output/tests so reason buckets can be inspected without numeric decoding.
 18. [x] Add a compact `RendererProfile` diagnostics dump helper that prints non-zero skip buckets with `skippedCommandReasonName` labels.
-19. Add an opt-in verbose diagnostics dump helper that also emits non-zero `byType` and `byTypeAndReason` skip matrices.
+19. [x] Add an opt-in verbose diagnostics dump helper that also emits non-zero `byType` and `byTypeAndReason` skip matrices.
+20. Add a parse-friendly diagnostics format option (single-line key/value) for `RendererProfile` skip dump helpers.
