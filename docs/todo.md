@@ -60,3 +60,4 @@
 58. [x] Add strict-violation decode option to emit dedicated diagnostics for same-order UTF-16 surrogate sequences (high-before-high and low-before-low) encoded via CESU-8 in defensive canonical-token mode.
 59. [x] Add strict-violation surrogate-token tests covering precedence when lone/paired/mixed-order/same-order CESU-8 rejection modes are all enabled together.
 60. [x] Add strict-violation surrogate-token tests verifying canonical reason-name tokens are accepted when all lone/paired/mixed-order/same-order CESU-8 rejection modes are enabled together.
+61. [x] Add strict-violation surrogate-token tests verifying `UnknownParseErrorReason` fallback-token acceptance/rejection behavior when all lone/paired/mixed-order/same-order CESU-8 rejection modes are enabled together.

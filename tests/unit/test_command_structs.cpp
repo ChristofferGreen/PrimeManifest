@@ -1166,6 +1166,35 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "all-CESU-8-surrogate reason-token modes decode exactly one canonical surrogate-related reason entry");
   CHECK_MESSAGE(parsedViolations[0].reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
                 "all-CESU-8-surrogate reason-token modes decode canonical surrogate-related reason names without remapping");
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=UnknownParseErrorReason",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes accept unknown-reason fallback token when fallback rejection mode is disabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "all-CESU-8-surrogate reason-token modes clear parse error on unknown-reason fallback token when fallback rejection mode is disabled");
+  CHECK_MESSAGE(parsedViolations.size() == 1,
+                "all-CESU-8-surrogate reason-token modes decode exactly one fallback-token reason entry");
+  CHECK_MESSAGE(parsedViolations[0].reason == static_cast<SkipDiagnosticsParseErrorReason>(255),
+                "all-CESU-8-surrogate reason-token modes preserve unknown-reason fallback value");
+
+  SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateStrictReasonTokenOptions = allCesu8SurrogateReasonOptions;
+  allCesu8SurrogateStrictReasonTokenOptions.rejectUnknownReasonFallbackToken = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=UnknownParseErrorReason",
+                  parsedViolations,
+                  allCesu8SurrogateStrictReasonTokenOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes reject unknown-reason fallback token when fallback rejection mode is enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken,
+                "all-CESU-8-surrogate reason-token modes report fallback-token reason when fallback rejection mode is enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index when fallback rejection mode is enabled");
 
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
