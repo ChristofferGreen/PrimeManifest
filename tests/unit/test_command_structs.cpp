@@ -817,6 +817,46 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "malformed-UTF-8 reason-token mode reports reason field index for stray continuation bytes");
 
+  SkipDiagnosticsStrictViolationsParseOptions malformedAndNonAsciiWhitespaceReasonOptions;
+  malformedAndNonAsciiWhitespaceReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
+  malformedAndNonAsciiWhitespaceReasonOptions.rejectReasonNameNonAsciiWhitespaceTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  malformedAndNonAsciiWhitespaceReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xC2\xA0RowTotals\xC2",
+                  parsedViolations,
+                  malformedAndNonAsciiWhitespaceReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode prioritizes malformed-UTF-8 diagnostics over non-ASCII-whitespace diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode reports malformed-UTF-8 reason before non-ASCII-whitespace reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode reports reason field index for malformed-over-non-ASCII-whitespace precedence");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\xC2\xA0InconsistentMatrixRowTotals\xC2",
+                  parsedViolations,
+                  malformedAndNonAsciiWhitespaceReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode also prioritizes malformed-UTF-8 diagnostics for leading non-ASCII-whitespace overlap tokens when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode reports malformed-UTF-8 reason for leading overlap tokens when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-ASCII-whitespace mode reports reason field index for leading overlap precedence");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
