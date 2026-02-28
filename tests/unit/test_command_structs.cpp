@@ -817,6 +817,65 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "zero-padded-token mode reports zero-padded fieldIndex reason");
   CHECK_MESSAGE(parseError.fieldIndex == 1, "zero-padded-token mode reports fieldIndex field index");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=+1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects plus-prefixed count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InvalidValue,
+                "default strict-violation parser reports invalid value for plus-prefixed count tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions plusPrefixedNumericOptions;
+  plusPrefixedNumericOptions.rejectPlusPrefixedNumericTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  plusPrefixedNumericOptions,
+                  &parseError),
+                "plus-prefixed-token mode accepts canonical numeric tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "plus-prefixed-token mode clears parse error on canonical numeric tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=+1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  plusPrefixedNumericOptions,
+                  &parseError),
+                "plus-prefixed-token mode rejects plus-prefixed count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken,
+                "plus-prefixed-token mode reports plus-prefixed count reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "plus-prefixed-token mode reports plus-prefixed count field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.+0.fieldIndex=3;"
+                  "strictViolations.+0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  plusPrefixedNumericOptions,
+                  &parseError),
+                "plus-prefixed-token mode rejects plus-prefixed index tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken,
+                "plus-prefixed-token mode reports plus-prefixed index reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "plus-prefixed-token mode reports plus-prefixed index field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=+3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  plusPrefixedNumericOptions,
+                  &parseError),
+                "plus-prefixed-token mode rejects plus-prefixed fieldIndex tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken,
+                "plus-prefixed-token mode reports plus-prefixed fieldIndex reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "plus-prefixed-token mode reports plus-prefixed fieldIndex field index");
+
   SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
   countCapOptions.enforceMaxViolationCount = true;
   countCapOptions.maxViolationCount = 2;
@@ -1038,6 +1097,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken) ==
                   std::string_view("ZeroPaddedNumericToken"),
                 "zero-padded numeric strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken) ==
+                  std::string_view("PlusPrefixedNumericToken"),
+                "plus-prefixed numeric strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

@@ -388,10 +388,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   DuplicateViolationCountField = 26,
   ViolationCountFieldOrder = 27,
   ZeroPaddedNumericToken = 28,
+  PlusPrefixedNumericToken = 29,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -439,6 +440,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectDuplicateCountField = false;
   bool requireCountFieldBeforeEntries = false;
   bool rejectZeroPaddedNumericTokens = false;
+  bool rejectPlusPrefixedNumericTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -507,6 +509,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ViolationCountFieldOrder";
     case SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken:
       return "ZeroPaddedNumericToken";
+    case SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken:
+      return "PlusPrefixedNumericToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -784,6 +788,15 @@ inline auto isZeroPaddedUnsignedToken(std::string_view text) -> bool {
   return text.size() > 1u && text[0] == '0';
 }
 
+inline auto isPlusPrefixedUnsignedToken(std::string_view text) -> bool {
+  if (text.size() <= 1u || text[0] != '+') return false;
+  for (size_t index = 1; index < text.size(); ++index) {
+    char c = text[index];
+    if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -884,6 +897,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           hasExpectedCount) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::DuplicateViolationCountField);
       }
+      if (options.rejectPlusPrefixedNumericTokens &&
+          isPlusPrefixedUnsignedToken(valueText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken);
+      }
       if (!parseUnsignedDecimal(valueText, expectedCount)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
       }
@@ -910,6 +927,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       std::string_view violationIndexText = tail.substr(0, separator);
       std::string_view leafKey = tail.substr(separator + 1);
 
+      if (options.rejectPlusPrefixedNumericTokens &&
+          isPlusPrefixedUnsignedToken(violationIndexText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken);
+      }
       uint64_t violationIndex64 = 0;
       if (!parseUnsignedDecimal(violationIndexText, violationIndex64)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
@@ -948,6 +969,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       }
 
       if (leafKey == "fieldIndex") {
+        if (options.rejectPlusPrefixedNumericTokens &&
+            isPlusPrefixedUnsignedToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::PlusPrefixedNumericToken);
+        }
         uint64_t parsedFieldIndex = 0;
         if (!parseUnsignedDecimal(valueText, parsedFieldIndex)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
