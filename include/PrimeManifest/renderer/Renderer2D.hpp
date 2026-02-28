@@ -393,10 +393,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   NegativeZeroNumericToken = 31,
   LeadingAsciiWhitespaceNumericToken = 32,
   TrailingAsciiWhitespaceNumericToken = 33,
+  ReasonNameAsciiWhitespaceToken = 34,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -449,6 +450,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectNegativeZeroTokens = false;
   bool rejectLeadingAsciiWhitespaceNumericTokens = false;
   bool rejectTrailingAsciiWhitespaceNumericTokens = false;
+  bool rejectReasonNameAsciiWhitespaceTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -527,6 +529,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "LeadingAsciiWhitespaceNumericToken";
     case SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken:
       return "TrailingAsciiWhitespaceNumericToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken:
+      return "ReasonNameAsciiWhitespaceToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -864,6 +868,32 @@ inline auto isTrailingAsciiWhitespaceUnsignedToken(std::string_view text) -> boo
   return true;
 }
 
+inline auto isLeadingOrTrailingAsciiWhitespaceReasonNameToken(std::string_view text) -> bool {
+  if (text.empty()) return false;
+  if (!isAsciiWhitespace(text[0]) &&
+      !isAsciiWhitespace(text[text.size() - 1u])) {
+    return false;
+  }
+
+  size_t begin = 0;
+  while (begin < text.size() &&
+         isAsciiWhitespace(text[begin])) {
+    begin += 1u;
+  }
+  size_t end = text.size();
+  while (end > begin &&
+         isAsciiWhitespace(text[end - 1u])) {
+    end -= 1u;
+  }
+  if (end <= begin) return false;
+
+  std::string_view trimmed = text.substr(begin, end - begin);
+  if (trimmed == "UnknownParseErrorReason") return true;
+
+  SkipDiagnosticsParseErrorReason parsedReason{};
+  return skipDiagnosticsParseErrorReasonFromName(trimmed, parsedReason);
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -1116,6 +1146,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         pendingViolations[violationIndex].fieldIndex = parsedFieldValue;
         pendingViolations[violationIndex].hasFieldIndex = true;
       } else if (leafKey == "reason") {
+        if (options.rejectReasonNameAsciiWhitespaceTokens &&
+            isLeadingOrTrailingAsciiWhitespaceReasonNameToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken);
+        }
         SkipDiagnosticsParseErrorReason parsedReason{};
         if (valueText == "UnknownParseErrorReason") {
           if (options.rejectUnknownReasonFallbackToken) {

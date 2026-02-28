@@ -46,4 +46,5 @@
 44. [x] Add strict-violation decode option to reject non-canonical positive zero (`-0`) tokens in defensive canonical-token mode with dedicated diagnostics.
 45. [x] Add strict-violation decode option to reject numeric tokens with leading ASCII whitespace in defensive canonical-token mode.
 46. [x] Add strict-violation decode option to reject numeric tokens with trailing ASCII whitespace in defensive canonical-token mode.
-47. Add strict-violation decode option to reject reason-name tokens with leading/trailing ASCII whitespace in defensive canonical-token mode.
+47. [x] Add strict-violation decode option to reject reason-name tokens with leading/trailing ASCII whitespace in defensive canonical-token mode.
+48. Add strict-violation decode option to reject reason-name tokens with embedded ASCII whitespace in defensive canonical-token mode.

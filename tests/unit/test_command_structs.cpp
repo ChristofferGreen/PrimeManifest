@@ -553,6 +553,55 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
                 "strict reason-token mode clears parse error on valid known reason");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason= InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects reason tokens with leading whitespace as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for leading-whitespace reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions reasonWhitespaceOptions;
+  reasonWhitespaceOptions.rejectReasonNameAsciiWhitespaceTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  reasonWhitespaceOptions,
+                  &parseError),
+                "reason-whitespace mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "reason-whitespace mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\tInconsistentReasonTotal",
+                  parsedViolations,
+                  reasonWhitespaceOptions,
+                  &parseError),
+                "reason-whitespace mode rejects reason tokens with leading whitespace");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken,
+                "reason-whitespace mode reports dedicated leading-whitespace reason-token error");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "reason-whitespace mode reports reason field index for leading-whitespace tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal \r",
+                  parsedViolations,
+                  reasonWhitespaceOptions,
+                  &parseError),
+                "reason-whitespace mode rejects reason tokens with trailing whitespace");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken,
+                "reason-whitespace mode reports dedicated trailing-whitespace reason-token error");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "reason-whitespace mode reports reason field index for trailing-whitespace tokens");
+
   std::string nonContiguousButCompletePayload =
     "strictViolations.count=3;"
     "strictViolations.0.fieldIndex=3;"
@@ -1348,6 +1397,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken) ==
                   std::string_view("TrailingAsciiWhitespaceNumericToken"),
                 "trailing-whitespace numeric strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken) ==
+                  std::string_view("ReasonNameAsciiWhitespaceToken"),
+                "reason-name-whitespace strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
