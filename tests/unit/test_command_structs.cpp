@@ -586,6 +586,51 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex,
                 "normalized contiguous-index mode reports missing-index reason");
 
+  std::string conflictingFieldDuplicatePayload =
+    "strictViolations.count=1;"
+    "strictViolations.0.fieldIndex=3;"
+    "strictViolations.0.fieldIndex=4;"
+    "strictViolations.0.reason=InconsistentReasonTotal";
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(conflictingFieldDuplicatePayload, parsedViolations, &parseError),
+                "default strict-violation parser allows conflicting duplicate fields");
+  CHECK_MESSAGE(parsedViolations[0].fieldIndex == 4, "default strict-violation parser keeps last duplicate field value");
+
+  SkipDiagnosticsStrictViolationsParseOptions duplicateConflictOptions;
+  duplicateConflictOptions.rejectConflictingDuplicateIndices = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  conflictingFieldDuplicatePayload,
+                  parsedViolations,
+                  duplicateConflictOptions,
+                  &parseError),
+                "duplicate-conflict mode rejects conflicting duplicate field values");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::DuplicateViolationConflict,
+                "duplicate-conflict mode reports dedicated conflict reason");
+
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  duplicateConflictOptions,
+                  &parseError),
+                "duplicate-conflict mode accepts duplicate entries with identical values");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "duplicate-conflict mode keeps no-error state on identical duplicates");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  duplicateConflictOptions,
+                  &parseError),
+                "duplicate-conflict mode rejects conflicting duplicate reason values");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::DuplicateViolationConflict,
+                "duplicate-conflict mode reports reason conflict");
+
   CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none", parsedViolations, &parseError),
                 "strict-violation parser accepts none sentinel");
   CHECK_MESSAGE(parsedViolations.empty(), "none sentinel clears parsed strict-violation list");
@@ -651,6 +696,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex) ==
                   std::string_view("NonContiguousViolationIndex"),
                 "non-contiguous strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::DuplicateViolationConflict) ==
+                  std::string_view("DuplicateViolationConflict"),
+                "duplicate strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

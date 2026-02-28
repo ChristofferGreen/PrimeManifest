@@ -378,10 +378,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   InconsistentMatrixRowTotals = 16,
   InconsistentMatrixColumnTotals = 17,
   NonContiguousViolationIndex = 18,
+  DuplicateViolationConflict = 19,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::DuplicateViolationConflict) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -421,6 +422,7 @@ struct SkipDiagnosticsParseOptions {
 struct SkipDiagnosticsStrictViolationsParseOptions {
   bool enforceContiguousIndices = false;
   bool normalizeOutOfOrderContiguousIndices = false;
+  bool rejectConflictingDuplicateIndices = false;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -463,6 +465,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "InconsistentMatrixColumnTotals";
     case SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex:
       return "NonContiguousViolationIndex";
+    case SkipDiagnosticsParseErrorReason::DuplicateViolationConflict:
+      return "DuplicateViolationConflict";
   }
   return "UnknownParseErrorReason";
 }
@@ -872,7 +876,13 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (parsedFieldIndex > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
         }
-        pendingViolations[violationIndex].fieldIndex = static_cast<size_t>(parsedFieldIndex);
+        size_t parsedFieldValue = static_cast<size_t>(parsedFieldIndex);
+        if (options.rejectConflictingDuplicateIndices &&
+            pendingViolations[violationIndex].hasFieldIndex &&
+            pendingViolations[violationIndex].fieldIndex != parsedFieldValue) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::DuplicateViolationConflict);
+        }
+        pendingViolations[violationIndex].fieldIndex = parsedFieldValue;
         pendingViolations[violationIndex].hasFieldIndex = true;
       } else if (leafKey == "reason") {
         SkipDiagnosticsParseErrorReason parsedReason{};
@@ -880,6 +890,11 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           parsedReason = static_cast<SkipDiagnosticsParseErrorReason>(255);
         } else if (!skipDiagnosticsParseErrorReasonFromName(valueText, parsedReason)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonName);
+        }
+        if (options.rejectConflictingDuplicateIndices &&
+            pendingViolations[violationIndex].hasReason &&
+            pendingViolations[violationIndex].reason != parsedReason) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::DuplicateViolationConflict);
         }
         pendingViolations[violationIndex].reason = parsedReason;
         pendingViolations[violationIndex].hasReason = true;
