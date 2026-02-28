@@ -73,3 +73,4 @@
 71. [x] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics take precedence over fallback-token rejection when both checks are enabled.
 72. [x] Add strict-violation reason-token tests verifying ASCII-control diagnostics take precedence over fallback-token rejection when both checks are enabled.
 73. [x] Add strict-violation reason-token tests verifying non-ASCII Unicode-control diagnostics take precedence over fallback-token rejection when both checks are enabled.
+74. [x] Add strict-violation reason-token tests verifying Unicode-noncharacter diagnostics take precedence over fallback-token rejection when both checks are enabled.
