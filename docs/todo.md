@@ -61,3 +61,4 @@
 59. [x] Add strict-violation surrogate-token tests covering precedence when lone/paired/mixed-order/same-order CESU-8 rejection modes are all enabled together.
 60. [x] Add strict-violation surrogate-token tests verifying canonical reason-name tokens are accepted when all lone/paired/mixed-order/same-order CESU-8 rejection modes are enabled together.
 61. [x] Add strict-violation surrogate-token tests verifying `UnknownParseErrorReason` fallback-token acceptance/rejection behavior when all lone/paired/mixed-order/same-order CESU-8 rejection modes are enabled together.
+62. [x] Add strict-violation surrogate-token tests verifying malformed UTF-8 reason tokens still report malformed-UTF-8 diagnostics when all lone/paired/mixed-order/same-order CESU-8 rejection modes are enabled.
