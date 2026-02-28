@@ -866,6 +866,46 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "ASCII-control reason-token mode reports reason field index for trailing DEL bytes");
 
+  SkipDiagnosticsStrictViolationsParseOptions malformedAndAsciiControlReasonOptions;
+  malformedAndAsciiControlReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
+  malformedAndAsciiControlReasonOptions.rejectReasonNameAsciiControlCharacterTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  malformedAndAsciiControlReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and ASCII-control mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "combined malformed-UTF-8 and ASCII-control mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\x01Total\xC2",
+                  parsedViolations,
+                  malformedAndAsciiControlReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and ASCII-control mode prioritizes malformed-UTF-8 diagnostics over ASCII-control diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and ASCII-control mode reports malformed-UTF-8 reason before ASCII-control reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and ASCII-control mode reports reason field index for malformed-over-ASCII-control precedence");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\x80InconsistentReason\x01Total",
+                  parsedViolations,
+                  malformedAndAsciiControlReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and ASCII-control mode also prioritizes malformed-UTF-8 diagnostics for leading malformed bytes when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and ASCII-control mode reports malformed-UTF-8 reason for leading malformed bytes when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and ASCII-control mode reports reason field index for leading malformed-over-ASCII-control precedence");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
