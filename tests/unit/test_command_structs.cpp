@@ -1053,6 +1053,65 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "leading-whitespace-token mode reports leading-whitespace fieldIndex reason");
   CHECK_MESSAGE(parseError.fieldIndex == 1, "leading-whitespace-token mode reports leading-whitespace fieldIndex field index");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1 ;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects trailing-whitespace count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InvalidValue,
+                "default strict-violation parser reports invalid value for trailing-whitespace count tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions trailingWhitespaceOptions;
+  trailingWhitespaceOptions.rejectTrailingAsciiWhitespaceNumericTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  trailingWhitespaceOptions,
+                  &parseError),
+                "trailing-whitespace-token mode accepts canonical numeric tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "trailing-whitespace-token mode clears parse error on canonical numeric tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1\t;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  trailingWhitespaceOptions,
+                  &parseError),
+                "trailing-whitespace-token mode rejects trailing-whitespace count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken,
+                "trailing-whitespace-token mode reports trailing-whitespace count reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "trailing-whitespace-token mode reports trailing-whitespace count field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0 .fieldIndex=3;"
+                  "strictViolations.0 .reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  trailingWhitespaceOptions,
+                  &parseError),
+                "trailing-whitespace-token mode rejects trailing-whitespace index tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken,
+                "trailing-whitespace-token mode reports trailing-whitespace index reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "trailing-whitespace-token mode reports trailing-whitespace index field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3 \t;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  trailingWhitespaceOptions,
+                  &parseError),
+                "trailing-whitespace-token mode rejects trailing-whitespace fieldIndex tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken,
+                "trailing-whitespace-token mode reports trailing-whitespace fieldIndex reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "trailing-whitespace-token mode reports trailing-whitespace fieldIndex field index");
+
   SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
   countCapOptions.enforceMaxViolationCount = true;
   countCapOptions.maxViolationCount = 2;
@@ -1286,6 +1345,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::LeadingAsciiWhitespaceNumericToken) ==
                   std::string_view("LeadingAsciiWhitespaceNumericToken"),
                 "leading-whitespace numeric strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken) ==
+                  std::string_view("TrailingAsciiWhitespaceNumericToken"),
+                "trailing-whitespace numeric strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

@@ -392,10 +392,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   MinusPrefixedNumericToken = 30,
   NegativeZeroNumericToken = 31,
   LeadingAsciiWhitespaceNumericToken = 32,
+  TrailingAsciiWhitespaceNumericToken = 33,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::LeadingAsciiWhitespaceNumericToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -447,6 +448,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectMinusPrefixedNumericTokens = false;
   bool rejectNegativeZeroTokens = false;
   bool rejectLeadingAsciiWhitespaceNumericTokens = false;
+  bool rejectTrailingAsciiWhitespaceNumericTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -523,6 +525,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "NegativeZeroNumericToken";
     case SkipDiagnosticsParseErrorReason::LeadingAsciiWhitespaceNumericToken:
       return "LeadingAsciiWhitespaceNumericToken";
+    case SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken:
+      return "TrailingAsciiWhitespaceNumericToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -843,6 +847,23 @@ inline auto isLeadingAsciiWhitespaceUnsignedToken(std::string_view text) -> bool
   return true;
 }
 
+inline auto isTrailingAsciiWhitespaceUnsignedToken(std::string_view text) -> bool {
+  if (text.empty() || !isAsciiWhitespace(text[text.size() - 1u])) return false;
+
+  size_t lastNonWhitespace = text.size();
+  while (lastNonWhitespace > 0u &&
+         isAsciiWhitespace(text[lastNonWhitespace - 1u])) {
+    lastNonWhitespace -= 1u;
+  }
+  if (lastNonWhitespace == 0u) return false;
+
+  for (size_t index = 0; index < lastNonWhitespace; ++index) {
+    char c = text[index];
+    if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -951,6 +972,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           isLeadingAsciiWhitespaceUnsignedToken(valueText)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::LeadingAsciiWhitespaceNumericToken);
       }
+      if (options.rejectTrailingAsciiWhitespaceNumericTokens &&
+          isTrailingAsciiWhitespaceUnsignedToken(valueText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken);
+      }
       if (options.rejectNegativeZeroTokens &&
           isNegativeZeroToken(valueText)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::NegativeZeroNumericToken);
@@ -992,6 +1017,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       if (options.rejectLeadingAsciiWhitespaceNumericTokens &&
           isLeadingAsciiWhitespaceUnsignedToken(violationIndexText)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::LeadingAsciiWhitespaceNumericToken);
+      }
+      if (options.rejectTrailingAsciiWhitespaceNumericTokens &&
+          isTrailingAsciiWhitespaceUnsignedToken(violationIndexText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken);
       }
       if (options.rejectNegativeZeroTokens &&
           isNegativeZeroToken(violationIndexText)) {
@@ -1046,6 +1075,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectLeadingAsciiWhitespaceNumericTokens &&
             isLeadingAsciiWhitespaceUnsignedToken(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::LeadingAsciiWhitespaceNumericToken);
+        }
+        if (options.rejectTrailingAsciiWhitespaceNumericTokens &&
+            isTrailingAsciiWhitespaceUnsignedToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::TrailingAsciiWhitespaceNumericToken);
         }
         if (options.rejectNegativeZeroTokens &&
             isNegativeZeroToken(valueText)) {
