@@ -400,10 +400,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ReasonNameNonWhitespaceNonAsciiToken = 38,
   ReasonNameAsciiControlCharacterToken = 39,
   ReasonNameNonAsciiUnicodeControlCharacterToken = 40,
+  ReasonNameUnicodeNoncharacterToken = 41,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -463,6 +464,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectReasonNameNonWhitespaceNonAsciiTokens = false;
   bool rejectReasonNameAsciiControlCharacterTokens = false;
   bool rejectReasonNameNonAsciiUnicodeControlCharacterTokens = false;
+  bool rejectReasonNameUnicodeNoncharacterTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -555,6 +557,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNameAsciiControlCharacterToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken:
       return "ReasonNameNonAsciiUnicodeControlCharacterToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken:
+      return "ReasonNameUnicodeNoncharacterToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -1114,6 +1118,31 @@ inline auto hasNonAsciiUnicodeControlCharacters(std::string_view text) -> bool {
   return false;
 }
 
+inline auto isUnicodeNoncharacter(char32_t codePoint) -> bool {
+  return (codePoint >= 0xFDD0u && codePoint <= 0xFDEFu) ||
+         (codePoint >= 0xFFFEu &&
+          codePoint <= 0x10FFFFu &&
+          (codePoint & 0xFFFFu) >= 0xFFFEu);
+}
+
+inline auto hasUnicodeNoncharacters(std::string_view text) -> bool {
+  size_t index = 0;
+  while (index < text.size()) {
+    uint8_t byte = static_cast<uint8_t>(text[index]);
+    if (byte < 0x80u) {
+      index += 1u;
+      continue;
+    }
+
+    char32_t codePoint = 0;
+    size_t width = 0;
+    if (!decodeUtf8CodePoint(text, index, codePoint, width)) return false;
+    if (isUnicodeNoncharacter(codePoint)) return true;
+    index += width;
+  }
+  return false;
+}
+
 inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> bool {
   if (text.empty()) return false;
 
@@ -1410,6 +1439,12 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           return failSkipDiagnosticsParse(errorOut,
                                           fieldIndex,
                                           SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken);
+        }
+        if (options.rejectReasonNameUnicodeNoncharacterTokens &&
+            hasUnicodeNoncharacters(valueText)) {
+          return failSkipDiagnosticsParse(errorOut,
+                                          fieldIndex,
+                                          SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken);
         }
         if (options.rejectReasonNameNonAsciiWhitespaceTokens &&
             isNonAsciiWhitespaceReasonNameToken(valueText)) {

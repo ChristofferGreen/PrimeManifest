@@ -850,6 +850,55 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xEF\xB7\x90Total",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects Unicode-noncharacter reason tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for Unicode-noncharacter reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions unicodeNoncharacterReasonOptions;
+  unicodeNoncharacterReasonOptions.rejectReasonNameUnicodeNoncharacterTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  unicodeNoncharacterReasonOptions,
+                  &parseError),
+                "Unicode-noncharacter reason-token mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "Unicode-noncharacter reason-token mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xEF\xB7\x90Total",
+                  parsedViolations,
+                  unicodeNoncharacterReasonOptions,
+                  &parseError),
+                "Unicode-noncharacter reason-token mode rejects embedded U+FDD0 noncharacter tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken,
+                "Unicode-noncharacter reason-token mode reports dedicated noncharacter reason-token error for embedded U+FDD0");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "Unicode-noncharacter reason-token mode reports reason field index for embedded U+FDD0");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal\xEF\xBF\xBF",
+                  parsedViolations,
+                  unicodeNoncharacterReasonOptions,
+                  &parseError),
+                "Unicode-noncharacter reason-token mode rejects trailing U+FFFF noncharacter tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken,
+                "Unicode-noncharacter reason-token mode reports dedicated noncharacter reason-token error for trailing U+FFFF");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "Unicode-noncharacter reason-token mode reports reason field index for trailing U+FFFF");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=Inconsist\xC3\xA9ntReasonTotal",
                   parsedViolations,
                   &parseError),
@@ -1712,6 +1761,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken) ==
                   std::string_view("ReasonNameNonAsciiUnicodeControlCharacterToken"),
                 "reason-name-non-ASCII-Unicode-control strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken) ==
+                  std::string_view("ReasonNameUnicodeNoncharacterToken"),
+                "reason-name-Unicode-noncharacter strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
