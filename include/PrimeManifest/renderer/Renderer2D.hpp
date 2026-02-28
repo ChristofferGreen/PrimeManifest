@@ -331,6 +331,22 @@ struct RendererProfile {
   }
 };
 
+enum class SkipDiagnosticsDumpFormat : uint8_t {
+  Readable = 0,
+  KeyValue = 1,
+};
+
+inline void appendKeyValueField(std::string& out,
+                                bool& first,
+                                std::string_view key,
+                                uint64_t value) {
+  if (!first) out += ";";
+  out += key;
+  out += "=";
+  out += std::to_string(value);
+  first = false;
+}
+
 inline auto appendSkippedCommandDiagnosticsSummary(std::string& out,
                                                    std::string_view label,
                                                    SkippedCommandDiagnostics const& diagnostics) -> bool {
@@ -359,7 +375,40 @@ inline auto appendSkippedCommandDiagnosticsSummary(std::string& out,
   return true;
 }
 
-inline auto rendererProfileSkipDiagnosticsDump(RendererProfile const& profile) -> std::string {
+inline auto appendSkippedCommandDiagnosticsSummaryKeyValue(std::string& out,
+                                                           bool& firstField,
+                                                           std::string_view label,
+                                                           SkippedCommandDiagnostics const& diagnostics) -> bool {
+  if (diagnostics.total == 0) return false;
+  std::string prefix(label);
+  appendKeyValueField(out, firstField, prefix + ".total", diagnostics.total);
+  if (diagnostics.unknownType != 0) {
+    appendKeyValueField(out, firstField, prefix + ".unknownType", diagnostics.unknownType);
+  }
+  bool hasReason = false;
+  for (size_t reasonIndex = 0; reasonIndex < diagnostics.byReason.size(); ++reasonIndex) {
+    uint64_t count = diagnostics.byReason[reasonIndex];
+    if (count == 0) continue;
+    hasReason = true;
+    appendKeyValueField(out, firstField, prefix + ".reason." + std::string(skippedCommandReasonName(reasonIndex)), count);
+  }
+  if (!hasReason) {
+    appendKeyValueField(out, firstField, prefix + ".reason.none", 1);
+  }
+  return true;
+}
+
+inline auto rendererProfileSkipDiagnosticsDump(RendererProfile const& profile,
+                                               SkipDiagnosticsDumpFormat format) -> std::string {
+  if (format == SkipDiagnosticsDumpFormat::KeyValue) {
+    std::string out;
+    bool firstField = true;
+    appendSkippedCommandDiagnosticsSummaryKeyValue(out, firstField, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+    appendSkippedCommandDiagnosticsSummaryKeyValue(out, firstField, "skippedCommands", profile.skippedCommands);
+    if (out.empty()) return "skip_diagnostics=none";
+    return out;
+  }
+
   std::string out;
   appendSkippedCommandDiagnosticsSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
   appendSkippedCommandDiagnosticsSummary(out, "skippedCommands", profile.skippedCommands);
@@ -389,6 +438,21 @@ inline auto appendSkippedCommandTypeSummary(std::string& out,
   return !firstBucket;
 }
 
+inline auto appendSkippedCommandTypeSummaryKeyValue(std::string& out,
+                                                    bool& firstField,
+                                                    std::string_view label,
+                                                    SkippedCommandDiagnostics const& diagnostics) -> bool {
+  bool hasType = false;
+  std::string prefix(label);
+  for (size_t typeIndex = 0; typeIndex < diagnostics.byType.size(); ++typeIndex) {
+    uint64_t count = diagnostics.byType[typeIndex];
+    if (count == 0) continue;
+    hasType = true;
+    appendKeyValueField(out, firstField, prefix + ".type." + std::string(commandTypeName(typeIndex)), count);
+  }
+  return hasType;
+}
+
 inline auto appendSkippedCommandTypeReasonMatrixSummary(std::string& out,
                                                         std::string_view label,
                                                         SkippedCommandDiagnostics const& diagnostics) -> bool {
@@ -415,7 +479,42 @@ inline auto appendSkippedCommandTypeReasonMatrixSummary(std::string& out,
   return !firstBucket;
 }
 
-inline auto rendererProfileSkipDiagnosticsDumpVerbose(RendererProfile const& profile) -> std::string {
+inline auto appendSkippedCommandTypeReasonMatrixSummaryKeyValue(std::string& out,
+                                                                bool& firstField,
+                                                                std::string_view label,
+                                                                SkippedCommandDiagnostics const& diagnostics) -> bool {
+  bool hasMatrix = false;
+  std::string prefix(label);
+  for (size_t typeIndex = 0; typeIndex < diagnostics.byTypeAndReason.size(); ++typeIndex) {
+    for (size_t reasonIndex = 0; reasonIndex < diagnostics.byTypeAndReason[typeIndex].size(); ++reasonIndex) {
+      uint64_t count = diagnostics.byTypeAndReason[typeIndex][reasonIndex];
+      if (count == 0) continue;
+      hasMatrix = true;
+      appendKeyValueField(out,
+                          firstField,
+                          prefix + ".typeReason." + std::string(commandTypeName(typeIndex)) + "." +
+                            std::string(skippedCommandReasonName(reasonIndex)),
+                          count);
+    }
+  }
+  return hasMatrix;
+}
+
+inline auto rendererProfileSkipDiagnosticsDumpVerbose(RendererProfile const& profile,
+                                                      SkipDiagnosticsDumpFormat format) -> std::string {
+  if (format == SkipDiagnosticsDumpFormat::KeyValue) {
+    std::string out;
+    bool firstField = true;
+    appendSkippedCommandDiagnosticsSummaryKeyValue(out, firstField, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+    appendSkippedCommandDiagnosticsSummaryKeyValue(out, firstField, "skippedCommands", profile.skippedCommands);
+    appendSkippedCommandTypeSummaryKeyValue(out, firstField, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+    appendSkippedCommandTypeSummaryKeyValue(out, firstField, "skippedCommands", profile.skippedCommands);
+    appendSkippedCommandTypeReasonMatrixSummaryKeyValue(out, firstField, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
+    appendSkippedCommandTypeReasonMatrixSummaryKeyValue(out, firstField, "skippedCommands", profile.skippedCommands);
+    if (out.empty()) return "skip_diagnostics=none";
+    return out;
+  }
+
   std::string out;
   appendSkippedCommandDiagnosticsSummary(out, "optimizerSkippedCommands", profile.optimizerSkippedCommands);
   appendSkippedCommandDiagnosticsSummary(out, "skippedCommands", profile.skippedCommands);
@@ -425,6 +524,14 @@ inline auto rendererProfileSkipDiagnosticsDumpVerbose(RendererProfile const& pro
   appendSkippedCommandTypeReasonMatrixSummary(out, "skippedCommands", profile.skippedCommands);
   if (out.empty()) return "skip diagnostics: none";
   return out;
+}
+
+inline auto rendererProfileSkipDiagnosticsDump(RendererProfile const& profile) -> std::string {
+  return rendererProfileSkipDiagnosticsDump(profile, SkipDiagnosticsDumpFormat::Readable);
+}
+
+inline auto rendererProfileSkipDiagnosticsDumpVerbose(RendererProfile const& profile) -> std::string {
+  return rendererProfileSkipDiagnosticsDumpVerbose(profile, SkipDiagnosticsDumpFormat::Readable);
 }
 
 struct ClearStore {

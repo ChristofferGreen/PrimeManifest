@@ -19,4 +19,5 @@
 17. [x] Add a small `SkippedCommandReason` name formatter for diagnostics output/tests so reason buckets can be inspected without numeric decoding.
 18. [x] Add a compact `RendererProfile` diagnostics dump helper that prints non-zero skip buckets with `skippedCommandReasonName` labels.
 19. [x] Add an opt-in verbose diagnostics dump helper that also emits non-zero `byType` and `byTypeAndReason` skip matrices.
-20. Add a parse-friendly diagnostics format option (single-line key/value) for `RendererProfile` skip dump helpers.
+20. [x] Add a parse-friendly diagnostics format option (single-line key/value) for `RendererProfile` skip dump helpers.
+21. Add `RendererProfile` diagnostics parsing helpers that reconstruct structured buckets from key/value dump output.

@@ -75,6 +75,8 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_none") {
   RendererProfile profile;
   CHECK_MESSAGE(rendererProfileSkipDiagnosticsDump(profile) == std::string("skip diagnostics: none"),
                 "empty profile emits none summary");
+  CHECK_MESSAGE(rendererProfileSkipDiagnosticsDump(profile, SkipDiagnosticsDumpFormat::KeyValue) == std::string("skip_diagnostics=none"),
+                "empty profile emits none key-value summary");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
@@ -93,12 +95,25 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
                 "dump includes non-zero reason buckets with labels");
   CHECK_MESSAGE(dump.find("OptimizerInvalidCommandData=0") == std::string::npos,
                 "zero buckets omitted from dump");
+
+  auto keyValueDump = rendererProfileSkipDiagnosticsDump(profile, SkipDiagnosticsDumpFormat::KeyValue);
+  CHECK_MESSAGE(keyValueDump ==
+                  std::string("optimizerSkippedCommands.total=3;")
+                    + "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+                    + "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+                    + "skippedCommands.total=3;"
+                    + "skippedCommands.unknownType=2;"
+                    + "skippedCommands.reason.InvalidCommandData=1",
+                "compact key-value dump includes totals and non-zero reasons");
+  CHECK_MESSAGE(keyValueDump.find('\n') == std::string::npos, "compact key-value dump is single-line");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_none") {
   RendererProfile profile;
   CHECK_MESSAGE(rendererProfileSkipDiagnosticsDumpVerbose(profile) == std::string("skip diagnostics: none"),
                 "empty profile emits none summary");
+  CHECK_MESSAGE(rendererProfileSkipDiagnosticsDumpVerbose(profile, SkipDiagnosticsDumpFormat::KeyValue) == std::string("skip_diagnostics=none"),
+                "empty profile emits none key-value summary");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
@@ -133,6 +148,23 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   CHECK_MESSAGE(dump.find("Clear=0") == std::string::npos, "verbose dump omits zero by-type buckets");
   CHECK_MESSAGE(dump.find("Rect/OptimizerInvalidCommandData=0") == std::string::npos,
                 "verbose dump omits zero matrix buckets");
+
+  auto keyValueDump = rendererProfileSkipDiagnosticsDumpVerbose(profile, SkipDiagnosticsDumpFormat::KeyValue);
+  CHECK_MESSAGE(keyValueDump ==
+                  std::string("optimizerSkippedCommands.total=3;")
+                    + "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+                    + "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+                    + "skippedCommands.total=3;"
+                    + "skippedCommands.unknownType=2;"
+                    + "skippedCommands.reason.InvalidCommandData=1;"
+                    + "optimizerSkippedCommands.type.Rect=2;"
+                    + "optimizerSkippedCommands.type.Text=1;"
+                    + "skippedCommands.type.Image=1;"
+                    + "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+                    + "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2;"
+                    + "skippedCommands.typeReason.Image.InvalidCommandData=1",
+                "verbose key-value dump includes non-zero by-type and matrix buckets");
+  CHECK_MESSAGE(keyValueDump.find('\n') == std::string::npos, "verbose key-value dump is single-line");
 }
 
 TEST_SUITE_END();
