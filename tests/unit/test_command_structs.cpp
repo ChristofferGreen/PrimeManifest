@@ -1044,6 +1044,46 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "Unicode-noncharacter reason-token mode reports reason field index for trailing U+FFFF");
 
+  SkipDiagnosticsStrictViolationsParseOptions malformedAndUnicodeNoncharacterReasonOptions;
+  malformedAndUnicodeNoncharacterReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
+  malformedAndUnicodeNoncharacterReasonOptions.rejectReasonNameUnicodeNoncharacterTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  malformedAndUnicodeNoncharacterReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and Unicode-noncharacter mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "combined malformed-UTF-8 and Unicode-noncharacter mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xEF\xB7\x90Total\xC2",
+                  parsedViolations,
+                  malformedAndUnicodeNoncharacterReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and Unicode-noncharacter mode prioritizes malformed-UTF-8 diagnostics over Unicode-noncharacter diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and Unicode-noncharacter mode reports malformed-UTF-8 reason before Unicode-noncharacter reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and Unicode-noncharacter mode reports reason field index for malformed-over-Unicode-noncharacter precedence");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal\xEF\xBF\xBF\x80",
+                  parsedViolations,
+                  malformedAndUnicodeNoncharacterReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and Unicode-noncharacter mode also prioritizes malformed-UTF-8 diagnostics for trailing malformed bytes when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and Unicode-noncharacter mode reports malformed-UTF-8 reason for trailing malformed-byte overlap tokens when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and Unicode-noncharacter mode reports reason field index for trailing overlap precedence");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
