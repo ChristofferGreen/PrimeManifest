@@ -379,6 +379,9 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   InconsistentMatrixColumnTotals = 17,
 };
 
+constexpr size_t SkipDiagnosticsParseErrorReasonCount =
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals) + 1u;
+
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
   SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
@@ -454,6 +457,24 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "InconsistentMatrixColumnTotals";
   }
   return "UnknownParseErrorReason";
+}
+
+constexpr auto skipDiagnosticsParseErrorReasonName(size_t reasonIndex) -> std::string_view {
+  if (reasonIndex >= SkipDiagnosticsParseErrorReasonCount) {
+    return "OutOfRangeSkipDiagnosticsParseErrorReason";
+  }
+  return skipDiagnosticsParseErrorReasonName(static_cast<SkipDiagnosticsParseErrorReason>(reasonIndex));
+}
+
+constexpr auto skipDiagnosticsParseErrorReasonFromName(std::string_view name,
+                                                       SkipDiagnosticsParseErrorReason& out) -> bool {
+  for (size_t reasonIndex = 0; reasonIndex < SkipDiagnosticsParseErrorReasonCount; ++reasonIndex) {
+    if (skipDiagnosticsParseErrorReasonName(reasonIndex) == name) {
+      out = static_cast<SkipDiagnosticsParseErrorReason>(reasonIndex);
+      return true;
+    }
+  }
+  return false;
 }
 
 inline auto skipDiagnosticsParseStrictViolationsDump(SkipDiagnosticsParseError const& error,
@@ -741,6 +762,137 @@ inline auto reportSkipDiagnosticsStrictFailure(SkipDiagnosticsParseError* errorO
     return true;
   }
   return false;
+}
+
+inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
+  std::string_view dump,
+  std::vector<SkipDiagnosticsParseError::StrictViolation>& violationsOut,
+  SkipDiagnosticsParseError* errorOut) -> bool {
+  violationsOut.clear();
+  clearSkipDiagnosticsParseError(errorOut);
+  if (dump == "strict_violations=none") return true;
+  if (dump.empty()) return failSkipDiagnosticsParse(errorOut, 0, SkipDiagnosticsParseErrorReason::EmptyInput);
+  if (dump.starts_with("strict_violations=none")) {
+    return failSkipDiagnosticsParse(errorOut, 0, SkipDiagnosticsParseErrorReason::MalformedNonePayload);
+  }
+
+  struct PendingStrictViolation {
+    bool hasFieldIndex = false;
+    size_t fieldIndex = 0;
+    bool hasReason = false;
+    SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
+  };
+
+  constexpr std::string_view StrictViolationPrefix = "strictViolations.";
+  std::vector<PendingStrictViolation> pendingViolations;
+  uint64_t expectedCount = 0;
+  bool hasExpectedCount = false;
+
+  size_t start = 0;
+  size_t fieldIndex = 0;
+  size_t parsedFieldCount = 0;
+  while (start <= dump.size()) {
+    size_t end = dump.find(';', start);
+    if (end == std::string_view::npos) end = dump.size();
+    if (end <= start) return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyField);
+    std::string_view field = dump.substr(start, end - start);
+
+    size_t equals = field.find('=');
+    if (equals == std::string_view::npos) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::MissingEquals);
+    }
+    if (equals == 0) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyKey);
+    }
+    if (equals + 1 >= field.size()) {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyValue);
+    }
+    std::string_view key = field.substr(0, equals);
+    std::string_view valueText = field.substr(equals + 1);
+
+    if (key == "strictViolations.count") {
+      if (!parseUnsignedDecimal(valueText, expectedCount)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+      }
+      hasExpectedCount = true;
+    } else if (key.starts_with(StrictViolationPrefix)) {
+      std::string_view tail = key.substr(StrictViolationPrefix.size());
+      size_t separator = tail.find('.');
+      if (separator == std::string_view::npos || separator == 0 || separator + 1 >= tail.size()) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
+      }
+
+      std::string_view violationIndexText = tail.substr(0, separator);
+      std::string_view leafKey = tail.substr(separator + 1);
+
+      uint64_t violationIndex64 = 0;
+      if (!parseUnsignedDecimal(violationIndexText, violationIndex64)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
+      }
+      if (violationIndex64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+      }
+      size_t violationIndex = static_cast<size_t>(violationIndex64);
+      if (pendingViolations.size() <= violationIndex) {
+        pendingViolations.resize(violationIndex + 1u);
+      }
+
+      if (leafKey == "fieldIndex") {
+        uint64_t parsedFieldIndex = 0;
+        if (!parseUnsignedDecimal(valueText, parsedFieldIndex)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+        }
+        if (parsedFieldIndex > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+        }
+        pendingViolations[violationIndex].fieldIndex = static_cast<size_t>(parsedFieldIndex);
+        pendingViolations[violationIndex].hasFieldIndex = true;
+      } else if (leafKey == "reason") {
+        SkipDiagnosticsParseErrorReason parsedReason{};
+        if (valueText == "UnknownParseErrorReason") {
+          parsedReason = static_cast<SkipDiagnosticsParseErrorReason>(255);
+        } else if (!skipDiagnosticsParseErrorReasonFromName(valueText, parsedReason)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonName);
+        }
+        pendingViolations[violationIndex].reason = parsedReason;
+        pendingViolations[violationIndex].hasReason = true;
+      } else {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
+      }
+    } else {
+      return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
+    }
+    parsedFieldCount += 1;
+
+    if (end == dump.size()) break;
+    start = end + 1;
+    fieldIndex += 1;
+  }
+
+  if (!hasExpectedCount) {
+    return failSkipDiagnosticsParse(errorOut, parsedFieldCount, SkipDiagnosticsParseErrorReason::UnknownKey);
+  }
+  if (expectedCount != pendingViolations.size()) {
+    return failSkipDiagnosticsParse(errorOut, parsedFieldCount, SkipDiagnosticsParseErrorReason::InvalidValue);
+  }
+  violationsOut.reserve(pendingViolations.size());
+  for (size_t violationIndex = 0; violationIndex < pendingViolations.size(); ++violationIndex) {
+    auto const& pending = pendingViolations[violationIndex];
+    if (!pending.hasFieldIndex || !pending.hasReason) {
+      return failSkipDiagnosticsParse(
+        errorOut,
+        parsedFieldCount + violationIndex,
+        SkipDiagnosticsParseErrorReason::UnknownKey);
+    }
+    violationsOut.push_back({pending.fieldIndex, pending.reason});
+  }
+  return true;
+}
+
+inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
+  std::string_view dump,
+  std::vector<SkipDiagnosticsParseError::StrictViolation>& violationsOut) -> bool {
+  return parseSkipDiagnosticsStrictViolationsKeyValue(dump, violationsOut, nullptr);
 }
 
 inline auto sumSkipReasonBuckets(SkippedCommandDiagnostics const& diagnostics) -> uint64_t {

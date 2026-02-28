@@ -515,6 +515,67 @@ TEST_CASE("skip_diagnostics_strict_violations_dump_formatter") {
                 "key-value strict-violations dump lists indexed field/reason pairs");
 }
 
+TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
+  SkipDiagnosticsParseError dumpSource;
+  dumpSource.strictViolations.push_back({3, SkipDiagnosticsParseErrorReason::InconsistentReasonTotal});
+  dumpSource.strictViolations.push_back({11, SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals});
+  dumpSource.strictViolations.push_back({13, static_cast<SkipDiagnosticsParseErrorReason>(255)});
+
+  std::vector<SkipDiagnosticsParseError::StrictViolation> parsedViolations;
+  SkipDiagnosticsParseError parseError{99, SkipDiagnosticsParseErrorReason::UnknownKey};
+  std::string keyValueDump = skipDiagnosticsParseStrictViolationsDump(dumpSource, SkipDiagnosticsDumpFormat::KeyValue);
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(keyValueDump, parsedViolations, &parseError),
+                "strict-violation key-value parser accepts formatted dump");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "strict-violation parser clears parse error on success");
+  CHECK_MESSAGE(parsedViolations.size() == 3, "strict-violation parser restores all entries");
+  CHECK_MESSAGE(parsedViolations[0].fieldIndex == 3, "strict-violation parser restores first field index");
+  CHECK_MESSAGE(parsedViolations[0].reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "strict-violation parser restores first reason");
+  CHECK_MESSAGE(parsedViolations[2].reason == static_cast<SkipDiagnosticsParseErrorReason>(255),
+                "strict-violation parser preserves unknown reason fallback");
+
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none", parsedViolations, &parseError),
+                "strict-violation parser accepts none sentinel");
+  CHECK_MESSAGE(parsedViolations.empty(), "none sentinel clears parsed strict-violation list");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "none sentinel keeps parse error clear");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=2;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "strict-violation parser rejects count mismatches");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InvalidValue,
+                "count mismatch reports invalid value");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "strict-violation parser requires count field");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownKey,
+                "missing count reports unknown key");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=NoSuchReason",
+                  parsedViolations,
+                  &parseError),
+                "strict-violation parser rejects unknown reason names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "unknown strict-violation reason reported");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none;extra=1", parsedViolations, &parseError),
+                "strict-violation parser rejects malformed none payload");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::MalformedNonePayload,
+                "malformed none strict-violation error reported");
+}
+
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::None) == std::string_view("None"),
                 "none parse error name");
@@ -536,9 +597,22 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals) ==
                   std::string_view("InconsistentMatrixColumnTotals"),
                 "inconsistent matrix-column parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
+                  std::string_view("InconsistentTypeTotal"),
+                "parse error name by index resolves known reason");
+  SkipDiagnosticsParseErrorReason parsedReason{};
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonFromName("InconsistentMatrixRowTotals", parsedReason),
+                "parse error reason parser accepts known names");
+  CHECK_MESSAGE(parsedReason == SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals,
+                "parse error reason parser value");
+  CHECK_MESSAGE(!skipDiagnosticsParseErrorReasonFromName("NotAParseReason", parsedReason),
+                "parse error reason parser rejects unknown names");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<SkipDiagnosticsParseErrorReason>(255)) ==
                   std::string_view("UnknownParseErrorReason"),
                 "unknown parse error name fallback");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReasonCount + 1) ==
+                  std::string_view("OutOfRangeSkipDiagnosticsParseErrorReason"),
+                "parse error index formatter out-of-range fallback");
 }
 
 TEST_SUITE_END();
