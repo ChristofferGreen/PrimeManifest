@@ -36,4 +36,5 @@
 34. [x] Add strict-violation decode option to reject unknown-reason fallback tokens (`UnknownParseErrorReason`) in strict parse mode.
 35. [x] Add strict-violation decode mode to cap maximum allowed violation count for defensive parse limits.
 36. [x] Add strict-violation decode mode to cap total parsed key/value fields before rejecting oversized payloads.
-37. Add strict-violation decode option to cap maximum decoded violation index before pending-vector resize to harden against sparse-index memory blowups.
+37. [x] Add strict-violation decode option to cap maximum decoded violation index before pending-vector resize to harden against sparse-index memory blowups.
+38. Add strict-violation decode option to cap maximum decoded `fieldIndex` values for defensive parse bounds in untrusted payloads.

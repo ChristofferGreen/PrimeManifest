@@ -383,10 +383,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   UnknownReasonFallbackToken = 21,
   ViolationCountLimitExceeded = 22,
   ViolationFieldCountLimitExceeded = 23,
+  ViolationIndexLimitExceeded = 24,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationFieldCountLimitExceeded) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -433,6 +434,8 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   size_t maxViolationCount = 0;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
+  bool enforceMaxViolationIndex = false;
+  size_t maxViolationIndex = 0;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -485,6 +488,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ViolationCountLimitExceeded";
     case SkipDiagnosticsParseErrorReason::ViolationFieldCountLimitExceeded:
       return "ViolationFieldCountLimitExceeded";
+    case SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded:
+      return "ViolationIndexLimitExceeded";
   }
   return "UnknownParseErrorReason";
 }
@@ -878,6 +883,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       }
       if (violationIndex64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+      }
+      if (options.enforceMaxViolationIndex &&
+          violationIndex64 > static_cast<uint64_t>(options.maxViolationIndex)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded);
       }
       if (options.enforceMaxViolationCount &&
           violationIndex64 >= static_cast<uint64_t>(options.maxViolationCount)) {

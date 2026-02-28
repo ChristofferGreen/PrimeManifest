@@ -721,6 +721,35 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "count-cap mode reports index-limit reason");
   CHECK_MESSAGE(parseError.fieldIndex == 0, "count-cap mode reports offending index field");
 
+  SkipDiagnosticsStrictViolationsParseOptions indexCapOptions;
+  indexCapOptions.enforceMaxViolationIndex = true;
+  indexCapOptions.maxViolationIndex = 1;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=2;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.1.fieldIndex=11;"
+                  "strictViolations.1.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  indexCapOptions,
+                  &parseError),
+                "index-cap mode accepts payloads at configured max decoded index");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "index-cap mode clears parse error on accepted payload");
+  CHECK_MESSAGE(parsedViolations.size() == 2, "index-cap mode preserves accepted entry count");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.2.fieldIndex=7;"
+                  "strictViolations.2.reason=InconsistentReasonTotal;"
+                  "strictViolations.count=3",
+                  parsedViolations,
+                  indexCapOptions,
+                  &parseError),
+                "index-cap mode rejects entries above configured max decoded index");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded,
+                "index-cap mode reports index-limit reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "index-cap mode reports offending index field");
+
   SkipDiagnosticsStrictViolationsParseOptions fieldCapOptions;
   fieldCapOptions.enforceMaxFieldCount = true;
   fieldCapOptions.maxFieldCount = 5;
@@ -834,6 +863,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationFieldCountLimitExceeded) ==
                   std::string_view("ViolationFieldCountLimitExceeded"),
                 "field-limit strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded) ==
+                  std::string_view("ViolationIndexLimitExceeded"),
+                "index-limit strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
