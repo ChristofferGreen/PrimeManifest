@@ -700,6 +700,55 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "non-ASCII-reason-whitespace mode reports reason field index for embedded non-ASCII-whitespace tokens");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals\xC2",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects malformed UTF-8 reason tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for malformed UTF-8 reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions malformedUtf8ReasonOptions;
+  malformedUtf8ReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  malformedUtf8ReasonOptions,
+                  &parseError),
+                "malformed-UTF-8 reason-token mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "malformed-UTF-8 reason-token mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals\xC2",
+                  parsedViolations,
+                  malformedUtf8ReasonOptions,
+                  &parseError),
+                "malformed-UTF-8 reason-token mode rejects truncated UTF-8 reason tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "malformed-UTF-8 reason-token mode reports dedicated malformed-UTF-8 reason-token error for truncated sequences");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "malformed-UTF-8 reason-token mode reports reason field index for truncated UTF-8 tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\x80InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  malformedUtf8ReasonOptions,
+                  &parseError),
+                "malformed-UTF-8 reason-token mode rejects stray UTF-8 continuation bytes");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "malformed-UTF-8 reason-token mode reports dedicated malformed-UTF-8 reason-token error for stray continuation bytes");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "malformed-UTF-8 reason-token mode reports reason field index for stray continuation bytes");
+
   std::string nonContiguousButCompletePayload =
     "strictViolations.count=3;"
     "strictViolations.0.fieldIndex=3;"
@@ -1504,6 +1553,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiWhitespaceToken) ==
                   std::string_view("ReasonNameNonAsciiWhitespaceToken"),
                 "reason-name-non-ASCII-whitespace strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token) ==
+                  std::string_view("ReasonNameMalformedUtf8Token"),
+                "reason-name-malformed-UTF-8 strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
