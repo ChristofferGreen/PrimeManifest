@@ -637,6 +637,34 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "embedded-reason-whitespace mode reports dedicated embedded-whitespace reason-token error");
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "embedded-reason-whitespace mode reports reason field index for embedded-whitespace tokens");
+  SkipDiagnosticsStrictViolationsParseOptions asciiWhitespacePrecedenceOptions;
+  asciiWhitespacePrecedenceOptions.rejectReasonNameAsciiWhitespaceTokens = true;
+  asciiWhitespacePrecedenceOptions.rejectReasonNameEmbeddedAsciiWhitespaceTokens = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason= InconsistentReasonTotal",
+                  parsedViolations,
+                  asciiWhitespacePrecedenceOptions,
+                  &parseError),
+                "ASCII-whitespace reason-token mode prioritizes leading/trailing whitespace diagnostics over embedded-whitespace diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken,
+                "ASCII-whitespace reason-token mode reports ASCII-whitespace reason before embedded-whitespace reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "ASCII-whitespace reason-token mode reports reason field index for leading-or-trailing-over-embedded whitespace precedence");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal \t",
+                  parsedViolations,
+                  asciiWhitespacePrecedenceOptions,
+                  &parseError),
+                "ASCII-whitespace reason-token mode also prioritizes trailing-whitespace diagnostics over embedded-whitespace diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken,
+                "ASCII-whitespace reason-token mode reports ASCII-whitespace reason for trailing whitespace when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "ASCII-whitespace reason-token mode reports reason field index for trailing-over-embedded whitespace precedence");
 
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
