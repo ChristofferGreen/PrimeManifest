@@ -384,10 +384,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ViolationCountLimitExceeded = 22,
   ViolationFieldCountLimitExceeded = 23,
   ViolationIndexLimitExceeded = 24,
+  ViolationFieldIndexLimitExceeded = 25,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationFieldIndexLimitExceeded) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -436,6 +437,8 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
   size_t maxViolationIndex = 0;
+  bool enforceMaxViolationFieldIndex = false;
+  size_t maxViolationFieldIndex = 0;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -490,6 +493,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ViolationFieldCountLimitExceeded";
     case SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded:
       return "ViolationIndexLimitExceeded";
+    case SkipDiagnosticsParseErrorReason::ViolationFieldIndexLimitExceeded:
+      return "ViolationFieldIndexLimitExceeded";
   }
   return "UnknownParseErrorReason";
 }
@@ -917,6 +922,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         }
         if (parsedFieldIndex > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+        }
+        if (options.enforceMaxViolationFieldIndex &&
+            parsedFieldIndex > static_cast<uint64_t>(options.maxViolationFieldIndex)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ViolationFieldIndexLimitExceeded);
         }
         size_t parsedFieldValue = static_cast<size_t>(parsedFieldIndex);
         if (options.rejectDuplicateIndices &&

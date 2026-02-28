@@ -750,6 +750,35 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "index-cap mode reports index-limit reason");
   CHECK_MESSAGE(parseError.fieldIndex == 0, "index-cap mode reports offending index field");
 
+  SkipDiagnosticsStrictViolationsParseOptions fieldIndexCapOptions;
+  fieldIndexCapOptions.enforceMaxViolationFieldIndex = true;
+  fieldIndexCapOptions.maxViolationFieldIndex = 11;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=2;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.1.fieldIndex=11;"
+                  "strictViolations.1.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  fieldIndexCapOptions,
+                  &parseError),
+                "field-index-cap mode accepts payloads at configured max decoded fieldIndex");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "field-index-cap mode clears parse error on accepted payload");
+  CHECK_MESSAGE(parsedViolations.size() == 2, "field-index-cap mode preserves accepted entry count");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=12;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  fieldIndexCapOptions,
+                  &parseError),
+                "field-index-cap mode rejects fieldIndex values above configured cap");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ViolationFieldIndexLimitExceeded,
+                "field-index-cap mode reports field-index-limit reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "field-index-cap mode reports offending field-index entry");
+
   SkipDiagnosticsStrictViolationsParseOptions fieldCapOptions;
   fieldCapOptions.enforceMaxFieldCount = true;
   fieldCapOptions.maxFieldCount = 5;
@@ -866,6 +895,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationIndexLimitExceeded) ==
                   std::string_view("ViolationIndexLimitExceeded"),
                 "index-limit strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationFieldIndexLimitExceeded) ==
+                  std::string_view("ViolationFieldIndexLimitExceeded"),
+                "field-index-limit strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
