@@ -955,6 +955,46 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "non-ASCII Unicode-control reason-token mode reports reason field index for trailing C1 controls");
 
+  SkipDiagnosticsStrictViolationsParseOptions malformedAndNonAsciiControlReasonOptions;
+  malformedAndNonAsciiControlReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
+  malformedAndNonAsciiControlReasonOptions.rejectReasonNameNonAsciiUnicodeControlCharacterTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  malformedAndNonAsciiControlReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xE2\x80\x8ETotal\xC2",
+                  parsedViolations,
+                  malformedAndNonAsciiControlReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode prioritizes malformed-UTF-8 diagnostics over non-ASCII Unicode-control diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode reports malformed-UTF-8 reason before non-ASCII Unicode-control reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode reports reason field index for malformed-over-non-ASCII-Unicode-control precedence");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\xC2\x91InconsistentReasonTotal\xC2",
+                  parsedViolations,
+                  malformedAndNonAsciiControlReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode also prioritizes malformed-UTF-8 diagnostics for leading C1 controls when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode reports malformed-UTF-8 reason for leading C1-control overlap tokens when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-ASCII Unicode-control mode reports reason field index for leading overlap precedence");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
