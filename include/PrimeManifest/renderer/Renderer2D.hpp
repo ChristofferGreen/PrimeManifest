@@ -397,10 +397,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ReasonNameEmbeddedAsciiWhitespaceToken = 35,
   ReasonNameNonAsciiWhitespaceToken = 36,
   ReasonNameMalformedUtf8Token = 37,
+  ReasonNameNonWhitespaceNonAsciiToken = 38,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -457,6 +458,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectReasonNameEmbeddedAsciiWhitespaceTokens = false;
   bool rejectReasonNameNonAsciiWhitespaceTokens = false;
   bool rejectReasonNameMalformedUtf8Tokens = false;
+  bool rejectReasonNameNonWhitespaceNonAsciiTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -543,6 +545,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNameNonAsciiWhitespaceToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token:
       return "ReasonNameMalformedUtf8Token";
+    case SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken:
+      return "ReasonNameNonWhitespaceNonAsciiToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -1058,6 +1062,27 @@ inline auto hasMalformedUtf8Bytes(std::string_view text) -> bool {
   return false;
 }
 
+inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> bool {
+  if (text.empty()) return false;
+
+  size_t index = 0;
+  while (index < text.size()) {
+    uint8_t byte = static_cast<uint8_t>(text[index]);
+    if (byte < 0x80u) {
+      index += 1u;
+      continue;
+    }
+
+    char32_t codePoint = 0;
+    size_t width = 0;
+    if (!decodeUtf8CodePoint(text, index, codePoint, width)) return false;
+    if (!isNonAsciiUnicodeWhitespace(codePoint)) return true;
+    index += width;
+  }
+
+  return false;
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -1325,6 +1350,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectReasonNameNonAsciiWhitespaceTokens &&
             isNonAsciiWhitespaceReasonNameToken(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiWhitespaceToken);
+        }
+        if (options.rejectReasonNameNonWhitespaceNonAsciiTokens &&
+            isNonWhitespaceNonAsciiReasonNameToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken);
         }
         SkipDiagnosticsParseErrorReason parsedReason{};
         if (valueText == "UnknownParseErrorReason") {

@@ -50,4 +50,5 @@
 48. [x] Add strict-violation decode option to reject reason-name tokens with embedded ASCII whitespace in defensive canonical-token mode.
 49. [x] Add strict-violation decode option to reject reason-name tokens with non-ASCII whitespace in defensive canonical-token mode.
 50. [x] Add strict-violation decode option to reject malformed UTF-8 reason-name tokens in defensive canonical-token mode.
-51. Add strict-violation decode option to emit dedicated diagnostics for non-whitespace non-ASCII reason-name tokens in defensive canonical-token mode.
+51. [x] Add strict-violation decode option to emit dedicated diagnostics for non-whitespace non-ASCII reason-name tokens in defensive canonical-token mode.
+52. Add strict-violation decode option to reject reason-name tokens containing ASCII control characters in defensive canonical-token mode.
