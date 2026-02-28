@@ -1302,6 +1302,7 @@ inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> boo
   if (text.empty()) return false;
 
   size_t index = 0;
+  bool foundNonWhitespaceNonAscii = false;
   while (index < text.size()) {
     uint8_t byte = static_cast<uint8_t>(text[index]);
     if (byte < 0x80u) {
@@ -1311,12 +1312,16 @@ inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> boo
 
     char32_t codePoint = 0;
     size_t width = 0;
-    if (!decodeUtf8CodePoint(text, index, codePoint, width)) return false;
-    if (!isNonAsciiUnicodeWhitespace(codePoint)) return true;
+    if (!decodeUtf8CodePoint(text, index, codePoint, width)) {
+      return foundNonWhitespaceNonAscii;
+    }
+    if (!isNonAsciiUnicodeWhitespace(codePoint)) {
+      foundNonWhitespaceNonAscii = true;
+    }
     index += width;
   }
 
-  return false;
+  return foundNonWhitespaceNonAscii;
 }
 
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
