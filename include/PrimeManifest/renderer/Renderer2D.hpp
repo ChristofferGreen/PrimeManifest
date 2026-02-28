@@ -401,10 +401,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ReasonNameAsciiControlCharacterToken = 39,
   ReasonNameNonAsciiUnicodeControlCharacterToken = 40,
   ReasonNameUnicodeNoncharacterToken = 41,
+  ReasonNameLoneCesu8SurrogateToken = 42,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameLoneCesu8SurrogateToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -465,6 +466,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectReasonNameAsciiControlCharacterTokens = false;
   bool rejectReasonNameNonAsciiUnicodeControlCharacterTokens = false;
   bool rejectReasonNameUnicodeNoncharacterTokens = false;
+  bool rejectReasonNameLoneCesu8SurrogateTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -559,6 +561,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNameNonAsciiUnicodeControlCharacterToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameUnicodeNoncharacterToken:
       return "ReasonNameUnicodeNoncharacterToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameLoneCesu8SurrogateToken:
+      return "ReasonNameLoneCesu8SurrogateToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -1143,6 +1147,60 @@ inline auto hasUnicodeNoncharacters(std::string_view text) -> bool {
   return false;
 }
 
+inline auto decodeCesu8SurrogateCodeUnit(std::string_view text,
+                                         size_t offset,
+                                         uint16_t& codeUnitOut) -> bool {
+  if (offset + 2u >= text.size()) return false;
+
+  uint8_t b0 = static_cast<uint8_t>(text[offset]);
+  uint8_t b1 = static_cast<uint8_t>(text[offset + 1u]);
+  uint8_t b2 = static_cast<uint8_t>(text[offset + 2u]);
+  if (b0 != 0xEDu ||
+      b1 < 0xA0u || b1 > 0xBFu ||
+      (b2 & 0xC0u) != 0x80u) {
+    return false;
+  }
+
+  char32_t codePoint = static_cast<char32_t>(b0 & 0x0Fu) << 12u;
+  codePoint |= static_cast<char32_t>(b1 & 0x3Fu) << 6u;
+  codePoint |= static_cast<char32_t>(b2 & 0x3Fu);
+  if (codePoint < 0xD800u || codePoint > 0xDFFFu) return false;
+
+  codeUnitOut = static_cast<uint16_t>(codePoint);
+  return true;
+}
+
+inline auto hasLoneCesu8SurrogateCodeUnits(std::string_view text) -> bool {
+  size_t index = 0;
+  while (index < text.size()) {
+    uint8_t byte = static_cast<uint8_t>(text[index]);
+    if (byte < 0x80u) {
+      index += 1u;
+      continue;
+    }
+
+    uint16_t codeUnit = 0;
+    if (!decodeCesu8SurrogateCodeUnit(text, index, codeUnit)) {
+      index += 1u;
+      continue;
+    }
+
+    bool isHighSurrogate = codeUnit >= 0xD800u && codeUnit <= 0xDBFFu;
+    if (isHighSurrogate) {
+      uint16_t nextCodeUnit = 0;
+      if (decodeCesu8SurrogateCodeUnit(text, index + 3u, nextCodeUnit) &&
+          nextCodeUnit >= 0xDC00u && nextCodeUnit <= 0xDFFFu) {
+        index += 6u;
+        continue;
+      }
+      return true;
+    }
+
+    return true;
+  }
+  return false;
+}
+
 inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> bool {
   if (text.empty()) return false;
 
@@ -1423,6 +1481,12 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectReasonNameEmbeddedAsciiWhitespaceTokens &&
             isEmbeddedAsciiWhitespaceReasonNameToken(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken);
+        }
+        if (options.rejectReasonNameLoneCesu8SurrogateTokens &&
+            hasLoneCesu8SurrogateCodeUnits(valueText)) {
+          return failSkipDiagnosticsParse(errorOut,
+                                          fieldIndex,
+                                          SkipDiagnosticsParseErrorReason::ReasonNameLoneCesu8SurrogateToken);
         }
         if (options.rejectReasonNameMalformedUtf8Tokens &&
             hasMalformedUtf8Bytes(valueText)) {
