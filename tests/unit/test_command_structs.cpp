@@ -96,12 +96,12 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
   profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData)] = 2;
   profile.skippedCommands.total = 3;
   profile.skippedCommands.unknownType = 2;
-  profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 1;
+  profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 3;
 
   auto dump = rendererProfileSkipDiagnosticsDump(profile);
   CHECK_MESSAGE(dump ==
                   std::string("optimizerSkippedCommands(total=3): OptimizerCulledByAlpha=1, OptimizerTileStreamInvalidCommandData=2\n")
-                    + "skippedCommands(total=3, unknownType=2): InvalidCommandData=1",
+                    + "skippedCommands(total=3, unknownType=2): InvalidCommandData=3",
                 "dump includes non-zero reason buckets with labels");
   CHECK_MESSAGE(dump.find("OptimizerInvalidCommandData=0") == std::string::npos,
                 "zero buckets omitted from dump");
@@ -113,7 +113,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
                     + "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
                     + "skippedCommands.total=3;"
                     + "skippedCommands.unknownType=2;"
-                    + "skippedCommands.reason.InvalidCommandData=1",
+                    + "skippedCommands.reason.InvalidCommandData=3",
                 "compact key-value dump includes totals and non-zero reasons");
   CHECK_MESSAGE(keyValueDump.find('\n') == std::string::npos, "compact key-value dump is single-line");
 
@@ -126,7 +126,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
                 "parsed compact optimizer reason");
   CHECK_MESSAGE(parsedSkipped.total == 3, "parsed compact renderer total");
   CHECK_MESSAGE(parsedSkipped.unknownType == 2, "parsed compact renderer unknown type");
-  CHECK_MESSAGE(parsedSkipped.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 1,
+  CHECK_MESSAGE(parsedSkipped.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 3,
                 "parsed compact renderer reason");
 }
 
@@ -152,7 +152,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
 
   profile.skippedCommands.total = 3;
   profile.skippedCommands.unknownType = 2;
-  profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 1;
+  profile.skippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 3;
   profile.skippedCommands.byType[static_cast<size_t>(CommandType::Image)] = 1;
   profile.skippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Image)]
                                          [static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] = 1;
@@ -160,7 +160,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   auto dump = rendererProfileSkipDiagnosticsDumpVerbose(profile);
   CHECK_MESSAGE(dump ==
                   std::string("optimizerSkippedCommands(total=3): OptimizerCulledByAlpha=1, OptimizerTileStreamInvalidCommandData=2\n")
-                    + "skippedCommands(total=3, unknownType=2): InvalidCommandData=1\n"
+                    + "skippedCommands(total=3, unknownType=2): InvalidCommandData=3\n"
                     + "optimizerSkippedCommands.byType: Rect=2, Text=1\n"
                     + "skippedCommands.byType: Image=1\n"
                     + "optimizerSkippedCommands.byTypeAndReason: Rect/OptimizerCulledByAlpha=1, "
@@ -178,7 +178,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
                     + "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
                     + "skippedCommands.total=3;"
                     + "skippedCommands.unknownType=2;"
-                    + "skippedCommands.reason.InvalidCommandData=1;"
+                    + "skippedCommands.reason.InvalidCommandData=3;"
                     + "optimizerSkippedCommands.type.Rect=2;"
                     + "optimizerSkippedCommands.type.Text=1;"
                     + "skippedCommands.type.Image=1;"
@@ -205,6 +205,13 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   CHECK_MESSAGE(parsedProfile.skippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Image)]
                                                     [static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 1,
                 "parsed verbose renderer matrix");
+
+  SkipDiagnosticsParseOptions strictOptions;
+  strictOptions.strictConsistency = true;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(keyValueDump, parsedProfile, strictOptions, &parseError),
+                "strict parse accepts consistent payload");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "strict parse keeps no-error state on success");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
@@ -236,6 +243,31 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
   CHECK_MESSAGE(parseError.fieldIndex == 0, "invalid value field index reported");
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InvalidValue,
                 "invalid value error kind reported");
+
+  std::string inconsistentPayload =
+    "optimizerSkippedCommands.total=9;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+    "skippedCommands.total=3;"
+    "skippedCommands.unknownType=2;"
+    "skippedCommands.reason.InvalidCommandData=1;"
+    "optimizerSkippedCommands.type.Rect=2;"
+    "optimizerSkippedCommands.type.Text=1;"
+    "skippedCommands.type.Image=1;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2;"
+    "skippedCommands.typeReason.Image.InvalidCommandData=1";
+
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(inconsistentPayload, profile),
+                "default parse remains permissive for inconsistent totals");
+
+  SkipDiagnosticsParseOptions strictOptions;
+  strictOptions.strictConsistency = true;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(inconsistentPayload, profile, strictOptions, &parseError),
+                "strict parse rejects inconsistent totals");
+  CHECK_MESSAGE(parseError.fieldIndex == 12, "strict consistency reports post-parse index");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "strict consistency reason reported");
 }
 
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
@@ -244,6 +276,15 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::MalformedTypeReasonKey) ==
                   std::string_view("MalformedTypeReasonKey"),
                 "malformed type-reason parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentReasonTotal) ==
+                  std::string_view("InconsistentReasonTotal"),
+                "inconsistent reason-total parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal) ==
+                  std::string_view("InconsistentTypeTotal"),
+                "inconsistent type-total parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal) ==
+                  std::string_view("InconsistentMatrixTotal"),
+                "inconsistent matrix-total parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<SkipDiagnosticsParseErrorReason>(255)) ==
                   std::string_view("UnknownParseErrorReason"),
                 "unknown parse error name fallback");

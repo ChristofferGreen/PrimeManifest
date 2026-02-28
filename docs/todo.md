@@ -22,4 +22,5 @@
 20. [x] Add a parse-friendly diagnostics format option (single-line key/value) for `RendererProfile` skip dump helpers.
 21. [x] Add `RendererProfile` diagnostics parsing helpers that reconstruct structured buckets from key/value dump output.
 22. [x] Add parse diagnostics error reporting (field index + reason) for key/value decode failures.
-23. Add strict parser consistency checks that can optionally reject payloads where totals conflict with bucket sums.
+23. [x] Add strict parser consistency checks that can optionally reject payloads where totals conflict with bucket sums.
+24. Add an optional diagnostics parse mode that validates `byTypeAndReason` rows/columns against `byType` and `byReason` independently.

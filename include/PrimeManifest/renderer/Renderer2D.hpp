@@ -372,11 +372,18 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   UnknownReasonName = 10,
   UnknownTypeName = 11,
   MalformedTypeReasonKey = 12,
+  InconsistentReasonTotal = 13,
+  InconsistentTypeTotal = 14,
+  InconsistentMatrixTotal = 15,
 };
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
   SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
+};
+
+struct SkipDiagnosticsParseOptions {
+  bool strictConsistency = false;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -407,6 +414,12 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "UnknownTypeName";
     case SkipDiagnosticsParseErrorReason::MalformedTypeReasonKey:
       return "MalformedTypeReasonKey";
+    case SkipDiagnosticsParseErrorReason::InconsistentReasonTotal:
+      return "InconsistentReasonTotal";
+    case SkipDiagnosticsParseErrorReason::InconsistentTypeTotal:
+      return "InconsistentTypeTotal";
+    case SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal:
+      return "InconsistentMatrixTotal";
   }
   return "UnknownParseErrorReason";
 }
@@ -638,9 +651,54 @@ inline auto failSkipDiagnosticsParse(SkipDiagnosticsParseError* errorOut,
   return false;
 }
 
+inline auto sumSkipReasonBuckets(SkippedCommandDiagnostics const& diagnostics) -> uint64_t {
+  uint64_t sum = 0;
+  for (uint64_t count : diagnostics.byReason) {
+    sum += count;
+  }
+  return sum;
+}
+
+inline auto sumSkipTypeBuckets(SkippedCommandDiagnostics const& diagnostics) -> uint64_t {
+  uint64_t sum = 0;
+  for (uint64_t count : diagnostics.byType) {
+    sum += count;
+  }
+  return sum;
+}
+
+inline auto sumSkipTypeReasonBuckets(SkippedCommandDiagnostics const& diagnostics) -> uint64_t {
+  uint64_t sum = 0;
+  for (auto const& row : diagnostics.byTypeAndReason) {
+    for (uint64_t count : row) {
+      sum += count;
+    }
+  }
+  return sum;
+}
+
+inline auto validateSkipDiagnosticsConsistency(SkippedCommandDiagnostics const& diagnostics,
+                                               size_t fieldIndex,
+                                               SkipDiagnosticsParseError* errorOut) -> bool {
+  uint64_t reasonSum = sumSkipReasonBuckets(diagnostics);
+  if (reasonSum != diagnostics.total) {
+    return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InconsistentReasonTotal);
+  }
+  uint64_t typeSum = sumSkipTypeBuckets(diagnostics);
+  if (typeSum + diagnostics.unknownType != diagnostics.total) {
+    return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InconsistentTypeTotal);
+  }
+  uint64_t matrixSum = sumSkipTypeReasonBuckets(diagnostics);
+  if (matrixSum != typeSum) {
+    return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal);
+  }
+  return true;
+}
+
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         SkippedCommandDiagnostics& optimizerOut,
                                                         SkippedCommandDiagnostics& skippedOut,
+                                                        SkipDiagnosticsParseOptions const& options,
                                                         SkipDiagnosticsParseError* errorOut) -> bool {
   optimizerOut.clear();
   skippedOut.clear();
@@ -656,6 +714,7 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
 
   size_t start = 0;
   size_t fieldIndex = 0;
+  size_t parsedFieldCount = 0;
   while (start <= dump.size()) {
     size_t end = dump.find(';', start);
     if (end == std::string_view::npos) end = dump.size();
@@ -733,32 +792,76 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
     } else {
       return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
     }
+    parsedFieldCount += 1;
 
     if (end == dump.size()) break;
     start = end + 1;
     fieldIndex += 1;
+  }
+  if (options.strictConsistency) {
+    size_t consistencyFieldIndex = parsedFieldCount;
+    if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, errorOut)) return false;
+    if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, errorOut)) return false;
   }
   return true;
 }
 
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         SkippedCommandDiagnostics& optimizerOut,
+                                                        SkippedCommandDiagnostics& skippedOut,
+                                                        SkipDiagnosticsParseError* errorOut) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(
+    dump,
+    optimizerOut,
+    skippedOut,
+    SkipDiagnosticsParseOptions{},
+    errorOut);
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        SkippedCommandDiagnostics& optimizerOut,
                                                         SkippedCommandDiagnostics& skippedOut) -> bool {
-  return parseRendererProfileSkipDiagnosticsKeyValue(dump, optimizerOut, skippedOut, nullptr);
+  return parseRendererProfileSkipDiagnosticsKeyValue(
+    dump,
+    optimizerOut,
+    skippedOut,
+    SkipDiagnosticsParseOptions{},
+    nullptr);
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        SkippedCommandDiagnostics& optimizerOut,
+                                                        SkippedCommandDiagnostics& skippedOut,
+                                                        SkipDiagnosticsParseOptions const& options) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump, optimizerOut, skippedOut, options, nullptr);
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        RendererProfile& profileOut,
+                                                        SkipDiagnosticsParseOptions const& options,
+                                                        SkipDiagnosticsParseError* errorOut) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump,
+                                                     profileOut.optimizerSkippedCommands,
+                                                     profileOut.skippedCommands,
+                                                     options,
+                                                     errorOut);
 }
 
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         RendererProfile& profileOut,
                                                         SkipDiagnosticsParseError* errorOut) -> bool {
-  return parseRendererProfileSkipDiagnosticsKeyValue(dump,
-                                                     profileOut.optimizerSkippedCommands,
-                                                     profileOut.skippedCommands,
-                                                     errorOut);
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump, profileOut, SkipDiagnosticsParseOptions{}, errorOut);
 }
 
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         RendererProfile& profileOut) -> bool {
-  return parseRendererProfileSkipDiagnosticsKeyValue(dump, profileOut, nullptr);
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump, profileOut, SkipDiagnosticsParseOptions{}, nullptr);
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        RendererProfile& profileOut,
+                                                        SkipDiagnosticsParseOptions const& options) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump, profileOut, options, nullptr);
 }
 
 struct ClearStore {
