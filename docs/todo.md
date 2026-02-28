@@ -68,3 +68,4 @@
 66. [x] Add strict-violation reason-token tests verifying fallback-like prefix tokens are treated as unknown names (not fallback tokens) when `rejectUnknownReasonFallbackToken` is enabled.
 67. [x] Add strict-violation reason-token tests verifying ASCII-whitespace diagnostics take precedence over fallback-token rejection when both checks are enabled.
 68. [x] Add strict-violation reason-token tests verifying trailing ASCII-whitespace diagnostics take precedence over fallback-token rejection when both checks are enabled.
+69. [x] Add strict-violation reason-token tests verifying non-ASCII-whitespace diagnostics take precedence over fallback-token rejection when both checks are enabled.
