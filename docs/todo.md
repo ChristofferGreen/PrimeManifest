@@ -57,4 +57,4 @@
 55. [x] Add strict-violation decode option to reject reason-name tokens containing lone UTF-16 surrogate code points encoded via CESU-8 in defensive canonical-token mode.
 56. [x] Add strict-violation decode option to emit dedicated diagnostics for paired UTF-16 surrogate sequences encoded via CESU-8 in defensive canonical-token mode.
 57. [x] Add strict-violation decode option to emit dedicated diagnostics for mixed-order UTF-16 surrogate sequences (low-before-high) encoded via CESU-8 in defensive canonical-token mode.
-58. Add strict-violation decode option to emit dedicated diagnostics for same-order UTF-16 surrogate sequences (high-before-high and low-before-low) encoded via CESU-8 in defensive canonical-token mode.
+58. [x] Add strict-violation decode option to emit dedicated diagnostics for same-order UTF-16 surrogate sequences (high-before-high and low-before-low) encoded via CESU-8 in defensive canonical-token mode.

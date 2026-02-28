@@ -404,10 +404,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ReasonNameLoneCesu8SurrogateToken = 42,
   ReasonNamePairedCesu8SurrogateToken = 43,
   ReasonNameMixedOrderCesu8SurrogateToken = 44,
+  ReasonNameSameOrderCesu8SurrogateToken = 45,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameMixedOrderCesu8SurrogateToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -471,6 +472,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectReasonNameLoneCesu8SurrogateTokens = false;
   bool rejectReasonNamePairedCesu8SurrogateTokens = false;
   bool rejectReasonNameMixedOrderCesu8SurrogateTokens = false;
+  bool rejectReasonNameSameOrderCesu8SurrogateTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -571,6 +573,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNamePairedCesu8SurrogateToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameMixedOrderCesu8SurrogateToken:
       return "ReasonNameMixedOrderCesu8SurrogateToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken:
+      return "ReasonNameSameOrderCesu8SurrogateToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -1263,6 +1267,37 @@ inline auto hasMixedOrderCesu8SurrogateCodeUnits(std::string_view text) -> bool 
   return false;
 }
 
+inline auto hasSameOrderCesu8SurrogateCodeUnits(std::string_view text) -> bool {
+  size_t index = 0;
+  while (index < text.size()) {
+    uint8_t byte = static_cast<uint8_t>(text[index]);
+    if (byte < 0x80u) {
+      index += 1u;
+      continue;
+    }
+
+    uint16_t codeUnit = 0;
+    if (!decodeCesu8SurrogateCodeUnit(text, index, codeUnit)) {
+      index += 1u;
+      continue;
+    }
+
+    uint16_t nextCodeUnit = 0;
+    if (decodeCesu8SurrogateCodeUnit(text, index + 3u, nextCodeUnit)) {
+      bool firstHigh = codeUnit >= 0xD800u && codeUnit <= 0xDBFFu;
+      bool firstLow = codeUnit >= 0xDC00u && codeUnit <= 0xDFFFu;
+      bool nextHigh = nextCodeUnit >= 0xD800u && nextCodeUnit <= 0xDBFFu;
+      bool nextLow = nextCodeUnit >= 0xDC00u && nextCodeUnit <= 0xDFFFu;
+      if ((firstHigh && nextHigh) || (firstLow && nextLow)) {
+        return true;
+      }
+    }
+
+    index += 3u;
+  }
+  return false;
+}
+
 inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> bool {
   if (text.empty()) return false;
 
@@ -1549,6 +1584,12 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           return failSkipDiagnosticsParse(errorOut,
                                           fieldIndex,
                                           SkipDiagnosticsParseErrorReason::ReasonNameMixedOrderCesu8SurrogateToken);
+        }
+        if (options.rejectReasonNameSameOrderCesu8SurrogateTokens &&
+            hasSameOrderCesu8SurrogateCodeUnits(valueText)) {
+          return failSkipDiagnosticsParse(errorOut,
+                                          fieldIndex,
+                                          SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken);
         }
         if (options.rejectReasonNameLoneCesu8SurrogateTokens &&
             hasLoneCesu8SurrogateCodeUnits(valueText)) {

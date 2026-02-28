@@ -1059,6 +1059,82 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\x80\xED\xA0\xBDTotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects same-order high-high CESU-8 surrogate reason tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for same-order high-high CESU-8 surrogate reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions sameOrderCesu8SurrogateReasonOptions;
+  sameOrderCesu8SurrogateReasonOptions.rejectReasonNameSameOrderCesu8SurrogateTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  sameOrderCesu8SurrogateReasonOptions,
+                  &parseError),
+                "same-order-CESU-8-surrogate reason-token mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "same-order-CESU-8-surrogate reason-token mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\x80\xED\xA0\xBDTotal",
+                  parsedViolations,
+                  sameOrderCesu8SurrogateReasonOptions,
+                  &parseError),
+                "same-order-CESU-8-surrogate reason-token mode rejects high-before-high CESU-8 surrogate sequences");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
+                "same-order-CESU-8-surrogate reason-token mode reports dedicated same-order surrogate reason for high-before-high sequences");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "same-order-CESU-8-surrogate reason-token mode reports reason field index for high-before-high surrogate sequences");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xB0\x80\xED\xB8\x80Total",
+                  parsedViolations,
+                  sameOrderCesu8SurrogateReasonOptions,
+                  &parseError),
+                "same-order-CESU-8-surrogate reason-token mode rejects low-before-low CESU-8 surrogate sequences");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
+                "same-order-CESU-8-surrogate reason-token mode reports dedicated same-order surrogate reason for low-before-low sequences");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "same-order-CESU-8-surrogate reason-token mode reports reason field index for low-before-low surrogate sequences");
+
+  SkipDiagnosticsStrictViolationsParseOptions sameOrderAndLoneCesu8SurrogateReasonOptions;
+  sameOrderAndLoneCesu8SurrogateReasonOptions.rejectReasonNameSameOrderCesu8SurrogateTokens = true;
+  sameOrderAndLoneCesu8SurrogateReasonOptions.rejectReasonNameLoneCesu8SurrogateTokens = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\x80\xED\xA0\xBDTotal",
+                  parsedViolations,
+                  sameOrderAndLoneCesu8SurrogateReasonOptions,
+                  &parseError),
+                "same-order-CESU-8-surrogate reason-token mode keeps dedicated same-order reason precedence when lone-surrogate mode is also enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
+                "same-order-CESU-8-surrogate reason-token mode reports same-order reason before lone-surrogate reason when both modes are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "same-order-CESU-8-surrogate reason-token mode reports reason field index when same-order precedence wins over lone-surrogate mode");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xB8\x80\xED\xA0\xBDTotal",
+                  parsedViolations,
+                  sameOrderCesu8SurrogateReasonOptions,
+                  &parseError),
+                "same-order-CESU-8-surrogate reason-token mode leaves low-before-high surrogate pairs to generic reason validation");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "same-order-CESU-8-surrogate reason-token mode does not classify mixed-order surrogate pairs as same-order");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=Inconsist\xC3\xA9ntReasonTotal",
                   parsedViolations,
                   &parseError),
@@ -1933,6 +2009,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameMixedOrderCesu8SurrogateToken) ==
                   std::string_view("ReasonNameMixedOrderCesu8SurrogateToken"),
                 "reason-name-mixed-order-CESU-8-surrogate strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken) ==
+                  std::string_view("ReasonNameSameOrderCesu8SurrogateToken"),
+                "reason-name-same-order-CESU-8-surrogate strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
