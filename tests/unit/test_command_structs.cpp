@@ -817,6 +817,38 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "malformed-UTF-8 reason-token mode reports reason field index for stray continuation bytes");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xC2\xA0\xC2"
+                  "Break\x80"
+                  "Gap\xC3\xA9RowTotals\xC2"
+                  "Tail\xE3\x80\x80",
+                  parsedViolations,
+                  malformedUtf8ReasonOptions,
+                  &parseError),
+                "malformed-UTF-8 reason-token mode reports malformed diagnostics when multiple malformed segments appear before the first accented code point and additional malformed plus non-ASCII whitespace segments appear later");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "malformed-UTF-8 reason-token mode keeps malformed diagnostics when multiple malformed segments precede the first accented code point and later malformed plus non-ASCII whitespace segments follow");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "malformed-UTF-8 reason-token mode reports reason field index for multiple-malformed-before-first-accented with later-malformed-and-whitespace segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xE3\x80\x80\xC2"
+                  "Break\x80"
+                  "Gap\xF0\x9F\x98\x80RowTotals\xC2"
+                  "Tail\xC2\xA0",
+                  parsedViolations,
+                  malformedUtf8ReasonOptions,
+                  &parseError),
+                "malformed-UTF-8 reason-token mode reports malformed diagnostics when multiple malformed segments appear before the first emoji code point and additional malformed plus non-ASCII whitespace segments appear later");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "malformed-UTF-8 reason-token mode keeps malformed diagnostics when multiple malformed segments precede the first emoji code point and later malformed plus non-ASCII whitespace segments follow");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "malformed-UTF-8 reason-token mode reports reason field index for multiple-malformed-before-first-emoji with later-malformed-and-whitespace segments");
+
   SkipDiagnosticsStrictViolationsParseOptions malformedAndNonAsciiWhitespaceReasonOptions;
   malformedAndNonAsciiWhitespaceReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
   malformedAndNonAsciiWhitespaceReasonOptions.rejectReasonNameNonAsciiWhitespaceTokens = true;
