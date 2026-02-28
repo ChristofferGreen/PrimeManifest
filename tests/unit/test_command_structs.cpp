@@ -1137,6 +1137,36 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   allCesu8SurrogateReasonOptions.rejectReasonNamePairedCesu8SurrogateTokens = true;
   allCesu8SurrogateReasonOptions.rejectReasonNameMixedOrderCesu8SurrogateTokens = true;
   allCesu8SurrogateReasonOptions.rejectReasonNameSameOrderCesu8SurrogateTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes accept canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "all-CESU-8-surrogate reason-token modes clear parse error on canonical reason-name tokens");
+  CHECK_MESSAGE(parsedViolations.size() == 1,
+                "all-CESU-8-surrogate reason-token modes decode exactly one canonical reason entry");
+  CHECK_MESSAGE(parsedViolations[0].reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "all-CESU-8-surrogate reason-token modes decode canonical reason names without remapping");
+
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=ReasonNameSameOrderCesu8SurrogateToken",
+                  parsedViolations,
+                  allCesu8SurrogateReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes accept canonical surrogate-related reason names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "all-CESU-8-surrogate reason-token modes clear parse error on canonical surrogate-related reason names");
+  CHECK_MESSAGE(parsedViolations.size() == 1,
+                "all-CESU-8-surrogate reason-token modes decode exactly one canonical surrogate-related reason entry");
+  CHECK_MESSAGE(parsedViolations[0].reason == SkipDiagnosticsParseErrorReason::ReasonNameSameOrderCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes decode canonical surrogate-related reason names without remapping");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
