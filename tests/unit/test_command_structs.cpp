@@ -1261,6 +1261,18 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "all-CESU-8-surrogate reason-token modes report non-ASCII-whitespace reason before fallback-token reason when both checks are enabled");
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "all-CESU-8-surrogate reason-token modes report reason field index for non-ASCII-whitespace-over-fallback precedence");
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\xC2\xA0UnknownParseErrorReason",
+                  parsedViolations,
+                  allCesu8SurrogateFallbackAndNonAsciiWhitespaceOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes prioritize leading non-ASCII-whitespace diagnostics over fallback-token rejection when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiWhitespaceToken,
+                "all-CESU-8-surrogate reason-token modes report leading non-ASCII-whitespace reason before fallback-token reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for leading-non-ASCII-whitespace-over-fallback precedence");
 
   SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateAndMalformedReasonOptions = allCesu8SurrogateReasonOptions;
   allCesu8SurrogateAndMalformedReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
