@@ -399,10 +399,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ReasonNameMalformedUtf8Token = 37,
   ReasonNameNonWhitespaceNonAsciiToken = 38,
   ReasonNameAsciiControlCharacterToken = 39,
+  ReasonNameNonAsciiUnicodeControlCharacterToken = 40,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -461,6 +462,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectReasonNameMalformedUtf8Tokens = false;
   bool rejectReasonNameNonWhitespaceNonAsciiTokens = false;
   bool rejectReasonNameAsciiControlCharacterTokens = false;
+  bool rejectReasonNameNonAsciiUnicodeControlCharacterTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -551,6 +553,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNameNonWhitespaceNonAsciiToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken:
       return "ReasonNameAsciiControlCharacterToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken:
+      return "ReasonNameNonAsciiUnicodeControlCharacterToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -1019,6 +1023,24 @@ inline auto isNonAsciiUnicodeWhitespace(char32_t codePoint) -> bool {
          codePoint == 0x3000u;
 }
 
+inline auto isNonAsciiUnicodeControlCharacter(char32_t codePoint) -> bool {
+  if (codePoint < 0x80u) return false;
+  if (codePoint <= 0x9Fu) return true;
+  return codePoint == 0x00ADu ||
+         codePoint == 0x061Cu ||
+         codePoint == 0x070Fu ||
+         codePoint == 0x180Eu ||
+         (codePoint >= 0x200Bu && codePoint <= 0x200Fu) ||
+         (codePoint >= 0x202Au && codePoint <= 0x202Eu) ||
+         (codePoint >= 0x2060u && codePoint <= 0x206Fu) ||
+         codePoint == 0xFEFFu ||
+         (codePoint >= 0xFFF9u && codePoint <= 0xFFFBu) ||
+         (codePoint >= 0x1BCA0u && codePoint <= 0x1BCA3u) ||
+         (codePoint >= 0x1D173u && codePoint <= 0x1D17Au) ||
+         codePoint == 0xE0001u ||
+         (codePoint >= 0xE0020u && codePoint <= 0xE007Fu);
+}
+
 inline auto isNonAsciiWhitespaceReasonNameToken(std::string_view text) -> bool {
   if (text.empty()) return false;
 
@@ -1070,6 +1092,24 @@ inline auto hasAsciiControlCharacters(std::string_view text) -> bool {
   for (char c : text) {
     uint8_t byte = static_cast<uint8_t>(c);
     if (byte <= 0x1Fu || byte == 0x7Fu) return true;
+  }
+  return false;
+}
+
+inline auto hasNonAsciiUnicodeControlCharacters(std::string_view text) -> bool {
+  size_t index = 0;
+  while (index < text.size()) {
+    uint8_t byte = static_cast<uint8_t>(text[index]);
+    if (byte < 0x80u) {
+      index += 1u;
+      continue;
+    }
+
+    char32_t codePoint = 0;
+    size_t width = 0;
+    if (!decodeUtf8CodePoint(text, index, codePoint, width)) return false;
+    if (isNonAsciiUnicodeControlCharacter(codePoint)) return true;
+    index += width;
   }
   return false;
 }
@@ -1364,6 +1404,12 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           return failSkipDiagnosticsParse(errorOut,
                                           fieldIndex,
                                           SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken);
+        }
+        if (options.rejectReasonNameNonAsciiUnicodeControlCharacterTokens &&
+            hasNonAsciiUnicodeControlCharacters(valueText)) {
+          return failSkipDiagnosticsParse(errorOut,
+                                          fieldIndex,
+                                          SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken);
         }
         if (options.rejectReasonNameNonAsciiWhitespaceTokens &&
             isNonAsciiWhitespaceReasonNameToken(valueText)) {

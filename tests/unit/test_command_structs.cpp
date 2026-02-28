@@ -801,6 +801,55 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xE2\x80\x8ETotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects non-ASCII Unicode-control reason tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for non-ASCII Unicode-control reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions nonAsciiUnicodeControlReasonOptions;
+  nonAsciiUnicodeControlReasonOptions.rejectReasonNameNonAsciiUnicodeControlCharacterTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  nonAsciiUnicodeControlReasonOptions,
+                  &parseError),
+                "non-ASCII Unicode-control reason-token mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "non-ASCII Unicode-control reason-token mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xE2\x80\x8ETotal",
+                  parsedViolations,
+                  nonAsciiUnicodeControlReasonOptions,
+                  &parseError),
+                "non-ASCII Unicode-control reason-token mode rejects embedded format-control reason tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken,
+                "non-ASCII Unicode-control reason-token mode reports dedicated Unicode-control reason-token error for embedded format controls");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-ASCII Unicode-control reason-token mode reports reason field index for embedded format controls");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal\xC2\x91",
+                  parsedViolations,
+                  nonAsciiUnicodeControlReasonOptions,
+                  &parseError),
+                "non-ASCII Unicode-control reason-token mode rejects trailing C1-control reason tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken,
+                "non-ASCII Unicode-control reason-token mode reports dedicated Unicode-control reason-token error for trailing C1 controls");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-ASCII Unicode-control reason-token mode reports reason field index for trailing C1 controls");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=Inconsist\xC3\xA9ntReasonTotal",
                   parsedViolations,
                   &parseError),
@@ -1660,6 +1709,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken) ==
                   std::string_view("ReasonNameAsciiControlCharacterToken"),
                 "reason-name-ASCII-control strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken) ==
+                  std::string_view("ReasonNameNonAsciiUnicodeControlCharacterToken"),
+                "reason-name-non-ASCII-Unicode-control strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
