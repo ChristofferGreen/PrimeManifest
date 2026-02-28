@@ -80,4 +80,5 @@
 78. [x] Add strict-violation reason-token tests verifying malformed-UTF-8 diagnostics take precedence over non-ASCII Unicode-control diagnostics when both checks are enabled.
 79. [x] Add strict-violation reason-token tests verifying malformed-UTF-8 diagnostics take precedence over Unicode-noncharacter diagnostics when both checks are enabled.
 80. [x] Add strict-violation reason-token tests verifying malformed-UTF-8 diagnostics take precedence over non-ASCII-whitespace diagnostics when both checks are enabled.
-81. [ ] Add strict-violation reason-token tests verifying malformed-UTF-8 diagnostics take precedence over non-whitespace non-ASCII diagnostics when both checks are enabled.
+81. [x] Add strict-violation reason-token tests verifying malformed-UTF-8 diagnostics take precedence over non-whitespace non-ASCII diagnostics when both checks are enabled.
+82. [ ] Add strict-violation reason-token tests verifying non-whitespace non-ASCII diagnostics classify mixed valid-non-ASCII plus trailing-malformed tokens when malformed-UTF-8 rejection is disabled.
