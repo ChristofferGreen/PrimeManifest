@@ -956,6 +956,43 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
                 "lone-CESU-8-surrogate reason-token mode does not classify paired surrogate sequences as lone-surrogate tokens");
 
+  SkipDiagnosticsStrictViolationsParseOptions pairedCesu8SurrogateReasonOptions;
+  pairedCesu8SurrogateReasonOptions.rejectReasonNamePairedCesu8SurrogateTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  pairedCesu8SurrogateReasonOptions,
+                  &parseError),
+                "paired-CESU-8-surrogate reason-token mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "paired-CESU-8-surrogate reason-token mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\xBD\xED\xB8\x80Total",
+                  parsedViolations,
+                  pairedCesu8SurrogateReasonOptions,
+                  &parseError),
+                "paired-CESU-8-surrogate reason-token mode rejects paired CESU-8 surrogate sequences");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNamePairedCesu8SurrogateToken,
+                "paired-CESU-8-surrogate reason-token mode reports dedicated paired-surrogate reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "paired-CESU-8-surrogate reason-token mode reports reason field index for paired surrogate sequences");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xA0\x80Total",
+                  parsedViolations,
+                  pairedCesu8SurrogateReasonOptions,
+                  &parseError),
+                "paired-CESU-8-surrogate reason-token mode leaves lone surrogate sequences to generic reason validation");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "paired-CESU-8-surrogate reason-token mode does not classify lone surrogate sequences as paired surrogates");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
@@ -1827,6 +1864,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameLoneCesu8SurrogateToken) ==
                   std::string_view("ReasonNameLoneCesu8SurrogateToken"),
                 "reason-name-lone-CESU-8-surrogate strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNamePairedCesu8SurrogateToken) ==
+                  std::string_view("ReasonNamePairedCesu8SurrogateToken"),
+                "reason-name-paired-CESU-8-surrogate strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
