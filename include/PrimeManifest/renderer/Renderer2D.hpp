@@ -387,10 +387,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ViolationFieldIndexLimitExceeded = 25,
   DuplicateViolationCountField = 26,
   ViolationCountFieldOrder = 27,
+  ZeroPaddedNumericToken = 28,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -437,6 +438,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   size_t maxViolationCount = 0;
   bool rejectDuplicateCountField = false;
   bool requireCountFieldBeforeEntries = false;
+  bool rejectZeroPaddedNumericTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -503,6 +505,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "DuplicateViolationCountField";
     case SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder:
       return "ViolationCountFieldOrder";
+    case SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken:
+      return "ZeroPaddedNumericToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -776,6 +780,10 @@ inline auto parseUnsignedDecimal(std::string_view text, uint64_t& out) -> bool {
   return true;
 }
 
+inline auto isZeroPaddedUnsignedToken(std::string_view text) -> bool {
+  return text.size() > 1u && text[0] == '0';
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -879,6 +887,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       if (!parseUnsignedDecimal(valueText, expectedCount)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
       }
+      if (options.rejectZeroPaddedNumericTokens &&
+          isZeroPaddedUnsignedToken(valueText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken);
+      }
       if (options.enforceMaxViolationCount &&
           expectedCount > static_cast<uint64_t>(options.maxViolationCount)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded);
@@ -901,6 +913,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       uint64_t violationIndex64 = 0;
       if (!parseUnsignedDecimal(violationIndexText, violationIndex64)) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownKey);
+      }
+      if (options.rejectZeroPaddedNumericTokens &&
+          isZeroPaddedUnsignedToken(violationIndexText)) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken);
       }
       if (violationIndex64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
@@ -935,6 +951,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         uint64_t parsedFieldIndex = 0;
         if (!parseUnsignedDecimal(valueText, parsedFieldIndex)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+        }
+        if (options.rejectZeroPaddedNumericTokens &&
+            isZeroPaddedUnsignedToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken);
         }
         if (parsedFieldIndex > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);

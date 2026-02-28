@@ -40,4 +40,5 @@
 38. [x] Add strict-violation decode option to cap maximum decoded `fieldIndex` values for defensive parse bounds in untrusted payloads.
 39. [x] Add strict-violation decode option to reject duplicate `strictViolations.count` fields in defensive mode to prevent ambiguous count overrides.
 40. [x] Add strict-violation decode option to require `strictViolations.count` appear before indexed entries in defensive mode for earlier bound validation.
-41. Add strict-violation decode option to reject zero-padded numeric tokens (`strictViolations.count`, index, and `fieldIndex`) in defensive mode.
+41. [x] Add strict-violation decode option to reject zero-padded numeric tokens (`strictViolations.count`, index, and `fieldIndex`) in defensive mode.
+42. Add strict-violation decode option to reject explicit plus-prefixed numeric tokens (`+1`) in defensive mode for canonical token enforcement.

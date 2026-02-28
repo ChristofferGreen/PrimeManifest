@@ -758,6 +758,65 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "count-order mode reports dedicated count-order reason");
   CHECK_MESSAGE(parseError.fieldIndex == 0, "count-order mode reports first out-of-order indexed entry");
 
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=01;"
+                  "strictViolations.00.fieldIndex=03;"
+                  "strictViolations.00.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser accepts zero-padded numeric tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "default strict-violation parser keeps no-error state on zero-padded numeric tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions zeroPaddedNumericOptions;
+  zeroPaddedNumericOptions.rejectZeroPaddedNumericTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  zeroPaddedNumericOptions,
+                  &parseError),
+                "zero-padded-token mode accepts canonical numeric tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "zero-padded-token mode clears parse error on canonical numeric tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=01;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  zeroPaddedNumericOptions,
+                  &parseError),
+                "zero-padded-token mode rejects zero-padded count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken,
+                "zero-padded-token mode reports zero-padded count reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "zero-padded-token mode reports count field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.00.fieldIndex=3;"
+                  "strictViolations.00.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  zeroPaddedNumericOptions,
+                  &parseError),
+                "zero-padded-token mode rejects zero-padded index tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken,
+                "zero-padded-token mode reports zero-padded index reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "zero-padded-token mode reports zero-padded index field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=03;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  zeroPaddedNumericOptions,
+                  &parseError),
+                "zero-padded-token mode rejects zero-padded fieldIndex tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken,
+                "zero-padded-token mode reports zero-padded fieldIndex reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "zero-padded-token mode reports fieldIndex field index");
+
   SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
   countCapOptions.enforceMaxViolationCount = true;
   countCapOptions.maxViolationCount = 2;
@@ -976,6 +1035,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder) ==
                   std::string_view("ViolationCountFieldOrder"),
                 "count-order strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ZeroPaddedNumericToken) ==
+                  std::string_view("ZeroPaddedNumericToken"),
+                "zero-padded numeric strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
