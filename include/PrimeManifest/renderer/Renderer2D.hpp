@@ -375,6 +375,8 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   InconsistentReasonTotal = 13,
   InconsistentTypeTotal = 14,
   InconsistentMatrixTotal = 15,
+  InconsistentMatrixRowTotals = 16,
+  InconsistentMatrixColumnTotals = 17,
 };
 
 struct SkipDiagnosticsParseError {
@@ -384,6 +386,7 @@ struct SkipDiagnosticsParseError {
 
 struct SkipDiagnosticsParseOptions {
   bool strictConsistency = false;
+  bool strictMatrixMarginals = false;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -420,6 +423,10 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "InconsistentTypeTotal";
     case SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal:
       return "InconsistentMatrixTotal";
+    case SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals:
+      return "InconsistentMatrixRowTotals";
+    case SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals:
+      return "InconsistentMatrixColumnTotals";
   }
   return "UnknownParseErrorReason";
 }
@@ -695,6 +702,47 @@ inline auto validateSkipDiagnosticsConsistency(SkippedCommandDiagnostics const& 
   return true;
 }
 
+inline auto validateSkipDiagnosticsMatrixMarginals(SkippedCommandDiagnostics const& diagnostics,
+                                                   size_t fieldIndexBase,
+                                                   SkipDiagnosticsParseError* errorOut) -> bool {
+  for (size_t typeIndex = 0; typeIndex < diagnostics.byTypeAndReason.size(); ++typeIndex) {
+    uint64_t rowSum = 0;
+    for (uint64_t count : diagnostics.byTypeAndReason[typeIndex]) {
+      rowSum += count;
+    }
+    if (rowSum != diagnostics.byType[typeIndex]) {
+      return failSkipDiagnosticsParse(
+        errorOut,
+        fieldIndexBase + typeIndex,
+        SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals);
+    }
+  }
+
+  uint64_t unknownByReason = 0;
+  size_t columnFieldBase = fieldIndexBase + RendererProfileCommandTypeBuckets;
+  for (size_t reasonIndex = 0; reasonIndex < SkippedCommandReasonCount; ++reasonIndex) {
+    uint64_t columnSum = 0;
+    for (size_t typeIndex = 0; typeIndex < diagnostics.byTypeAndReason.size(); ++typeIndex) {
+      columnSum += diagnostics.byTypeAndReason[typeIndex][reasonIndex];
+    }
+    uint64_t reasonTotal = diagnostics.byReason[reasonIndex];
+    if (columnSum > reasonTotal) {
+      return failSkipDiagnosticsParse(
+        errorOut,
+        columnFieldBase + reasonIndex,
+        SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals);
+    }
+    unknownByReason += reasonTotal - columnSum;
+  }
+  if (unknownByReason != diagnostics.unknownType) {
+    return failSkipDiagnosticsParse(
+      errorOut,
+      columnFieldBase + SkippedCommandReasonCount,
+      SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals);
+  }
+  return true;
+}
+
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         SkippedCommandDiagnostics& optimizerOut,
                                                         SkippedCommandDiagnostics& skippedOut,
@@ -802,6 +850,12 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
     size_t consistencyFieldIndex = parsedFieldCount;
     if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, errorOut)) return false;
     if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, errorOut)) return false;
+  }
+  if (options.strictMatrixMarginals) {
+    size_t matrixFieldIndex = parsedFieldCount;
+    constexpr size_t PerSectionFieldSpan = RendererProfileCommandTypeBuckets + SkippedCommandReasonCount + 1u;
+    if (!validateSkipDiagnosticsMatrixMarginals(optimizerOut, matrixFieldIndex, errorOut)) return false;
+    if (!validateSkipDiagnosticsMatrixMarginals(skippedOut, matrixFieldIndex + PerSectionFieldSpan, errorOut)) return false;
   }
   return true;
 }

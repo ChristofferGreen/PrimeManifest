@@ -143,8 +143,8 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   profile.optimizerSkippedCommands.total = 3;
   profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerCulledByAlpha)] = 1;
   profile.optimizerSkippedCommands.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData)] = 2;
-  profile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] = 2;
-  profile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Text)] = 1;
+  profile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] = 1;
+  profile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Text)] = 2;
   profile.optimizerSkippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Rect)]
                                                  [static_cast<size_t>(SkippedCommandReason::OptimizerCulledByAlpha)] = 1;
   profile.optimizerSkippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Text)]
@@ -161,7 +161,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   CHECK_MESSAGE(dump ==
                   std::string("optimizerSkippedCommands(total=3): OptimizerCulledByAlpha=1, OptimizerTileStreamInvalidCommandData=2\n")
                     + "skippedCommands(total=3, unknownType=2): InvalidCommandData=3\n"
-                    + "optimizerSkippedCommands.byType: Rect=2, Text=1\n"
+                    + "optimizerSkippedCommands.byType: Rect=1, Text=2\n"
                     + "skippedCommands.byType: Image=1\n"
                     + "optimizerSkippedCommands.byTypeAndReason: Rect/OptimizerCulledByAlpha=1, "
                       "Text/OptimizerTileStreamInvalidCommandData=2\n"
@@ -179,8 +179,8 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
                     + "skippedCommands.total=3;"
                     + "skippedCommands.unknownType=2;"
                     + "skippedCommands.reason.InvalidCommandData=3;"
-                    + "optimizerSkippedCommands.type.Rect=2;"
-                    + "optimizerSkippedCommands.type.Text=1;"
+                    + "optimizerSkippedCommands.type.Rect=1;"
+                    + "optimizerSkippedCommands.type.Text=2;"
                     + "skippedCommands.type.Image=1;"
                     + "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
                     + "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2;"
@@ -195,7 +195,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
                 "parse error output cleared on success");
   CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.total == 3, "parsed verbose optimizer total");
-  CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 2,
+  CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 1,
                 "parsed verbose optimizer by-type");
   CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Text)]
                                                      [static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData)] == 2,
@@ -212,6 +212,12 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
                 "strict parse accepts consistent payload");
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
                 "strict parse keeps no-error state on success");
+
+  strictOptions.strictMatrixMarginals = true;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(keyValueDump, parsedProfile, strictOptions, &parseError),
+                "strict matrix-marginal parse accepts compatible payload");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "strict matrix-marginal parse keeps no-error state on success");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
@@ -268,6 +274,42 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
   CHECK_MESSAGE(parseError.fieldIndex == 12, "strict consistency reports post-parse index");
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
                 "strict consistency reason reported");
+
+  std::string rowMismatchPayload =
+    "optimizerSkippedCommands.total=3;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+    "optimizerSkippedCommands.type.Rect=2;"
+    "optimizerSkippedCommands.type.Text=1;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2";
+
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(rowMismatchPayload, profile, strictOptions),
+                "strict consistency accepts row-mismatch payload");
+  strictOptions.strictMatrixMarginals = true;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(rowMismatchPayload, profile, strictOptions, &parseError),
+                "strict matrix-marginals reject row mismatches");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals,
+                "row mismatch reason reported");
+  CHECK_MESSAGE(parseError.fieldIndex == 8, "row mismatch field index reported");
+
+  std::string columnMismatchPayload =
+    "optimizerSkippedCommands.total=3;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=3;"
+    "optimizerSkippedCommands.type.Rect=1;"
+    "optimizerSkippedCommands.type.Text=2;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2";
+
+  strictOptions.strictMatrixMarginals = false;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(columnMismatchPayload, profile, strictOptions),
+                "strict consistency accepts column-mismatch payload");
+  strictOptions.strictMatrixMarginals = true;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(columnMismatchPayload, profile, strictOptions, &parseError),
+                "strict matrix-marginals reject column mismatches");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals,
+                "column mismatch reason reported");
+  CHECK_MESSAGE(parseError.fieldIndex == 25, "column mismatch field index reported");
 }
 
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
@@ -285,6 +327,12 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal) ==
                   std::string_view("InconsistentMatrixTotal"),
                 "inconsistent matrix-total parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals) ==
+                  std::string_view("InconsistentMatrixRowTotals"),
+                "inconsistent matrix-row parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals) ==
+                  std::string_view("InconsistentMatrixColumnTotals"),
+                "inconsistent matrix-column parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<SkipDiagnosticsParseErrorReason>(255)) ==
                   std::string_view("UnknownParseErrorReason"),
                 "unknown parse error name fallback");
