@@ -723,6 +723,41 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "duplicate-count mode reports dedicated duplicate count reason");
   CHECK_MESSAGE(parseError.fieldIndex == 3, "duplicate-count mode reports duplicate count field index");
 
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.count=1",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser accepts trailing count field");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "default strict-violation parser clears parse error on trailing count payload");
+
+  SkipDiagnosticsStrictViolationsParseOptions countOrderOptions;
+  countOrderOptions.requireCountFieldBeforeEntries = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  countOrderOptions,
+                  &parseError),
+                "count-order mode accepts payloads where count appears before indexed entries");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "count-order mode clears parse error on ordered payload");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.count=1",
+                  parsedViolations,
+                  countOrderOptions,
+                  &parseError),
+                "count-order mode rejects indexed entries that appear before count");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder,
+                "count-order mode reports dedicated count-order reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "count-order mode reports first out-of-order indexed entry");
+
   SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
   countCapOptions.enforceMaxViolationCount = true;
   countCapOptions.maxViolationCount = 2;
@@ -938,6 +973,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::DuplicateViolationCountField) ==
                   std::string_view("DuplicateViolationCountField"),
                 "duplicate-count strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder) ==
+                  std::string_view("ViolationCountFieldOrder"),
+                "count-order strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

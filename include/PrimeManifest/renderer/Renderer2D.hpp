@@ -386,10 +386,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ViolationIndexLimitExceeded = 24,
   ViolationFieldIndexLimitExceeded = 25,
   DuplicateViolationCountField = 26,
+  ViolationCountFieldOrder = 27,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::DuplicateViolationCountField) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -435,6 +436,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool enforceMaxViolationCount = false;
   size_t maxViolationCount = 0;
   bool rejectDuplicateCountField = false;
+  bool requireCountFieldBeforeEntries = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -499,6 +501,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ViolationFieldIndexLimitExceeded";
     case SkipDiagnosticsParseErrorReason::DuplicateViolationCountField:
       return "DuplicateViolationCountField";
+    case SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder:
+      return "ViolationCountFieldOrder";
   }
   return "UnknownParseErrorReason";
 }
@@ -881,6 +885,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       }
       hasExpectedCount = true;
     } else if (key.starts_with(StrictViolationPrefix)) {
+      if (options.requireCountFieldBeforeEntries &&
+          !hasExpectedCount) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ViolationCountFieldOrder);
+      }
       std::string_view tail = key.substr(StrictViolationPrefix.size());
       size_t separator = tail.find('.');
       if (separator == std::string_view::npos || separator == 0 || separator + 1 >= tail.size()) {
