@@ -382,10 +382,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   DuplicateViolationEntry = 20,
   UnknownReasonFallbackToken = 21,
   ViolationCountLimitExceeded = 22,
+  ViolationFieldCountLimitExceeded = 23,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ViolationFieldCountLimitExceeded) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -430,6 +431,8 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectUnknownReasonFallbackToken = false;
   bool enforceMaxViolationCount = false;
   size_t maxViolationCount = 0;
+  bool enforceMaxFieldCount = false;
+  size_t maxFieldCount = 0;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -480,6 +483,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "UnknownReasonFallbackToken";
     case SkipDiagnosticsParseErrorReason::ViolationCountLimitExceeded:
       return "ViolationCountLimitExceeded";
+    case SkipDiagnosticsParseErrorReason::ViolationFieldCountLimitExceeded:
+      return "ViolationFieldCountLimitExceeded";
   }
   return "UnknownParseErrorReason";
 }
@@ -823,6 +828,13 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
   size_t fieldIndex = 0;
   size_t parsedFieldCount = 0;
   while (start <= dump.size()) {
+    if (options.enforceMaxFieldCount &&
+        parsedFieldCount >= options.maxFieldCount) {
+      return failSkipDiagnosticsParse(errorOut,
+                                      fieldIndex,
+                                      SkipDiagnosticsParseErrorReason::ViolationFieldCountLimitExceeded);
+    }
+
     size_t end = dump.find(';', start);
     if (end == std::string_view::npos) end = dump.size();
     if (end <= start) return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::EmptyField);
