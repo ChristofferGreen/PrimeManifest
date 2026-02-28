@@ -1051,6 +1051,40 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                   "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=InconsistentMatrix\xC2\xA0\xE3\x80\x80\xC2\xA0\xC2"
                   "Break\x80"
+                  "Gap\xC3\xA9RowTotals\xC2"
+                  "Tail\x80"
+                  "End",
+                  parsedViolations,
+                  nonAsciiReasonWhitespaceOptions,
+                  &parseError),
+                "non-ASCII-reason-whitespace mode still classifies tokens as unknown names when multiple malformed segments bracket the first accented code point and multiple non-ASCII whitespace segments appear only before that first code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "non-ASCII-reason-whitespace mode reports unknown reason when multiple malformed segments bracket the first accented code point while multiple non-ASCII whitespace segments remain only before that first code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-ASCII-reason-whitespace mode reports reason field index for multiple-malformed-bracketing-first-accented with pre-first-only non-ASCII-whitespace segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xE3\x80\x80\xC2\xA0\xE3\x80\x80\xC2"
+                  "Break\x80"
+                  "Gap\xF0\x9F\x98\x80RowTotals\xC2"
+                  "Tail\x80"
+                  "End",
+                  parsedViolations,
+                  nonAsciiReasonWhitespaceOptions,
+                  &parseError),
+                "non-ASCII-reason-whitespace mode still classifies tokens as unknown names when multiple malformed segments bracket the first emoji code point and multiple non-ASCII whitespace segments appear only before that first code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "non-ASCII-reason-whitespace mode reports unknown reason when multiple malformed segments bracket the first emoji code point while multiple non-ASCII whitespace segments remain only before that first code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-ASCII-reason-whitespace mode reports reason field index for multiple-malformed-bracketing-first-emoji with pre-first-only non-ASCII-whitespace segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xC2\xA0\xE3\x80\x80\xC2\xA0\xC2"
+                  "Break\x80"
                   "Gap\xC2"
                   "Tail\x80"
                   "\xC3\xA9RowTotals\xE3\x80\x80\xC2\xA0",
