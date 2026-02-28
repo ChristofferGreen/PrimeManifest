@@ -728,6 +728,46 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "non-ASCII-reason-whitespace mode reports reason field index for embedded non-ASCII-whitespace tokens");
 
+  SkipDiagnosticsStrictViolationsParseOptions nonAsciiControlWhitespacePrecedenceOptions;
+  nonAsciiControlWhitespacePrecedenceOptions.rejectReasonNameNonAsciiUnicodeControlCharacterTokens = true;
+  nonAsciiControlWhitespacePrecedenceOptions.rejectReasonNameNonAsciiWhitespaceTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  nonAsciiControlWhitespacePrecedenceOptions,
+                  &parseError),
+                "combined non-ASCII-control and non-ASCII-whitespace mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "combined non-ASCII-control and non-ASCII-whitespace mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xC2\x85RowTotals",
+                  parsedViolations,
+                  nonAsciiControlWhitespacePrecedenceOptions,
+                  &parseError),
+                "combined non-ASCII-control and non-ASCII-whitespace mode prioritizes Unicode-control diagnostics over non-ASCII-whitespace diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken,
+                "combined non-ASCII-control and non-ASCII-whitespace mode reports Unicode-control reason before non-ASCII-whitespace reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined non-ASCII-control and non-ASCII-whitespace mode reports reason field index for overlapping C1-control/non-ASCII-whitespace tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=\xC2\x85InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  nonAsciiControlWhitespacePrecedenceOptions,
+                  &parseError),
+                "combined non-ASCII-control and non-ASCII-whitespace mode prioritizes Unicode-control diagnostics for leading C1-control/non-ASCII-whitespace tokens when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiUnicodeControlCharacterToken,
+                "combined non-ASCII-control and non-ASCII-whitespace mode reports Unicode-control reason for leading overlap tokens when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined non-ASCII-control and non-ASCII-whitespace mode reports reason field index for leading overlap tokens");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
