@@ -380,10 +380,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   NonContiguousViolationIndex = 18,
   DuplicateViolationConflict = 19,
   DuplicateViolationEntry = 20,
+  UnknownReasonFallbackToken = 21,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::DuplicateViolationEntry) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -425,6 +426,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool normalizeOutOfOrderContiguousIndices = false;
   bool rejectConflictingDuplicateIndices = false;
   bool rejectDuplicateIndices = false;
+  bool rejectUnknownReasonFallbackToken = false;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -471,6 +473,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "DuplicateViolationConflict";
     case SkipDiagnosticsParseErrorReason::DuplicateViolationEntry:
       return "DuplicateViolationEntry";
+    case SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken:
+      return "UnknownReasonFallbackToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -895,6 +899,9 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       } else if (leafKey == "reason") {
         SkipDiagnosticsParseErrorReason parsedReason{};
         if (valueText == "UnknownParseErrorReason") {
+          if (options.rejectUnknownReasonFallbackToken) {
+            return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken);
+          }
           parsedReason = static_cast<SkipDiagnosticsParseErrorReason>(255);
         } else if (!skipDiagnosticsParseErrorReasonFromName(valueText, parsedReason)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonName);

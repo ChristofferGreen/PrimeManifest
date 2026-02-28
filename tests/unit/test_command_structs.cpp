@@ -535,6 +535,24 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parsedViolations[2].reason == static_cast<SkipDiagnosticsParseErrorReason>(255),
                 "strict-violation parser preserves unknown reason fallback");
 
+  SkipDiagnosticsStrictViolationsParseOptions strictReasonTokenOptions;
+  strictReasonTokenOptions.rejectUnknownReasonFallbackToken = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(keyValueDump, parsedViolations, strictReasonTokenOptions, &parseError),
+                "strict reason-token mode rejects unknown-reason fallback token");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken,
+                "strict reason-token mode reports fallback-token reason");
+
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  strictReasonTokenOptions,
+                  &parseError),
+                "strict reason-token mode accepts known reason names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "strict reason-token mode clears parse error on valid known reason");
+
   std::string nonContiguousButCompletePayload =
     "strictViolations.count=3;"
     "strictViolations.0.fieldIndex=3;"
@@ -739,6 +757,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::DuplicateViolationEntry) ==
                   std::string_view("DuplicateViolationEntry"),
                 "duplicate-entry strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::UnknownReasonFallbackToken) ==
+                  std::string_view("UnknownReasonFallbackToken"),
+                "unknown-reason fallback-token parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

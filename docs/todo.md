@@ -33,4 +33,5 @@
 31. [x] Add strict-violation decode mode that normalizes out-of-order contiguous indices instead of rejecting sparse arrival order.
 32. [x] Add strict-violation decode option to reject duplicate index entries with conflicting field/reason values.
 33. [x] Add strict-violation decode option to fail on duplicate index entries even when duplicate values are identical.
-34. Add strict-violation decode option to reject unknown-reason fallback tokens (`UnknownParseErrorReason`) in strict parse mode.
+34. [x] Add strict-violation decode option to reject unknown-reason fallback tokens (`UnknownParseErrorReason`) in strict parse mode.
+35. Add strict-violation decode mode to cap maximum allowed violation count for defensive parse limits.
