@@ -535,6 +535,30 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parsedViolations[2].reason == static_cast<SkipDiagnosticsParseErrorReason>(255),
                 "strict-violation parser preserves unknown reason fallback");
 
+  std::string nonContiguousButCompletePayload =
+    "strictViolations.count=3;"
+    "strictViolations.0.fieldIndex=3;"
+    "strictViolations.0.reason=InconsistentReasonTotal;"
+    "strictViolations.2.fieldIndex=13;"
+    "strictViolations.2.reason=UnknownParseErrorReason;"
+    "strictViolations.1.fieldIndex=11;"
+    "strictViolations.1.reason=InconsistentMatrixRowTotals";
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(nonContiguousButCompletePayload, parsedViolations, &parseError),
+                "default strict-violation parser accepts non-contiguous index arrival when complete");
+  CHECK_MESSAGE(parsedViolations.size() == 3, "non-contiguous complete payload restores all entries");
+
+  SkipDiagnosticsStrictViolationsParseOptions strictIndexOptions;
+  strictIndexOptions.enforceContiguousIndices = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  nonContiguousButCompletePayload,
+                  parsedViolations,
+                  strictIndexOptions,
+                  &parseError),
+                "contiguous-index mode rejects first sparse index jump early");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex,
+                "contiguous-index mode reports dedicated sparse-index reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 3, "contiguous-index mode reports sparse index field");
+
   CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none", parsedViolations, &parseError),
                 "strict-violation parser accepts none sentinel");
   CHECK_MESSAGE(parsedViolations.empty(), "none sentinel clears parsed strict-violation list");
@@ -597,6 +621,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals) ==
                   std::string_view("InconsistentMatrixColumnTotals"),
                 "inconsistent matrix-column parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex) ==
+                  std::string_view("NonContiguousViolationIndex"),
+                "non-contiguous strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

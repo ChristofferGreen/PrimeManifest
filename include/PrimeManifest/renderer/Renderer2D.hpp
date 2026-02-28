@@ -377,6 +377,7 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   InconsistentMatrixTotal = 15,
   InconsistentMatrixRowTotals = 16,
   InconsistentMatrixColumnTotals = 17,
+  NonContiguousViolationIndex = 18,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
@@ -417,6 +418,10 @@ struct SkipDiagnosticsParseOptions {
   SkipDiagnosticsStrictFailureMode strictFailureMode = SkipDiagnosticsStrictFailureMode::FirstFailure;
 };
 
+struct SkipDiagnosticsStrictViolationsParseOptions {
+  bool enforceContiguousIndices = false;
+};
+
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
   switch (reason) {
     case SkipDiagnosticsParseErrorReason::None:
@@ -455,6 +460,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "InconsistentMatrixRowTotals";
     case SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals:
       return "InconsistentMatrixColumnTotals";
+    case SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex:
+      return "NonContiguousViolationIndex";
   }
   return "UnknownParseErrorReason";
 }
@@ -767,6 +774,7 @@ inline auto reportSkipDiagnosticsStrictFailure(SkipDiagnosticsParseError* errorO
 inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
   std::string_view dump,
   std::vector<SkipDiagnosticsParseError::StrictViolation>& violationsOut,
+  SkipDiagnosticsStrictViolationsParseOptions const& options,
   SkipDiagnosticsParseError* errorOut) -> bool {
   violationsOut.clear();
   clearSkipDiagnosticsParseError(errorOut);
@@ -785,6 +793,8 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
 
   constexpr std::string_view StrictViolationPrefix = "strictViolations.";
   std::vector<PendingStrictViolation> pendingViolations;
+  std::vector<bool> seenViolationIndices;
+  size_t nextContiguousViolationIndex = 0;
   uint64_t expectedCount = 0;
   bool hasExpectedCount = false;
 
@@ -832,7 +842,20 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       if (violationIndex64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
       }
+      if (hasExpectedCount && violationIndex64 >= expectedCount) {
+        return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
+      }
       size_t violationIndex = static_cast<size_t>(violationIndex64);
+      if (seenViolationIndices.size() <= violationIndex) {
+        seenViolationIndices.resize(violationIndex + 1u, false);
+      }
+      if (options.enforceContiguousIndices && !seenViolationIndices[violationIndex]) {
+        if (violationIndex != nextContiguousViolationIndex) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex);
+        }
+        nextContiguousViolationIndex += 1u;
+      }
+      seenViolationIndices[violationIndex] = true;
       if (pendingViolations.size() <= violationIndex) {
         pendingViolations.resize(violationIndex + 1u);
       }
@@ -891,8 +914,30 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
 
 inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
   std::string_view dump,
+  std::vector<SkipDiagnosticsParseError::StrictViolation>& violationsOut,
+  SkipDiagnosticsStrictViolationsParseOptions const& options) -> bool {
+  return parseSkipDiagnosticsStrictViolationsKeyValue(dump, violationsOut, options, nullptr);
+}
+
+inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
+  std::string_view dump,
+  std::vector<SkipDiagnosticsParseError::StrictViolation>& violationsOut,
+  SkipDiagnosticsParseError* errorOut) -> bool {
+  return parseSkipDiagnosticsStrictViolationsKeyValue(
+    dump,
+    violationsOut,
+    SkipDiagnosticsStrictViolationsParseOptions{},
+    errorOut);
+}
+
+inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
+  std::string_view dump,
   std::vector<SkipDiagnosticsParseError::StrictViolation>& violationsOut) -> bool {
-  return parseSkipDiagnosticsStrictViolationsKeyValue(dump, violationsOut, nullptr);
+  return parseSkipDiagnosticsStrictViolationsKeyValue(
+    dump,
+    violationsOut,
+    SkipDiagnosticsStrictViolationsParseOptions{},
+    nullptr);
 }
 
 inline auto sumSkipReasonBuckets(SkippedCommandDiagnostics const& diagnostics) -> uint64_t {
