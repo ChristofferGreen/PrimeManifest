@@ -386,6 +386,35 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
                 "renderer-only matrix reason reported");
 }
 
+TEST_CASE("renderer_profile_skip_diagnostics_strict_failure_precedence") {
+  RendererProfile profile;
+  SkipDiagnosticsParseError parseError;
+  std::string combinedMismatchPayload =
+    "optimizerSkippedCommands.total=9;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+    "optimizerSkippedCommands.type.Rect=2;"
+    "optimizerSkippedCommands.type.Text=1;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2";
+
+  SkipDiagnosticsParseOptions strictOptions;
+  strictOptions.strictConsistency = true;
+  strictOptions.strictMatrixMarginals = true;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(combinedMismatchPayload, profile, strictOptions, &parseError),
+                "default strict precedence rejects consistency violation first");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "default precedence reports consistency failure");
+  CHECK_MESSAGE(parseError.fieldIndex == 7, "default precedence field index matches consistency check");
+
+  strictOptions.strictFailurePrecedence = SkipDiagnosticsStrictFailurePrecedence::MatrixMarginalsFirst;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(combinedMismatchPayload, profile, strictOptions, &parseError),
+                "matrix-first precedence rejects matrix violation first");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals,
+                "matrix-first precedence reports matrix row failure");
+  CHECK_MESSAGE(parseError.fieldIndex == 8, "matrix-first precedence field index matches row check");
+}
+
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::None) == std::string_view("None"),
                 "none parse error name");

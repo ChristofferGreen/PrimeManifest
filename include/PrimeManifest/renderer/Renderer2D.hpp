@@ -390,10 +390,17 @@ enum class SkipDiagnosticsParseSectionTarget : uint8_t {
   RendererOnly = 2,
 };
 
+enum class SkipDiagnosticsStrictFailurePrecedence : uint8_t {
+  ConsistencyFirst = 0,
+  MatrixMarginalsFirst = 1,
+};
+
 struct SkipDiagnosticsParseOptions {
   bool strictConsistency = false;
   bool strictMatrixMarginals = false;
   SkipDiagnosticsParseSectionTarget strictSectionTarget = SkipDiagnosticsParseSectionTarget::Both;
+  SkipDiagnosticsStrictFailurePrecedence strictFailurePrecedence =
+    SkipDiagnosticsStrictFailurePrecedence::ConsistencyFirst;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -863,7 +870,8 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
     start = end + 1;
     fieldIndex += 1;
   }
-  if (options.strictConsistency) {
+  auto runStrictConsistencyChecks = [&]() -> bool {
+    if (!options.strictConsistency) return true;
     size_t consistencyFieldIndex = parsedFieldCount;
     if (shouldValidateOptimizerSection(options.strictSectionTarget)) {
       if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, errorOut)) return false;
@@ -871,8 +879,11 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
     if (shouldValidateRendererSection(options.strictSectionTarget)) {
       if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, errorOut)) return false;
     }
-  }
-  if (options.strictMatrixMarginals) {
+    return true;
+  };
+
+  auto runStrictMatrixMarginalChecks = [&]() -> bool {
+    if (!options.strictMatrixMarginals) return true;
     size_t matrixFieldIndex = parsedFieldCount;
     constexpr size_t PerSectionFieldSpan = RendererProfileCommandTypeBuckets + SkippedCommandReasonCount + 1u;
     if (shouldValidateOptimizerSection(options.strictSectionTarget)) {
@@ -881,7 +892,18 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
     if (shouldValidateRendererSection(options.strictSectionTarget)) {
       if (!validateSkipDiagnosticsMatrixMarginals(skippedOut, matrixFieldIndex + PerSectionFieldSpan, errorOut)) return false;
     }
+    return true;
+  };
+
+  if (options.strictConsistency && options.strictMatrixMarginals &&
+      options.strictFailurePrecedence == SkipDiagnosticsStrictFailurePrecedence::MatrixMarginalsFirst) {
+    if (!runStrictMatrixMarginalChecks()) return false;
+    if (!runStrictConsistencyChecks()) return false;
+    return true;
   }
+
+  if (!runStrictConsistencyChecks()) return false;
+  if (!runStrictMatrixMarginalChecks()) return false;
   return true;
 }
 
