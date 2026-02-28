@@ -2069,6 +2069,36 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports reason field index for emoji overlap precedence");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xC2"
+                  "Break\xC3\xA9Total\x80"
+                  "Tail",
+                  parsedViolations,
+                  malformedAndNonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode still reports malformed-UTF-8 diagnostics when malformed segments appear before and after the first accented code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode keeps malformed-UTF-8 diagnostics when malformed bytes bracket the first accented code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports reason field index for malformed-before-and-after-first-accented precedence");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xC2"
+                  "Break\xF0\x9F\x98\x80Total\xC2"
+                  "Trail",
+                  parsedViolations,
+                  malformedAndNonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode still reports malformed-UTF-8 diagnostics when malformed segments appear before and after the first emoji code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode keeps malformed-UTF-8 diagnostics when malformed bytes bracket the first emoji code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports reason field index for malformed-before-and-after-first-emoji precedence");
+
   std::string nonContiguousButCompletePayload =
     "strictViolations.count=3;"
     "strictViolations.0.fieldIndex=3;"
