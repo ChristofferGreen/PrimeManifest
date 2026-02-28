@@ -420,6 +420,7 @@ struct SkipDiagnosticsParseOptions {
 
 struct SkipDiagnosticsStrictViolationsParseOptions {
   bool enforceContiguousIndices = false;
+  bool normalizeOutOfOrderContiguousIndices = false;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -795,6 +796,9 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
   std::vector<PendingStrictViolation> pendingViolations;
   std::vector<bool> seenViolationIndices;
   size_t nextContiguousViolationIndex = 0;
+  bool enforceContiguousArrival =
+    options.enforceContiguousIndices && !options.normalizeOutOfOrderContiguousIndices;
+  bool normalizeOutOfOrderContiguousIndices = options.normalizeOutOfOrderContiguousIndices;
   uint64_t expectedCount = 0;
   bool hasExpectedCount = false;
 
@@ -849,7 +853,7 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
       if (seenViolationIndices.size() <= violationIndex) {
         seenViolationIndices.resize(violationIndex + 1u, false);
       }
-      if (options.enforceContiguousIndices && !seenViolationIndices[violationIndex]) {
+      if (enforceContiguousArrival && !seenViolationIndices[violationIndex]) {
         if (violationIndex != nextContiguousViolationIndex) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex);
         }
@@ -897,6 +901,20 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
   }
   if (expectedCount != pendingViolations.size()) {
     return failSkipDiagnosticsParse(errorOut, parsedFieldCount, SkipDiagnosticsParseErrorReason::InvalidValue);
+  }
+  if (normalizeOutOfOrderContiguousIndices) {
+    if (seenViolationIndices.size() < pendingViolations.size()) {
+      return failSkipDiagnosticsParse(errorOut,
+                                      parsedFieldCount,
+                                      SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex);
+    }
+    for (size_t violationIndex = 0; violationIndex < pendingViolations.size(); ++violationIndex) {
+      if (!seenViolationIndices[violationIndex]) {
+        return failSkipDiagnosticsParse(errorOut,
+                                        parsedFieldCount + violationIndex,
+                                        SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex);
+      }
+    }
   }
   violationsOut.reserve(pendingViolations.size());
   for (size_t violationIndex = 0; violationIndex < pendingViolations.size(); ++violationIndex) {

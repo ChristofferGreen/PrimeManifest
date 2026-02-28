@@ -30,4 +30,5 @@
 28. [x] Add a helper to format collected strict parse violations into readable/key-value summaries for diagnostics logs.
 29. [x] Add parser helpers to decode strict-violation key/value summaries back into structured violation entries.
 30. [x] Add parser option to enforce contiguous strict-violation indices in key/value decode (reject sparse index payloads early).
-31. Add strict-violation decode mode that normalizes out-of-order contiguous indices instead of rejecting sparse arrival order.
+31. [x] Add strict-violation decode mode that normalizes out-of-order contiguous indices instead of rejecting sparse arrival order.
+32. Add strict-violation decode option to reject duplicate index entries with conflicting field/reason values.

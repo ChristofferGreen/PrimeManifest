@@ -559,6 +559,33 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "contiguous-index mode reports dedicated sparse-index reason");
   CHECK_MESSAGE(parseError.fieldIndex == 3, "contiguous-index mode reports sparse index field");
 
+  SkipDiagnosticsStrictViolationsParseOptions normalizedIndexOptions;
+  normalizedIndexOptions.enforceContiguousIndices = true;
+  normalizedIndexOptions.normalizeOutOfOrderContiguousIndices = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  nonContiguousButCompletePayload,
+                  parsedViolations,
+                  normalizedIndexOptions,
+                  &parseError),
+                "normalized contiguous-index mode accepts out-of-order contiguous entries");
+  CHECK_MESSAGE(parsedViolations.size() == 3, "normalized contiguous-index mode restores all entries");
+  CHECK_MESSAGE(parsedViolations[0].fieldIndex == 3, "normalized contiguous-index mode keeps index-ordered output");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "normalized contiguous-index mode clears parse error on success");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=3;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.2.fieldIndex=13;"
+                  "strictViolations.2.reason=UnknownParseErrorReason",
+                  parsedViolations,
+                  normalizedIndexOptions,
+                  &parseError),
+                "normalized contiguous-index mode rejects missing intermediate index");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::NonContiguousViolationIndex,
+                "normalized contiguous-index mode reports missing-index reason");
+
   CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none", parsedViolations, &parseError),
                 "strict-violation parser accepts none sentinel");
   CHECK_MESSAGE(parsedViolations.empty(), "none sentinel clears parsed strict-violation list");
