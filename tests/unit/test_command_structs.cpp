@@ -1211,6 +1211,21 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "all-CESU-8-surrogate reason-token modes report reason field index for malformed UTF-8 tokens");
 
+  SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateMalformedAndFallbackOptions = allCesu8SurrogateAndMalformedReasonOptions;
+  allCesu8SurrogateMalformedAndFallbackOptions.rejectUnknownReasonFallbackToken = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=UnknownParseErrorReason\xED\xA0",
+                  parsedViolations,
+                  allCesu8SurrogateMalformedAndFallbackOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes prioritize malformed-UTF-8 diagnostics over unknown-fallback-token diagnostics when both checks are enabled");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "all-CESU-8-surrogate reason-token modes report malformed-UTF-8 reason before unknown-fallback-token reason when both checks are enabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for malformed-UTF-8 precedence over fallback-token rejection");
+
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
