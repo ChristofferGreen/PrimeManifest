@@ -3052,6 +3052,38 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xC2\xA0\xE3\x80\x80\xC3\xA9Total\xC2"
+                  "Break\x80"
+                  "Tail\xC2"
+                  "End",
+                  parsedViolations,
+                  nonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "non-whitespace non-ASCII reason-token mode keeps classifying tokens when multiple non-ASCII whitespace segments appear only before the first accented code point and three malformed segments appear only after that first accented code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken,
+                "non-whitespace non-ASCII reason-token mode reports dedicated reason when three malformed segments occur only after the first accented code point and multiple non-ASCII whitespace segments remain only before it");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-whitespace non-ASCII reason-token mode reports reason field index for pre-first-only multiple-whitespace with three post-first accented malformed segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xE3\x80\x80\xC2\xA0\xF0\x9F\x98\x80Total\xC2"
+                  "Split\x80"
+                  "Tail\xC2"
+                  "End",
+                  parsedViolations,
+                  nonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "non-whitespace non-ASCII reason-token mode keeps classifying tokens when multiple non-ASCII whitespace segments appear only before the first emoji code point and three malformed segments appear only after that first emoji code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken,
+                "non-whitespace non-ASCII reason-token mode reports dedicated reason when three malformed segments occur only after the first emoji code point and multiple non-ASCII whitespace segments remain only before it");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-whitespace non-ASCII reason-token mode reports reason field index for pre-first-only multiple-whitespace with three post-first emoji malformed segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=\xC2InconsistentReason\xC2\xA0Total",
                   parsedViolations,
                   nonWhitespaceNonAsciiReasonOptions,
