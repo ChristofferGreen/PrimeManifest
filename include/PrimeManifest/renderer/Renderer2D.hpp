@@ -384,9 +384,16 @@ struct SkipDiagnosticsParseError {
   SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
 };
 
+enum class SkipDiagnosticsParseSectionTarget : uint8_t {
+  Both = 0,
+  OptimizerOnly = 1,
+  RendererOnly = 2,
+};
+
 struct SkipDiagnosticsParseOptions {
   bool strictConsistency = false;
   bool strictMatrixMarginals = false;
+  SkipDiagnosticsParseSectionTarget strictSectionTarget = SkipDiagnosticsParseSectionTarget::Both;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -743,6 +750,16 @@ inline auto validateSkipDiagnosticsMatrixMarginals(SkippedCommandDiagnostics con
   return true;
 }
 
+constexpr auto shouldValidateOptimizerSection(SkipDiagnosticsParseSectionTarget target) -> bool {
+  return target == SkipDiagnosticsParseSectionTarget::Both ||
+         target == SkipDiagnosticsParseSectionTarget::OptimizerOnly;
+}
+
+constexpr auto shouldValidateRendererSection(SkipDiagnosticsParseSectionTarget target) -> bool {
+  return target == SkipDiagnosticsParseSectionTarget::Both ||
+         target == SkipDiagnosticsParseSectionTarget::RendererOnly;
+}
+
 inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
                                                         SkippedCommandDiagnostics& optimizerOut,
                                                         SkippedCommandDiagnostics& skippedOut,
@@ -848,14 +865,22 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
   }
   if (options.strictConsistency) {
     size_t consistencyFieldIndex = parsedFieldCount;
-    if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, errorOut)) return false;
-    if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, errorOut)) return false;
+    if (shouldValidateOptimizerSection(options.strictSectionTarget)) {
+      if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, errorOut)) return false;
+    }
+    if (shouldValidateRendererSection(options.strictSectionTarget)) {
+      if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, errorOut)) return false;
+    }
   }
   if (options.strictMatrixMarginals) {
     size_t matrixFieldIndex = parsedFieldCount;
     constexpr size_t PerSectionFieldSpan = RendererProfileCommandTypeBuckets + SkippedCommandReasonCount + 1u;
-    if (!validateSkipDiagnosticsMatrixMarginals(optimizerOut, matrixFieldIndex, errorOut)) return false;
-    if (!validateSkipDiagnosticsMatrixMarginals(skippedOut, matrixFieldIndex + PerSectionFieldSpan, errorOut)) return false;
+    if (shouldValidateOptimizerSection(options.strictSectionTarget)) {
+      if (!validateSkipDiagnosticsMatrixMarginals(optimizerOut, matrixFieldIndex, errorOut)) return false;
+    }
+    if (shouldValidateRendererSection(options.strictSectionTarget)) {
+      if (!validateSkipDiagnosticsMatrixMarginals(skippedOut, matrixFieldIndex + PerSectionFieldSpan, errorOut)) return false;
+    }
   }
   return true;
 }

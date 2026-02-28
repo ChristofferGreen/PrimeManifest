@@ -275,6 +275,52 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
                 "strict consistency reason reported");
 
+  std::string optimizerOnlyMismatchPayload =
+    "optimizerSkippedCommands.total=9;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+    "optimizerSkippedCommands.type.Rect=1;"
+    "optimizerSkippedCommands.type.Text=2;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2;"
+    "skippedCommands.total=3;"
+    "skippedCommands.unknownType=2;"
+    "skippedCommands.reason.InvalidCommandData=3;"
+    "skippedCommands.type.Image=1;"
+    "skippedCommands.typeReason.Image.InvalidCommandData=1";
+
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::RendererOnly;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(optimizerOnlyMismatchPayload, profile, strictOptions),
+                "renderer-only strict checks ignore optimizer inconsistency");
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::OptimizerOnly;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(optimizerOnlyMismatchPayload, profile, strictOptions, &parseError),
+                "optimizer-only strict checks catch optimizer inconsistency");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "optimizer-only strict reason reported");
+
+  std::string rendererOnlyMismatchPayload =
+    "optimizerSkippedCommands.total=3;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+    "optimizerSkippedCommands.type.Rect=1;"
+    "optimizerSkippedCommands.type.Text=2;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2;"
+    "skippedCommands.total=9;"
+    "skippedCommands.unknownType=2;"
+    "skippedCommands.reason.InvalidCommandData=3;"
+    "skippedCommands.type.Image=1;"
+    "skippedCommands.typeReason.Image.InvalidCommandData=1";
+
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::OptimizerOnly;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(rendererOnlyMismatchPayload, profile, strictOptions),
+                "optimizer-only strict checks ignore renderer inconsistency");
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::RendererOnly;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(rendererOnlyMismatchPayload, profile, strictOptions, &parseError),
+                "renderer-only strict checks catch renderer inconsistency");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "renderer-only strict reason reported");
+
   std::string rowMismatchPayload =
     "optimizerSkippedCommands.total=3;"
     "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
@@ -284,6 +330,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
     "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
     "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2";
 
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::Both;
   CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(rowMismatchPayload, profile, strictOptions),
                 "strict consistency accepts row-mismatch payload");
   strictOptions.strictMatrixMarginals = true;
@@ -292,6 +339,9 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals,
                 "row mismatch reason reported");
   CHECK_MESSAGE(parseError.fieldIndex == 8, "row mismatch field index reported");
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::RendererOnly;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(rowMismatchPayload, profile, strictOptions),
+                "renderer-only matrix checks ignore optimizer row mismatch");
 
   std::string columnMismatchPayload =
     "optimizerSkippedCommands.total=3;"
@@ -301,6 +351,7 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
     "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
     "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2";
 
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::Both;
   strictOptions.strictMatrixMarginals = false;
   CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(columnMismatchPayload, profile, strictOptions),
                 "strict consistency accepts column-mismatch payload");
@@ -310,6 +361,29 @@ TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals,
                 "column mismatch reason reported");
   CHECK_MESSAGE(parseError.fieldIndex == 25, "column mismatch field index reported");
+
+  std::string rendererColumnMismatchPayload =
+    "optimizerSkippedCommands.total=3;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.reason.OptimizerTileStreamInvalidCommandData=2;"
+    "optimizerSkippedCommands.type.Rect=1;"
+    "optimizerSkippedCommands.type.Text=2;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.typeReason.Text.OptimizerTileStreamInvalidCommandData=2;"
+    "skippedCommands.total=3;"
+    "skippedCommands.unknownType=2;"
+    "skippedCommands.reason.InvalidCommandData=3;"
+    "skippedCommands.type.Image=1;"
+    "skippedCommands.typeReason.Image.OptimizerCulledByAlpha=1";
+
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::OptimizerOnly;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(rendererColumnMismatchPayload, profile, strictOptions),
+                "optimizer-only matrix checks ignore renderer column mismatch");
+  strictOptions.strictSectionTarget = SkipDiagnosticsParseSectionTarget::RendererOnly;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(rendererColumnMismatchPayload, profile, strictOptions, &parseError),
+                "renderer-only matrix checks catch renderer column mismatch");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals,
+                "renderer-only matrix reason reported");
 }
 
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
