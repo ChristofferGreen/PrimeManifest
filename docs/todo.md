@@ -26,4 +26,5 @@
 24. [x] Add an optional diagnostics parse mode that validates `byTypeAndReason` rows/columns against `byType` and `byReason` independently.
 25. [x] Add parser options to choose strict section targets (`optimizer`, `renderer`, or both) for consistency/marginal checks.
 26. [x] Add parser options to configure strict failure precedence when multiple consistency/marginal violations exist in one payload.
-27. Add parse mode to collect and return all strict consistency/marginal violations instead of failing on the first mismatch.
+27. [x] Add parse mode to collect and return all strict consistency/marginal violations instead of failing on the first mismatch.
+28. Add a helper to format collected strict parse violations into readable/key-value summaries for diagnostics logs.

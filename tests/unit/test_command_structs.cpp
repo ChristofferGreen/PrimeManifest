@@ -415,6 +415,77 @@ TEST_CASE("renderer_profile_skip_diagnostics_strict_failure_precedence") {
   CHECK_MESSAGE(parseError.fieldIndex == 8, "matrix-first precedence field index matches row check");
 }
 
+TEST_CASE("renderer_profile_skip_diagnostics_collect_all_strict_violations") {
+  RendererProfile profile;
+  SkipDiagnosticsParseError parseError;
+
+  std::string combinedStrictMismatchPayload =
+    "optimizerSkippedCommands.total=5;"
+    "optimizerSkippedCommands.reason.OptimizerCulledByAlpha=1;"
+    "optimizerSkippedCommands.type.Rect=2;"
+    "optimizerSkippedCommands.typeReason.Rect.OptimizerCulledByAlpha=1;"
+    "skippedCommands.total=4;"
+    "skippedCommands.reason.InvalidCommandData=2;"
+    "skippedCommands.type.Image=3;"
+    "skippedCommands.typeReason.Image.InvalidCommandData=1";
+
+  SkipDiagnosticsParseOptions strictOptions;
+  strictOptions.strictConsistency = true;
+  strictOptions.strictMatrixMarginals = true;
+  strictOptions.strictFailureMode = SkipDiagnosticsStrictFailureMode::CollectAll;
+
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(combinedStrictMismatchPayload, profile, strictOptions, &parseError),
+                "collect-all strict mode rejects payload with violations");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                "collect-all keeps first consistency reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 8, "collect-all keeps first consistency field index");
+  CHECK_MESSAGE(parseError.strictViolations.size() == 9, "collect-all returns every strict violation");
+
+  size_t reasonTotalViolations = 0;
+  size_t typeTotalViolations = 0;
+  size_t matrixTotalViolations = 0;
+  size_t rowMarginalViolations = 0;
+  size_t columnMarginalViolations = 0;
+  bool foundRendererUnknownColumnMismatch = false;
+  for (auto const& violation : parseError.strictViolations) {
+    if (violation.reason == SkipDiagnosticsParseErrorReason::InconsistentReasonTotal) {
+      reasonTotalViolations += 1;
+    } else if (violation.reason == SkipDiagnosticsParseErrorReason::InconsistentTypeTotal) {
+      typeTotalViolations += 1;
+    } else if (violation.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal) {
+      matrixTotalViolations += 1;
+    } else if (violation.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals) {
+      rowMarginalViolations += 1;
+    } else if (violation.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals) {
+      columnMarginalViolations += 1;
+      if (violation.fieldIndex == 51) {
+        foundRendererUnknownColumnMismatch = true;
+      }
+    }
+  }
+  CHECK_MESSAGE(reasonTotalViolations == 2, "collect-all includes consistency reason-total violations for both sections");
+  CHECK_MESSAGE(typeTotalViolations == 2, "collect-all includes consistency type-total violations for both sections");
+  CHECK_MESSAGE(matrixTotalViolations == 2, "collect-all includes consistency matrix-total violations for both sections");
+  CHECK_MESSAGE(rowMarginalViolations == 2, "collect-all includes row-marginal violations for both sections");
+  CHECK_MESSAGE(columnMarginalViolations == 1, "collect-all includes renderer column-marginal violation");
+  CHECK_MESSAGE(foundRendererUnknownColumnMismatch, "collect-all reports renderer unknown-type column mismatch index");
+
+  strictOptions.strictFailurePrecedence = SkipDiagnosticsStrictFailurePrecedence::MatrixMarginalsFirst;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue(combinedStrictMismatchPayload, profile, strictOptions, &parseError),
+                "collect-all still rejects under matrix-first precedence");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals,
+                "matrix-first collect-all records matrix violation as primary");
+  CHECK_MESSAGE(parseError.fieldIndex == 9, "matrix-first collect-all reports optimizer row index first");
+  CHECK_MESSAGE(parseError.strictViolations.size() == 9, "matrix-first collect-all keeps full violation list");
+
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue("skip_diagnostics=none", profile, strictOptions, &parseError),
+                "collect-all accepts valid payload");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "collect-all clears reason on success");
+  CHECK_MESSAGE(parseError.strictViolations.empty(),
+                "collect-all clears strict violation list on success");
+}
+
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::None) == std::string_view("None"),
                 "none parse error name");

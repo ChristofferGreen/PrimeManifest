@@ -382,6 +382,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
   SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
+  struct StrictViolation {
+    size_t fieldIndex = 0;
+    SkipDiagnosticsParseErrorReason reason = SkipDiagnosticsParseErrorReason::None;
+  };
+  std::vector<StrictViolation> strictViolations{};
 };
 
 enum class SkipDiagnosticsParseSectionTarget : uint8_t {
@@ -395,12 +400,18 @@ enum class SkipDiagnosticsStrictFailurePrecedence : uint8_t {
   MatrixMarginalsFirst = 1,
 };
 
+enum class SkipDiagnosticsStrictFailureMode : uint8_t {
+  FirstFailure = 0,
+  CollectAll = 1,
+};
+
 struct SkipDiagnosticsParseOptions {
   bool strictConsistency = false;
   bool strictMatrixMarginals = false;
   SkipDiagnosticsParseSectionTarget strictSectionTarget = SkipDiagnosticsParseSectionTarget::Both;
   SkipDiagnosticsStrictFailurePrecedence strictFailurePrecedence =
     SkipDiagnosticsStrictFailurePrecedence::ConsistencyFirst;
+  SkipDiagnosticsStrictFailureMode strictFailureMode = SkipDiagnosticsStrictFailureMode::FirstFailure;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -660,6 +671,7 @@ inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) 
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
   errorOut->reason = SkipDiagnosticsParseErrorReason::None;
+  errorOut->strictViolations.clear();
 }
 
 inline auto failSkipDiagnosticsParse(SkipDiagnosticsParseError* errorOut,
@@ -668,6 +680,25 @@ inline auto failSkipDiagnosticsParse(SkipDiagnosticsParseError* errorOut,
   if (errorOut) {
     errorOut->fieldIndex = fieldIndex;
     errorOut->reason = reason;
+  }
+  return false;
+}
+
+inline auto reportSkipDiagnosticsStrictFailure(SkipDiagnosticsParseError* errorOut,
+                                               size_t fieldIndex,
+                                               SkipDiagnosticsParseErrorReason reason,
+                                               bool collectAll,
+                                               bool& hasStrictFailure) -> bool {
+  hasStrictFailure = true;
+  if (errorOut && errorOut->reason == SkipDiagnosticsParseErrorReason::None) {
+    errorOut->fieldIndex = fieldIndex;
+    errorOut->reason = reason;
+  }
+  if (collectAll) {
+    if (errorOut) {
+      errorOut->strictViolations.push_back({fieldIndex, reason});
+    }
+    return true;
   }
   return false;
 }
@@ -700,24 +731,46 @@ inline auto sumSkipTypeReasonBuckets(SkippedCommandDiagnostics const& diagnostic
 
 inline auto validateSkipDiagnosticsConsistency(SkippedCommandDiagnostics const& diagnostics,
                                                size_t fieldIndex,
+                                               bool collectAll,
+                                               bool& hasStrictFailure,
                                                SkipDiagnosticsParseError* errorOut) -> bool {
   uint64_t reasonSum = sumSkipReasonBuckets(diagnostics);
   if (reasonSum != diagnostics.total) {
-    return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InconsistentReasonTotal);
+    if (!reportSkipDiagnosticsStrictFailure(errorOut,
+                                            fieldIndex,
+                                            SkipDiagnosticsParseErrorReason::InconsistentReasonTotal,
+                                            collectAll,
+                                            hasStrictFailure)) {
+      return false;
+    }
   }
   uint64_t typeSum = sumSkipTypeBuckets(diagnostics);
   if (typeSum + diagnostics.unknownType != diagnostics.total) {
-    return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InconsistentTypeTotal);
+    if (!reportSkipDiagnosticsStrictFailure(errorOut,
+                                            fieldIndex,
+                                            SkipDiagnosticsParseErrorReason::InconsistentTypeTotal,
+                                            collectAll,
+                                            hasStrictFailure)) {
+      return false;
+    }
   }
   uint64_t matrixSum = sumSkipTypeReasonBuckets(diagnostics);
   if (matrixSum != typeSum) {
-    return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal);
+    if (!reportSkipDiagnosticsStrictFailure(errorOut,
+                                            fieldIndex,
+                                            SkipDiagnosticsParseErrorReason::InconsistentMatrixTotal,
+                                            collectAll,
+                                            hasStrictFailure)) {
+      return false;
+    }
   }
   return true;
 }
 
 inline auto validateSkipDiagnosticsMatrixMarginals(SkippedCommandDiagnostics const& diagnostics,
                                                    size_t fieldIndexBase,
+                                                   bool collectAll,
+                                                   bool& hasStrictFailure,
                                                    SkipDiagnosticsParseError* errorOut) -> bool {
   for (size_t typeIndex = 0; typeIndex < diagnostics.byTypeAndReason.size(); ++typeIndex) {
     uint64_t rowSum = 0;
@@ -725,10 +778,13 @@ inline auto validateSkipDiagnosticsMatrixMarginals(SkippedCommandDiagnostics con
       rowSum += count;
     }
     if (rowSum != diagnostics.byType[typeIndex]) {
-      return failSkipDiagnosticsParse(
-        errorOut,
-        fieldIndexBase + typeIndex,
-        SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals);
+      if (!reportSkipDiagnosticsStrictFailure(errorOut,
+                                              fieldIndexBase + typeIndex,
+                                              SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals,
+                                              collectAll,
+                                              hasStrictFailure)) {
+        return false;
+      }
     }
   }
 
@@ -741,18 +797,24 @@ inline auto validateSkipDiagnosticsMatrixMarginals(SkippedCommandDiagnostics con
     }
     uint64_t reasonTotal = diagnostics.byReason[reasonIndex];
     if (columnSum > reasonTotal) {
-      return failSkipDiagnosticsParse(
-        errorOut,
-        columnFieldBase + reasonIndex,
-        SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals);
+      if (!reportSkipDiagnosticsStrictFailure(errorOut,
+                                              columnFieldBase + reasonIndex,
+                                              SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals,
+                                              collectAll,
+                                              hasStrictFailure)) {
+        return false;
+      }
     }
     unknownByReason += reasonTotal - columnSum;
   }
   if (unknownByReason != diagnostics.unknownType) {
-    return failSkipDiagnosticsParse(
-      errorOut,
-      columnFieldBase + SkippedCommandReasonCount,
-      SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals);
+    if (!reportSkipDiagnosticsStrictFailure(errorOut,
+                                            columnFieldBase + SkippedCommandReasonCount,
+                                            SkipDiagnosticsParseErrorReason::InconsistentMatrixColumnTotals,
+                                            collectAll,
+                                            hasStrictFailure)) {
+      return false;
+    }
   }
   return true;
 }
@@ -870,27 +932,44 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
     start = end + 1;
     fieldIndex += 1;
   }
+  bool hasStrictFailure = false;
+
   auto runStrictConsistencyChecks = [&]() -> bool {
     if (!options.strictConsistency) return true;
+    bool collectAll = options.strictFailureMode == SkipDiagnosticsStrictFailureMode::CollectAll;
     size_t consistencyFieldIndex = parsedFieldCount;
     if (shouldValidateOptimizerSection(options.strictSectionTarget)) {
-      if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, errorOut)) return false;
+      if (!validateSkipDiagnosticsConsistency(optimizerOut, consistencyFieldIndex, collectAll, hasStrictFailure, errorOut)) {
+        return false;
+      }
     }
     if (shouldValidateRendererSection(options.strictSectionTarget)) {
-      if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, errorOut)) return false;
+      if (!validateSkipDiagnosticsConsistency(skippedOut, consistencyFieldIndex, collectAll, hasStrictFailure, errorOut)) {
+        return false;
+      }
     }
     return true;
   };
 
   auto runStrictMatrixMarginalChecks = [&]() -> bool {
     if (!options.strictMatrixMarginals) return true;
+    bool collectAll = options.strictFailureMode == SkipDiagnosticsStrictFailureMode::CollectAll;
     size_t matrixFieldIndex = parsedFieldCount;
     constexpr size_t PerSectionFieldSpan = RendererProfileCommandTypeBuckets + SkippedCommandReasonCount + 1u;
     if (shouldValidateOptimizerSection(options.strictSectionTarget)) {
-      if (!validateSkipDiagnosticsMatrixMarginals(optimizerOut, matrixFieldIndex, errorOut)) return false;
+      if (!validateSkipDiagnosticsMatrixMarginals(optimizerOut, matrixFieldIndex, collectAll, hasStrictFailure, errorOut)) {
+        return false;
+      }
     }
     if (shouldValidateRendererSection(options.strictSectionTarget)) {
-      if (!validateSkipDiagnosticsMatrixMarginals(skippedOut, matrixFieldIndex + PerSectionFieldSpan, errorOut)) return false;
+      if (!validateSkipDiagnosticsMatrixMarginals(
+            skippedOut,
+            matrixFieldIndex + PerSectionFieldSpan,
+            collectAll,
+            hasStrictFailure,
+            errorOut)) {
+        return false;
+      }
     }
     return true;
   };
@@ -899,11 +978,12 @@ inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
       options.strictFailurePrecedence == SkipDiagnosticsStrictFailurePrecedence::MatrixMarginalsFirst) {
     if (!runStrictMatrixMarginalChecks()) return false;
     if (!runStrictConsistencyChecks()) return false;
-    return true;
+    return !hasStrictFailure;
   }
 
   if (!runStrictConsistencyChecks()) return false;
   if (!runStrictMatrixMarginalChecks()) return false;
+  if (hasStrictFailure) return false;
   return true;
 }
 
