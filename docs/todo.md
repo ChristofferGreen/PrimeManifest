@@ -38,4 +38,5 @@
 36. [x] Add strict-violation decode mode to cap total parsed key/value fields before rejecting oversized payloads.
 37. [x] Add strict-violation decode option to cap maximum decoded violation index before pending-vector resize to harden against sparse-index memory blowups.
 38. [x] Add strict-violation decode option to cap maximum decoded `fieldIndex` values for defensive parse bounds in untrusted payloads.
-39. Add strict-violation decode option to reject duplicate `strictViolations.count` fields in defensive mode to prevent ambiguous count overrides.
+39. [x] Add strict-violation decode option to reject duplicate `strictViolations.count` fields in defensive mode to prevent ambiguous count overrides.
+40. Add strict-violation decode option to require `strictViolations.count` appear before indexed entries in defensive mode for earlier bound validation.

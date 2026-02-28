@@ -686,6 +686,43 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
                 "duplicate-reject mode clears parse error on valid payload");
 
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.count=1",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser accepts duplicate count fields");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "default strict-violation parser keeps no-error state on duplicate count fields");
+
+  SkipDiagnosticsStrictViolationsParseOptions duplicateCountOptions;
+  duplicateCountOptions.rejectDuplicateCountField = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  duplicateCountOptions,
+                  &parseError),
+                "duplicate-count mode accepts payloads with a single count field");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "duplicate-count mode clears parse error on accepted payload");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.count=1",
+                  parsedViolations,
+                  duplicateCountOptions,
+                  &parseError),
+                "duplicate-count mode rejects duplicate strict-violation count fields");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::DuplicateViolationCountField,
+                "duplicate-count mode reports dedicated duplicate count reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 3, "duplicate-count mode reports duplicate count field index");
+
   SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
   countCapOptions.enforceMaxViolationCount = true;
   countCapOptions.maxViolationCount = 2;
@@ -898,6 +935,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ViolationFieldIndexLimitExceeded) ==
                   std::string_view("ViolationFieldIndexLimitExceeded"),
                 "field-index-limit strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::DuplicateViolationCountField) ==
+                  std::string_view("DuplicateViolationCountField"),
+                "duplicate-count strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
