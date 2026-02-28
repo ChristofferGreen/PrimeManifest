@@ -1210,6 +1210,18 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "all-CESU-8-surrogate reason-token modes keep malformed-UTF-8 diagnostics for truncated CESU-8 surrogate prefixes");
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "all-CESU-8-surrogate reason-token modes report reason field index for malformed UTF-8 tokens");
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xED\xB8\x80\xED\xA0\xBD\xED\xA0",
+                  parsedViolations,
+                  allCesu8SurrogateAndMalformedReasonOptions,
+                  &parseError),
+                "all-CESU-8-surrogate reason-token modes prioritize surrogate diagnostics over malformed-UTF-8 diagnostics when both conditions occur in one token");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMixedOrderCesu8SurrogateToken,
+                "all-CESU-8-surrogate reason-token modes report mixed-order-surrogate reason before malformed-UTF-8 reason when both conditions occur in one token");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "all-CESU-8-surrogate reason-token modes report reason field index for surrogate-over-malformed precedence");
 
   SkipDiagnosticsStrictViolationsParseOptions allCesu8SurrogateMalformedAndFallbackOptions = allCesu8SurrogateAndMalformedReasonOptions;
   allCesu8SurrogateMalformedAndFallbackOptions.rejectUnknownReasonFallbackToken = true;
