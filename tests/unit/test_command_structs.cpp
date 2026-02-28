@@ -752,6 +752,55 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\x01Total",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects ASCII-control reason tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for ASCII-control reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions asciiControlReasonOptions;
+  asciiControlReasonOptions.rejectReasonNameAsciiControlCharacterTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  asciiControlReasonOptions,
+                  &parseError),
+                "ASCII-control reason-token mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "ASCII-control reason-token mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\x01Total",
+                  parsedViolations,
+                  asciiControlReasonOptions,
+                  &parseError),
+                "ASCII-control reason-token mode rejects embedded control-byte reason tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken,
+                "ASCII-control reason-token mode reports dedicated ASCII-control reason-token error for embedded control bytes");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "ASCII-control reason-token mode reports reason field index for embedded control bytes");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal\x7F",
+                  parsedViolations,
+                  asciiControlReasonOptions,
+                  &parseError),
+                "ASCII-control reason-token mode rejects trailing DEL control-byte reason tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken,
+                "ASCII-control reason-token mode reports dedicated ASCII-control reason-token error for trailing DEL bytes");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "ASCII-control reason-token mode reports reason field index for trailing DEL bytes");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=Inconsist\xC3\xA9ntReasonTotal",
                   parsedViolations,
                   &parseError),
@@ -1608,6 +1657,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken) ==
                   std::string_view("ReasonNameNonWhitespaceNonAsciiToken"),
                 "reason-name-non-whitespace-non-ASCII strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken) ==
+                  std::string_view("ReasonNameAsciiControlCharacterToken"),
+                "reason-name-ASCII-control strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

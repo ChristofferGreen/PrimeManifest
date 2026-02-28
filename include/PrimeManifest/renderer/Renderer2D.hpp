@@ -398,10 +398,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   ReasonNameNonAsciiWhitespaceToken = 36,
   ReasonNameMalformedUtf8Token = 37,
   ReasonNameNonWhitespaceNonAsciiToken = 38,
+  ReasonNameAsciiControlCharacterToken = 39,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -459,6 +460,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectReasonNameNonAsciiWhitespaceTokens = false;
   bool rejectReasonNameMalformedUtf8Tokens = false;
   bool rejectReasonNameNonWhitespaceNonAsciiTokens = false;
+  bool rejectReasonNameAsciiControlCharacterTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -547,6 +549,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNameMalformedUtf8Token";
     case SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken:
       return "ReasonNameNonWhitespaceNonAsciiToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken:
+      return "ReasonNameAsciiControlCharacterToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -1062,6 +1066,14 @@ inline auto hasMalformedUtf8Bytes(std::string_view text) -> bool {
   return false;
 }
 
+inline auto hasAsciiControlCharacters(std::string_view text) -> bool {
+  for (char c : text) {
+    uint8_t byte = static_cast<uint8_t>(c);
+    if (byte <= 0x1Fu || byte == 0x7Fu) return true;
+  }
+  return false;
+}
+
 inline auto isNonWhitespaceNonAsciiReasonNameToken(std::string_view text) -> bool {
   if (text.empty()) return false;
 
@@ -1346,6 +1358,12 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectReasonNameMalformedUtf8Tokens &&
             hasMalformedUtf8Bytes(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token);
+        }
+        if (options.rejectReasonNameAsciiControlCharacterTokens &&
+            hasAsciiControlCharacters(valueText)) {
+          return failSkipDiagnosticsParse(errorOut,
+                                          fieldIndex,
+                                          SkipDiagnosticsParseErrorReason::ReasonNameAsciiControlCharacterToken);
         }
         if (options.rejectReasonNameNonAsciiWhitespaceTokens &&
             isNonAsciiWhitespaceReasonNameToken(valueText)) {
