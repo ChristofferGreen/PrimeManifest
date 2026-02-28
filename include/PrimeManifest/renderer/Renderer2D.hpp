@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <span>
@@ -79,6 +80,16 @@ constexpr auto commandTypeName(size_t typeIndex) -> std::string_view {
   return commandTypeName(static_cast<CommandType>(typeIndex));
 }
 
+constexpr auto commandTypeFromName(std::string_view name, CommandType& out) -> bool {
+  for (size_t typeIndex = 0; typeIndex < RendererProfileCommandTypeBuckets; ++typeIndex) {
+    if (commandTypeName(typeIndex) == name) {
+      out = static_cast<CommandType>(typeIndex);
+      return true;
+    }
+  }
+  return false;
+}
+
 enum class SkippedCommandReason : uint8_t {
   InvalidTileReference = 0,
   MissingAnalyzedCommand = 1,
@@ -128,6 +139,17 @@ constexpr auto skippedCommandReasonName(size_t reasonIndex) -> std::string_view 
     return "OutOfRangeSkippedCommandReason";
   }
   return skippedCommandReasonName(static_cast<SkippedCommandReason>(reasonIndex));
+}
+
+constexpr auto skippedCommandReasonFromName(std::string_view name,
+                                            SkippedCommandReason& out) -> bool {
+  for (size_t reasonIndex = 0; reasonIndex < SkippedCommandReasonCount; ++reasonIndex) {
+    if (skippedCommandReasonName(reasonIndex) == name) {
+      out = static_cast<SkippedCommandReason>(reasonIndex);
+      return true;
+    }
+  }
+  return false;
 }
 
 struct SkippedCommandDiagnostics {
@@ -532,6 +554,101 @@ inline auto rendererProfileSkipDiagnosticsDump(RendererProfile const& profile) -
 
 inline auto rendererProfileSkipDiagnosticsDumpVerbose(RendererProfile const& profile) -> std::string {
   return rendererProfileSkipDiagnosticsDumpVerbose(profile, SkipDiagnosticsDumpFormat::Readable);
+}
+
+inline auto parseUnsignedDecimal(std::string_view text, uint64_t& out) -> bool {
+  if (text.empty()) return false;
+  uint64_t value = 0;
+  for (char c : text) {
+    if (c < '0' || c > '9') return false;
+    uint64_t digit = static_cast<uint64_t>(c - '0');
+    if (value > (std::numeric_limits<uint64_t>::max() - digit) / 10u) return false;
+    value = value * 10u + digit;
+  }
+  out = value;
+  return true;
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        SkippedCommandDiagnostics& optimizerOut,
+                                                        SkippedCommandDiagnostics& skippedOut) -> bool {
+  optimizerOut.clear();
+  skippedOut.clear();
+  if (dump == "skip_diagnostics=none") return true;
+  if (dump.empty()) return false;
+
+  constexpr std::string_view OptimizerPrefix = "optimizerSkippedCommands.";
+  constexpr std::string_view RendererPrefix = "skippedCommands.";
+
+  size_t start = 0;
+  while (start <= dump.size()) {
+    size_t end = dump.find(';', start);
+    if (end == std::string_view::npos) end = dump.size();
+    if (end <= start) return false;
+    std::string_view field = dump.substr(start, end - start);
+
+    size_t equals = field.find('=');
+    if (equals == std::string_view::npos || equals == 0 || equals + 1 >= field.size()) return false;
+    std::string_view key = field.substr(0, equals);
+    std::string_view valueText = field.substr(equals + 1);
+    uint64_t value = 0;
+    if (!parseUnsignedDecimal(valueText, value)) return false;
+
+    SkippedCommandDiagnostics* diagnostics = nullptr;
+    std::string_view tail;
+    if (key.starts_with(OptimizerPrefix)) {
+      diagnostics = &optimizerOut;
+      tail = key.substr(OptimizerPrefix.size());
+    } else if (key.starts_with(RendererPrefix)) {
+      diagnostics = &skippedOut;
+      tail = key.substr(RendererPrefix.size());
+    } else {
+      return false;
+    }
+
+    if (tail == "total") {
+      diagnostics->total = value;
+    } else if (tail == "unknownType") {
+      diagnostics->unknownType = value;
+    } else if (tail.starts_with("reason.")) {
+      std::string_view reasonName = tail.substr(7);
+      if (reasonName == "none") {
+        // Marker from compact dump when totals exist but reason buckets are all zero.
+      } else {
+        SkippedCommandReason reason{};
+        if (!skippedCommandReasonFromName(reasonName, reason)) return false;
+        diagnostics->byReason[static_cast<size_t>(reason)] = value;
+      }
+    } else if (tail.starts_with("type.")) {
+      std::string_view typeName = tail.substr(5);
+      CommandType type{};
+      if (!commandTypeFromName(typeName, type)) return false;
+      diagnostics->byType[static_cast<size_t>(type)] = value;
+    } else if (tail.starts_with("typeReason.")) {
+      std::string_view pair = tail.substr(11);
+      size_t separator = pair.find('.');
+      if (separator == std::string_view::npos || separator == 0 || separator + 1 >= pair.size()) return false;
+      std::string_view typeName = pair.substr(0, separator);
+      std::string_view reasonName = pair.substr(separator + 1);
+      CommandType type{};
+      SkippedCommandReason reason{};
+      if (!commandTypeFromName(typeName, type) || !skippedCommandReasonFromName(reasonName, reason)) return false;
+      diagnostics->byTypeAndReason[static_cast<size_t>(type)][static_cast<size_t>(reason)] = value;
+    } else {
+      return false;
+    }
+
+    if (end == dump.size()) break;
+    start = end + 1;
+  }
+  return true;
+}
+
+inline auto parseRendererProfileSkipDiagnosticsKeyValue(std::string_view dump,
+                                                        RendererProfile& profileOut) -> bool {
+  return parseRendererProfileSkipDiagnosticsKeyValue(dump,
+                                                     profileOut.optimizerSkippedCommands,
+                                                     profileOut.skippedCommands);
 }
 
 struct ClearStore {

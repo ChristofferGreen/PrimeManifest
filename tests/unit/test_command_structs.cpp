@@ -34,6 +34,11 @@ TEST_CASE("command_type_name_formatter") {
                 "unknown command type fallback");
   CHECK_MESSAGE(commandTypeName(RendererProfileCommandTypeBuckets + 1) == std::string_view("OutOfRangeCommandType"),
                 "out-of-range command type fallback");
+
+  CommandType parsedType{};
+  CHECK_MESSAGE(commandTypeFromName("Image", parsedType), "command type parse success");
+  CHECK_MESSAGE(parsedType == CommandType::Image, "command type parse value");
+  CHECK_MESSAGE(!commandTypeFromName("NotAType", parsedType), "command type parse rejects unknown");
 }
 
 TEST_CASE("skipped_command_reason_name_formatter") {
@@ -69,6 +74,11 @@ TEST_CASE("skipped_command_reason_name_formatter") {
                 "unknown reason fallback");
   CHECK_MESSAGE(skippedCommandReasonName(SkippedCommandReasonCount + 1) == std::string_view("OutOfRangeSkippedCommandReason"),
                 "out-of-range index fallback");
+
+  SkippedCommandReason parsedReason{};
+  CHECK_MESSAGE(skippedCommandReasonFromName("OptimizerCulledByAlpha", parsedReason), "reason parse success");
+  CHECK_MESSAGE(parsedReason == SkippedCommandReason::OptimizerCulledByAlpha, "reason parse value");
+  CHECK_MESSAGE(!skippedCommandReasonFromName("NotAReason", parsedReason), "reason parse rejects unknown");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_dump_none") {
@@ -106,6 +116,18 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_nonzero_buckets") {
                     + "skippedCommands.reason.InvalidCommandData=1",
                 "compact key-value dump includes totals and non-zero reasons");
   CHECK_MESSAGE(keyValueDump.find('\n') == std::string::npos, "compact key-value dump is single-line");
+
+  SkippedCommandDiagnostics parsedOptimizer;
+  SkippedCommandDiagnostics parsedSkipped;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(keyValueDump, parsedOptimizer, parsedSkipped),
+                "compact key-value parse succeeds");
+  CHECK_MESSAGE(parsedOptimizer.total == 3, "parsed compact optimizer total");
+  CHECK_MESSAGE(parsedOptimizer.byReason[static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData)] == 2,
+                "parsed compact optimizer reason");
+  CHECK_MESSAGE(parsedSkipped.total == 3, "parsed compact renderer total");
+  CHECK_MESSAGE(parsedSkipped.unknownType == 2, "parsed compact renderer unknown type");
+  CHECK_MESSAGE(parsedSkipped.byReason[static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 1,
+                "parsed compact renderer reason");
 }
 
 TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_none") {
@@ -165,6 +187,29 @@ TEST_CASE("renderer_profile_skip_diagnostics_dump_verbose_nonzero_buckets") {
                     + "skippedCommands.typeReason.Image.InvalidCommandData=1",
                 "verbose key-value dump includes non-zero by-type and matrix buckets");
   CHECK_MESSAGE(keyValueDump.find('\n') == std::string::npos, "verbose key-value dump is single-line");
+
+  RendererProfile parsedProfile;
+  CHECK_MESSAGE(parseRendererProfileSkipDiagnosticsKeyValue(keyValueDump, parsedProfile),
+                "verbose key-value parse succeeds");
+  CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.total == 3, "parsed verbose optimizer total");
+  CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.byType[static_cast<size_t>(CommandType::Rect)] == 2,
+                "parsed verbose optimizer by-type");
+  CHECK_MESSAGE(parsedProfile.optimizerSkippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Text)]
+                                                     [static_cast<size_t>(SkippedCommandReason::OptimizerTileStreamInvalidCommandData)] == 2,
+                "parsed verbose optimizer matrix");
+  CHECK_MESSAGE(parsedProfile.skippedCommands.byType[static_cast<size_t>(CommandType::Image)] == 1,
+                "parsed verbose renderer by-type");
+  CHECK_MESSAGE(parsedProfile.skippedCommands.byTypeAndReason[static_cast<size_t>(CommandType::Image)]
+                                                    [static_cast<size_t>(SkippedCommandReason::InvalidCommandData)] == 1,
+                "parsed verbose renderer matrix");
+}
+
+TEST_CASE("renderer_profile_skip_diagnostics_key_value_parse_invalid") {
+  RendererProfile profile;
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("optimizerSkippedCommands.reason.NotAReason=1", profile),
+                "parse rejects unknown reason name");
+  CHECK_MESSAGE(!parseRendererProfileSkipDiagnosticsKeyValue("skip_diagnostics=none;extra=1", profile),
+                "parse rejects malformed none payload");
 }
 
 TEST_SUITE_END();
