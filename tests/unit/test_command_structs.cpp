@@ -792,6 +792,36 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "non-ASCII-reason-whitespace mode reports reason field index for first-emoji then post-first-multi-malformed with surrounding non-ASCII whitespace segments");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xC2\xA0\xE3\x80\x80\xC3\xA9RowTotals\xC2"
+                  "Break\x80"
+                  "Tail\xC2",
+                  parsedViolations,
+                  nonAsciiReasonWhitespaceOptions,
+                  &parseError),
+                "non-ASCII-reason-whitespace mode still classifies tokens as unknown names when multiple non-ASCII whitespace segments appear before the first accented code point and multiple malformed segments appear only after that first code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "non-ASCII-reason-whitespace mode reports unknown reason when multiple non-ASCII whitespace segments precede the first accented code point and multiple malformed segments occur only after that first code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-ASCII-reason-whitespace mode reports reason field index for multiple-whitespace-before-first-accented then post-first-multi-malformed tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix\xE3\x80\x80\xC2\xA0\xF0\x9F\x98\x80RowTotals\xC2"
+                  "Break\x80"
+                  "Tail\xC2",
+                  parsedViolations,
+                  nonAsciiReasonWhitespaceOptions,
+                  &parseError),
+                "non-ASCII-reason-whitespace mode still classifies tokens as unknown names when multiple non-ASCII whitespace segments appear before the first emoji code point and multiple malformed segments appear only after that first code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "non-ASCII-reason-whitespace mode reports unknown reason when multiple non-ASCII whitespace segments precede the first emoji code point and multiple malformed segments occur only after that first code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-ASCII-reason-whitespace mode reports reason field index for multiple-whitespace-before-first-emoji then post-first-multi-malformed tokens");
+
   SkipDiagnosticsStrictViolationsParseOptions nonAsciiControlWhitespacePrecedenceOptions;
   nonAsciiControlWhitespacePrecedenceOptions.rejectReasonNameNonAsciiUnicodeControlCharacterTokens = true;
   nonAsciiControlWhitespacePrecedenceOptions.rejectReasonNameNonAsciiWhitespaceTokens = true;
