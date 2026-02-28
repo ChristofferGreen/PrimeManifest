@@ -27,6 +27,7 @@ Defines naming and coding rules plus build/test entrypoints for contributors wor
 - Use `std::chrono` types for durations/timeouts.
 - Keep renderer hot paths allocation-free; reuse buffers and caches where possible.
 - Avoid raw `new`; use `std::unique_ptr` or `std::shared_ptr` with clear ownership intent.
+- Keep source and test files around 700 lines or less when practical; split large files into focused units.
 
 ## Examples/benchmarks
 - `renderer_bench` is the performance harness; `text_render_demo` is the rendering showcase.

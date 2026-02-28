@@ -59,6 +59,7 @@ if(PRIMEMANIFEST_BUILD_TESTS)
     tests/unit/test_circle.cpp
     tests/unit/test_color_helpers.cpp
     tests/unit/test_command_structs.cpp
+    tests/unit/test_command_structs_strict_violations.cpp
     tests/unit/test_debug_tiles.cpp
     tests/unit/test_font_registry.cpp
     tests/unit/test_font_bitmap.cpp
