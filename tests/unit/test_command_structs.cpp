@@ -1816,6 +1816,36 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xC2\xA0\xE3\x80\x80\xC2"
+                  "Break\xC3\xA9Total\x80"
+                  "Tail",
+                  parsedViolations,
+                  nonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "non-whitespace non-ASCII reason-token mode keeps malformed-before-first tokens classified as unknown names when malformed UTF-8 also appears after the first accented code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "non-whitespace non-ASCII reason-token mode reports unknown reason when malformed bytes appear both before and after the first accented code point and malformed rejection is disabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-whitespace non-ASCII reason-token mode reports reason field index for malformed-before-and-after-first-accented tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xE3\x80\x80\xC2\xA0\xC2"
+                  "Break\xF0\x9F\x98\x80Total\xC2"
+                  "Trail",
+                  parsedViolations,
+                  nonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "non-whitespace non-ASCII reason-token mode keeps malformed-before-first tokens classified as unknown names when malformed UTF-8 also appears after the first emoji code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "non-whitespace non-ASCII reason-token mode reports unknown reason when malformed bytes appear both before and after the first emoji code point and malformed rejection is disabled");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-whitespace non-ASCII reason-token mode reports reason field index for malformed-before-and-after-first-emoji tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=InconsistentReason\xC2\xA0\xC3\xA9Total\xC2",
                   parsedViolations,
                   nonWhitespaceNonAsciiReasonOptions,
