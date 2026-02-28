@@ -379,10 +379,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   InconsistentMatrixColumnTotals = 17,
   NonContiguousViolationIndex = 18,
   DuplicateViolationConflict = 19,
+  DuplicateViolationEntry = 20,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::DuplicateViolationConflict) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::DuplicateViolationEntry) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -423,6 +424,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool enforceContiguousIndices = false;
   bool normalizeOutOfOrderContiguousIndices = false;
   bool rejectConflictingDuplicateIndices = false;
+  bool rejectDuplicateIndices = false;
 };
 
 constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason reason) -> std::string_view {
@@ -467,6 +469,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "NonContiguousViolationIndex";
     case SkipDiagnosticsParseErrorReason::DuplicateViolationConflict:
       return "DuplicateViolationConflict";
+    case SkipDiagnosticsParseErrorReason::DuplicateViolationEntry:
+      return "DuplicateViolationEntry";
   }
   return "UnknownParseErrorReason";
 }
@@ -877,6 +881,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::InvalidValue);
         }
         size_t parsedFieldValue = static_cast<size_t>(parsedFieldIndex);
+        if (options.rejectDuplicateIndices &&
+            pendingViolations[violationIndex].hasFieldIndex) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::DuplicateViolationEntry);
+        }
         if (options.rejectConflictingDuplicateIndices &&
             pendingViolations[violationIndex].hasFieldIndex &&
             pendingViolations[violationIndex].fieldIndex != parsedFieldValue) {
@@ -890,6 +898,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
           parsedReason = static_cast<SkipDiagnosticsParseErrorReason>(255);
         } else if (!skipDiagnosticsParseErrorReasonFromName(valueText, parsedReason)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::UnknownReasonName);
+        }
+        if (options.rejectDuplicateIndices &&
+            pendingViolations[violationIndex].hasReason) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::DuplicateViolationEntry);
         }
         if (options.rejectConflictingDuplicateIndices &&
             pendingViolations[violationIndex].hasReason &&

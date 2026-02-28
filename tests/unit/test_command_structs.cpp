@@ -631,6 +631,43 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::DuplicateViolationConflict,
                 "duplicate-conflict mode reports reason conflict");
 
+  SkipDiagnosticsStrictViolationsParseOptions duplicateRejectOptions;
+  duplicateRejectOptions.rejectDuplicateIndices = true;
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  duplicateRejectOptions,
+                  &parseError),
+                "duplicate-reject mode rejects duplicate fields even when values match");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::DuplicateViolationEntry,
+                "duplicate-reject mode reports duplicate-entry reason for field");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  duplicateRejectOptions,
+                  &parseError),
+                "duplicate-reject mode rejects duplicate reasons even when values match");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::DuplicateViolationEntry,
+                "duplicate-reject mode reports duplicate-entry reason for reason");
+
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  duplicateRejectOptions,
+                  &parseError),
+                "duplicate-reject mode accepts non-duplicate entries");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "duplicate-reject mode clears parse error on valid payload");
+
   CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue("strict_violations=none", parsedViolations, &parseError),
                 "strict-violation parser accepts none sentinel");
   CHECK_MESSAGE(parsedViolations.empty(), "none sentinel clears parsed strict-violation list");
@@ -699,6 +736,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::DuplicateViolationConflict) ==
                   std::string_view("DuplicateViolationConflict"),
                 "duplicate strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::DuplicateViolationEntry) ==
+                  std::string_view("DuplicateViolationEntry"),
+                "duplicate-entry strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
