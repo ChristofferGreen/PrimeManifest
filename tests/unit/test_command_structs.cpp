@@ -602,6 +602,42 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "reason-whitespace mode reports reason field index for trailing-whitespace tokens");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix RowTotals",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects embedded-whitespace reason tokens as unknown names");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::UnknownReasonName,
+                "default strict-violation parser reports unknown reason for embedded-whitespace reason tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions embeddedReasonWhitespaceOptions;
+  embeddedReasonWhitespaceOptions.rejectReasonNameEmbeddedAsciiWhitespaceTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrixRowTotals",
+                  parsedViolations,
+                  embeddedReasonWhitespaceOptions,
+                  &parseError),
+                "embedded-reason-whitespace mode accepts canonical reason-name tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "embedded-reason-whitespace mode clears parse error on canonical reason-name tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentMatrix \t RowTotals",
+                  parsedViolations,
+                  embeddedReasonWhitespaceOptions,
+                  &parseError),
+                "embedded-reason-whitespace mode rejects embedded-whitespace reason tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken,
+                "embedded-reason-whitespace mode reports dedicated embedded-whitespace reason-token error");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "embedded-reason-whitespace mode reports reason field index for embedded-whitespace tokens");
+
   std::string nonContiguousButCompletePayload =
     "strictViolations.count=3;"
     "strictViolations.0.fieldIndex=3;"
@@ -1400,6 +1436,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken) ==
                   std::string_view("ReasonNameAsciiWhitespaceToken"),
                 "reason-name-whitespace strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken) ==
+                  std::string_view("ReasonNameEmbeddedAsciiWhitespaceToken"),
+                "reason-name-embedded-whitespace strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");

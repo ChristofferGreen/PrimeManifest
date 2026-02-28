@@ -394,10 +394,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   LeadingAsciiWhitespaceNumericToken = 32,
   TrailingAsciiWhitespaceNumericToken = 33,
   ReasonNameAsciiWhitespaceToken = 34,
+  ReasonNameEmbeddedAsciiWhitespaceToken = 35,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -451,6 +452,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectLeadingAsciiWhitespaceNumericTokens = false;
   bool rejectTrailingAsciiWhitespaceNumericTokens = false;
   bool rejectReasonNameAsciiWhitespaceTokens = false;
+  bool rejectReasonNameEmbeddedAsciiWhitespaceTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -531,6 +533,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "TrailingAsciiWhitespaceNumericToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken:
       return "ReasonNameAsciiWhitespaceToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken:
+      return "ReasonNameEmbeddedAsciiWhitespaceToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -894,6 +898,36 @@ inline auto isLeadingOrTrailingAsciiWhitespaceReasonNameToken(std::string_view t
   return skipDiagnosticsParseErrorReasonFromName(trimmed, parsedReason);
 }
 
+inline auto isEmbeddedAsciiWhitespaceReasonNameToken(std::string_view text) -> bool {
+  if (text.empty() ||
+      isAsciiWhitespace(text[0]) ||
+      isAsciiWhitespace(text[text.size() - 1u])) {
+    return false;
+  }
+
+  std::string compact;
+  compact.reserve(text.size());
+  bool hasEmbeddedWhitespace = false;
+  bool inWhitespaceRun = false;
+  for (char c : text) {
+    if (isAsciiWhitespace(c)) {
+      inWhitespaceRun = true;
+      continue;
+    }
+    if (inWhitespaceRun && !compact.empty()) {
+      hasEmbeddedWhitespace = true;
+    }
+    inWhitespaceRun = false;
+    compact.push_back(c);
+  }
+  if (!hasEmbeddedWhitespace) return false;
+
+  if (compact == "UnknownParseErrorReason") return true;
+
+  SkipDiagnosticsParseErrorReason parsedReason{};
+  return skipDiagnosticsParseErrorReasonFromName(compact, parsedReason);
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -1149,6 +1183,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectReasonNameAsciiWhitespaceTokens &&
             isLeadingOrTrailingAsciiWhitespaceReasonNameToken(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameAsciiWhitespaceToken);
+        }
+        if (options.rejectReasonNameEmbeddedAsciiWhitespaceTokens &&
+            isEmbeddedAsciiWhitespaceReasonNameToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken);
         }
         SkipDiagnosticsParseErrorReason parsedReason{};
         if (valueText == "UnknownParseErrorReason") {
