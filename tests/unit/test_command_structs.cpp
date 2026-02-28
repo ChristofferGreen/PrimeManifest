@@ -935,6 +935,65 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
                 "minus-prefixed-token mode reports minus-prefixed fieldIndex reason");
   CHECK_MESSAGE(parseError.fieldIndex == 1, "minus-prefixed-token mode reports minus-prefixed fieldIndex field index");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=-0;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  &parseError),
+                "default strict-violation parser rejects negative-zero count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::InvalidValue,
+                "default strict-violation parser reports invalid value for negative-zero count tokens");
+
+  SkipDiagnosticsStrictViolationsParseOptions negativeZeroOptions;
+  negativeZeroOptions.rejectNegativeZeroTokens = true;
+  CHECK_MESSAGE(parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  negativeZeroOptions,
+                  &parseError),
+                "negative-zero mode accepts canonical numeric tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::None,
+                "negative-zero mode clears parse error on canonical numeric tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=-0;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  negativeZeroOptions,
+                  &parseError),
+                "negative-zero mode rejects negative-zero count tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::NegativeZeroNumericToken,
+                "negative-zero mode reports negative-zero count reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 0, "negative-zero mode reports negative-zero count field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.-0.fieldIndex=3;"
+                  "strictViolations.-0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  negativeZeroOptions,
+                  &parseError),
+                "negative-zero mode rejects negative-zero index tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::NegativeZeroNumericToken,
+                "negative-zero mode reports negative-zero index reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "negative-zero mode reports negative-zero index field index");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=-0;"
+                  "strictViolations.0.reason=InconsistentReasonTotal",
+                  parsedViolations,
+                  negativeZeroOptions,
+                  &parseError),
+                "negative-zero mode rejects negative-zero fieldIndex tokens");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::NegativeZeroNumericToken,
+                "negative-zero mode reports negative-zero fieldIndex reason");
+  CHECK_MESSAGE(parseError.fieldIndex == 1, "negative-zero mode reports negative-zero fieldIndex field index");
+
   SkipDiagnosticsStrictViolationsParseOptions countCapOptions;
   countCapOptions.enforceMaxViolationCount = true;
   countCapOptions.maxViolationCount = 2;
@@ -1162,6 +1221,9 @@ TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::MinusPrefixedNumericToken) ==
                   std::string_view("MinusPrefixedNumericToken"),
                 "minus-prefixed numeric strict-violation parse error name");
+  CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::NegativeZeroNumericToken) ==
+                  std::string_view("NegativeZeroNumericToken"),
+                "negative-zero numeric strict-violation parse error name");
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(static_cast<size_t>(SkipDiagnosticsParseErrorReason::InconsistentTypeTotal)) ==
                   std::string_view("InconsistentTypeTotal"),
                 "parse error name by index resolves known reason");
