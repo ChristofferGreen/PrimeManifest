@@ -395,10 +395,11 @@ enum class SkipDiagnosticsParseErrorReason : uint8_t {
   TrailingAsciiWhitespaceNumericToken = 33,
   ReasonNameAsciiWhitespaceToken = 34,
   ReasonNameEmbeddedAsciiWhitespaceToken = 35,
+  ReasonNameNonAsciiWhitespaceToken = 36,
 };
 
 constexpr size_t SkipDiagnosticsParseErrorReasonCount =
-  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken) + 1u;
+  static_cast<size_t>(SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiWhitespaceToken) + 1u;
 
 struct SkipDiagnosticsParseError {
   size_t fieldIndex = 0;
@@ -453,6 +454,7 @@ struct SkipDiagnosticsStrictViolationsParseOptions {
   bool rejectTrailingAsciiWhitespaceNumericTokens = false;
   bool rejectReasonNameAsciiWhitespaceTokens = false;
   bool rejectReasonNameEmbeddedAsciiWhitespaceTokens = false;
+  bool rejectReasonNameNonAsciiWhitespaceTokens = false;
   bool enforceMaxFieldCount = false;
   size_t maxFieldCount = 0;
   bool enforceMaxViolationIndex = false;
@@ -535,6 +537,8 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
       return "ReasonNameAsciiWhitespaceToken";
     case SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken:
       return "ReasonNameEmbeddedAsciiWhitespaceToken";
+    case SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiWhitespaceToken:
+      return "ReasonNameNonAsciiWhitespaceToken";
   }
   return "UnknownParseErrorReason";
 }
@@ -928,6 +932,111 @@ inline auto isEmbeddedAsciiWhitespaceReasonNameToken(std::string_view text) -> b
   return skipDiagnosticsParseErrorReasonFromName(compact, parsedReason);
 }
 
+inline auto decodeUtf8CodePoint(std::string_view text,
+                                size_t offset,
+                                char32_t& codePointOut,
+                                size_t& widthOut) -> bool {
+  if (offset >= text.size()) return false;
+
+  auto continuationByte = [&](size_t index, uint8_t& out) -> bool {
+    if (index >= text.size()) return false;
+    uint8_t b = static_cast<uint8_t>(text[index]);
+    if ((b & 0xC0u) != 0x80u) return false;
+    out = b;
+    return true;
+  };
+
+  uint8_t lead = static_cast<uint8_t>(text[offset]);
+  if ((lead & 0x80u) == 0u) {
+    codePointOut = static_cast<char32_t>(lead);
+    widthOut = 1u;
+    return true;
+  }
+  if ((lead & 0xE0u) == 0xC0u) {
+    uint8_t b1 = 0;
+    if (!continuationByte(offset + 1u, b1)) return false;
+    char32_t cp = static_cast<char32_t>(lead & 0x1Fu) << 6u;
+    cp |= static_cast<char32_t>(b1 & 0x3Fu);
+    if (cp < 0x80u) return false;
+    codePointOut = cp;
+    widthOut = 2u;
+    return true;
+  }
+  if ((lead & 0xF0u) == 0xE0u) {
+    uint8_t b1 = 0;
+    uint8_t b2 = 0;
+    if (!continuationByte(offset + 1u, b1) ||
+        !continuationByte(offset + 2u, b2)) return false;
+    char32_t cp = static_cast<char32_t>(lead & 0x0Fu) << 12u;
+    cp |= static_cast<char32_t>(b1 & 0x3Fu) << 6u;
+    cp |= static_cast<char32_t>(b2 & 0x3Fu);
+    if (cp < 0x800u) return false;
+    if (cp >= 0xD800u && cp <= 0xDFFFu) return false;
+    codePointOut = cp;
+    widthOut = 3u;
+    return true;
+  }
+  if ((lead & 0xF8u) == 0xF0u) {
+    uint8_t b1 = 0;
+    uint8_t b2 = 0;
+    uint8_t b3 = 0;
+    if (!continuationByte(offset + 1u, b1) ||
+        !continuationByte(offset + 2u, b2) ||
+        !continuationByte(offset + 3u, b3)) return false;
+    char32_t cp = static_cast<char32_t>(lead & 0x07u) << 18u;
+    cp |= static_cast<char32_t>(b1 & 0x3Fu) << 12u;
+    cp |= static_cast<char32_t>(b2 & 0x3Fu) << 6u;
+    cp |= static_cast<char32_t>(b3 & 0x3Fu);
+    if (cp < 0x10000u || cp > 0x10FFFFu) return false;
+    codePointOut = cp;
+    widthOut = 4u;
+    return true;
+  }
+  return false;
+}
+
+inline auto isNonAsciiUnicodeWhitespace(char32_t codePoint) -> bool {
+  return codePoint == 0x0085u ||
+         codePoint == 0x00A0u ||
+         codePoint == 0x1680u ||
+         (codePoint >= 0x2000u && codePoint <= 0x200Au) ||
+         codePoint == 0x2028u ||
+         codePoint == 0x2029u ||
+         codePoint == 0x202Fu ||
+         codePoint == 0x205Fu ||
+         codePoint == 0x3000u;
+}
+
+inline auto isNonAsciiWhitespaceReasonNameToken(std::string_view text) -> bool {
+  if (text.empty()) return false;
+
+  std::string compact;
+  compact.reserve(text.size());
+  bool foundNonAsciiWhitespace = false;
+  size_t index = 0;
+  while (index < text.size()) {
+    uint8_t byte = static_cast<uint8_t>(text[index]);
+    if (byte < 0x80u) {
+      compact.push_back(static_cast<char>(byte));
+      index += 1u;
+      continue;
+    }
+
+    char32_t codePoint = 0;
+    size_t width = 0;
+    if (!decodeUtf8CodePoint(text, index, codePoint, width)) return false;
+    if (!isNonAsciiUnicodeWhitespace(codePoint)) return false;
+    foundNonAsciiWhitespace = true;
+    index += width;
+  }
+
+  if (!foundNonAsciiWhitespace || compact.empty()) return false;
+  if (compact == "UnknownParseErrorReason") return true;
+
+  SkipDiagnosticsParseErrorReason parsedReason{};
+  return skipDiagnosticsParseErrorReasonFromName(compact, parsedReason);
+}
+
 inline void clearSkipDiagnosticsParseError(SkipDiagnosticsParseError* errorOut) {
   if (!errorOut) return;
   errorOut->fieldIndex = 0;
@@ -1187,6 +1296,10 @@ inline auto parseSkipDiagnosticsStrictViolationsKeyValue(
         if (options.rejectReasonNameEmbeddedAsciiWhitespaceTokens &&
             isEmbeddedAsciiWhitespaceReasonNameToken(valueText)) {
           return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameEmbeddedAsciiWhitespaceToken);
+        }
+        if (options.rejectReasonNameNonAsciiWhitespaceTokens &&
+            isNonAsciiWhitespaceReasonNameToken(valueText)) {
+          return failSkipDiagnosticsParse(errorOut, fieldIndex, SkipDiagnosticsParseErrorReason::ReasonNameNonAsciiWhitespaceToken);
         }
         SkipDiagnosticsParseErrorReason parsedReason{};
         if (valueText == "UnknownParseErrorReason") {
