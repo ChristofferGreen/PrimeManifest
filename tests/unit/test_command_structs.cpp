@@ -2029,6 +2029,36 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(parseError.fieldIndex == 2,
                 "non-whitespace non-ASCII reason-token mode reports reason field index for mixed emoji-plus-trailing-malformed tokens");
 
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xC3\xA9Total\xC2"
+                  "Break\x80"
+                  "Gap\xC2\xA0\xE3\x80\x80",
+                  parsedViolations,
+                  nonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "non-whitespace non-ASCII reason-token mode keeps classifying tokens when an accented first non-whitespace code point is followed by multiple malformed segments and later additional non-ASCII whitespace segments");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken,
+                "non-whitespace non-ASCII reason-token mode reports dedicated reason when malformed bytes follow the first accented code point before later non-ASCII whitespace segments");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-whitespace non-ASCII reason-token mode reports reason field index for first-accented then multiple-malformed then later-non-ASCII-whitespace tokens");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xF0\x9F\x98\x80Total\xC2"
+                  "Break\x80"
+                  "Gap\xE3\x80\x80\xC2\xA0",
+                  parsedViolations,
+                  nonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "non-whitespace non-ASCII reason-token mode keeps classifying tokens when an emoji first non-whitespace code point is followed by multiple malformed segments and later additional non-ASCII whitespace segments");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameNonWhitespaceNonAsciiToken,
+                "non-whitespace non-ASCII reason-token mode reports dedicated reason when malformed bytes follow the first emoji code point before later non-ASCII whitespace segments");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "non-whitespace non-ASCII reason-token mode reports reason field index for first-emoji then multiple-malformed then later-non-ASCII-whitespace tokens");
+
   SkipDiagnosticsStrictViolationsParseOptions malformedAndNonWhitespaceNonAsciiReasonOptions;
   malformedAndNonWhitespaceNonAsciiReasonOptions.rejectReasonNameMalformedUtf8Tokens = true;
   malformedAndNonWhitespaceNonAsciiReasonOptions.rejectReasonNameNonWhitespaceNonAsciiTokens = true;
