@@ -456,6 +456,46 @@ constexpr auto skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReas
   return "UnknownParseErrorReason";
 }
 
+inline auto skipDiagnosticsParseStrictViolationsDump(SkipDiagnosticsParseError const& error,
+                                                     SkipDiagnosticsDumpFormat format) -> std::string {
+  if (error.strictViolations.empty()) {
+    return format == SkipDiagnosticsDumpFormat::KeyValue
+             ? std::string("strict_violations=none")
+             : std::string("strict violations: none");
+  }
+
+  if (format == SkipDiagnosticsDumpFormat::KeyValue) {
+    std::string out = "strictViolations.count=" + std::to_string(error.strictViolations.size());
+    for (size_t violationIndex = 0; violationIndex < error.strictViolations.size(); ++violationIndex) {
+      auto const& violation = error.strictViolations[violationIndex];
+      out += ";strictViolations.";
+      out += std::to_string(violationIndex);
+      out += ".fieldIndex=";
+      out += std::to_string(violation.fieldIndex);
+      out += ";strictViolations.";
+      out += std::to_string(violationIndex);
+      out += ".reason=";
+      out += std::string(skipDiagnosticsParseErrorReasonName(violation.reason));
+    }
+    return out;
+  }
+
+  std::string out = "strict violations(count=" + std::to_string(error.strictViolations.size()) + "): ";
+  for (size_t violationIndex = 0; violationIndex < error.strictViolations.size(); ++violationIndex) {
+    if (violationIndex != 0) out += ", ";
+    auto const& violation = error.strictViolations[violationIndex];
+    out += "field[";
+    out += std::to_string(violation.fieldIndex);
+    out += "]=";
+    out += std::string(skipDiagnosticsParseErrorReasonName(violation.reason));
+  }
+  return out;
+}
+
+inline auto skipDiagnosticsParseStrictViolationsDump(SkipDiagnosticsParseError const& error) -> std::string {
+  return skipDiagnosticsParseStrictViolationsDump(error, SkipDiagnosticsDumpFormat::Readable);
+}
+
 inline void appendKeyValueField(std::string& out,
                                 bool& first,
                                 std::string_view key,

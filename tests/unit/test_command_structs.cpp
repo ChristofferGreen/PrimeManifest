@@ -486,6 +486,35 @@ TEST_CASE("renderer_profile_skip_diagnostics_collect_all_strict_violations") {
                 "collect-all clears strict violation list on success");
 }
 
+TEST_CASE("skip_diagnostics_strict_violations_dump_formatter") {
+  SkipDiagnosticsParseError parseError;
+  CHECK_MESSAGE(skipDiagnosticsParseStrictViolationsDump(parseError) == std::string("strict violations: none"),
+                "readable strict-violations dump emits none summary");
+  CHECK_MESSAGE(skipDiagnosticsParseStrictViolationsDump(parseError, SkipDiagnosticsDumpFormat::KeyValue) ==
+                  std::string("strict_violations=none"),
+                "key-value strict-violations dump emits none summary");
+
+  parseError.strictViolations.push_back({3, SkipDiagnosticsParseErrorReason::InconsistentReasonTotal});
+  parseError.strictViolations.push_back({11, SkipDiagnosticsParseErrorReason::InconsistentMatrixRowTotals});
+  parseError.strictViolations.push_back({13, static_cast<SkipDiagnosticsParseErrorReason>(255)});
+
+  CHECK_MESSAGE(skipDiagnosticsParseStrictViolationsDump(parseError) ==
+                  std::string("strict violations(count=3): "
+                              "field[3]=InconsistentReasonTotal, "
+                              "field[11]=InconsistentMatrixRowTotals, "
+                              "field[13]=UnknownParseErrorReason"),
+                "readable strict-violations dump lists field/reason entries in order");
+  CHECK_MESSAGE(skipDiagnosticsParseStrictViolationsDump(parseError, SkipDiagnosticsDumpFormat::KeyValue) ==
+                  std::string("strictViolations.count=3;")
+                    + "strictViolations.0.fieldIndex=3;"
+                    + "strictViolations.0.reason=InconsistentReasonTotal;"
+                    + "strictViolations.1.fieldIndex=11;"
+                    + "strictViolations.1.reason=InconsistentMatrixRowTotals;"
+                    + "strictViolations.2.fieldIndex=13;"
+                    + "strictViolations.2.reason=UnknownParseErrorReason",
+                "key-value strict-violations dump lists indexed field/reason pairs");
+}
+
 TEST_CASE("skip_diagnostics_parse_error_reason_name_formatter") {
   CHECK_MESSAGE(skipDiagnosticsParseErrorReasonName(SkipDiagnosticsParseErrorReason::None) == std::string_view("None"),
                 "none parse error name");
