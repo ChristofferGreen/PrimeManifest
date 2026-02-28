@@ -44,4 +44,5 @@
 42. [x] Add strict-violation decode option to reject explicit plus-prefixed numeric tokens (`+1`) in defensive mode for canonical token enforcement.
 43. [x] Add strict-violation decode option to emit dedicated diagnostics for minus-prefixed numeric tokens in defensive canonical-token mode.
 44. [x] Add strict-violation decode option to reject non-canonical positive zero (`-0`) tokens in defensive canonical-token mode with dedicated diagnostics.
-45. Add strict-violation decode option to reject numeric tokens with leading ASCII whitespace in defensive canonical-token mode.
+45. [x] Add strict-violation decode option to reject numeric tokens with leading ASCII whitespace in defensive canonical-token mode.
+46. Add strict-violation decode option to reject numeric tokens with trailing ASCII whitespace in defensive canonical-token mode.
