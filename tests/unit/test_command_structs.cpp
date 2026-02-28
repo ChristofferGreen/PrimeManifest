@@ -3416,6 +3416,40 @@ TEST_CASE("skip_diagnostics_strict_violations_key_value_parse") {
   CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
                   "strictViolations.count=1;"
                   "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xC2\xA0\xE3\x80\x80\xC2\xA0\xC2"
+                  "Break\x80"
+                  "Gap\xC3\xA9Total\xC2"
+                  "Tail\x80"
+                  "End",
+                  parsedViolations,
+                  malformedAndNonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports malformed-UTF-8 diagnostics when multiple malformed segments bracket the first accented code point and multiple non-ASCII whitespace segments appear only before that first code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode keeps malformed-UTF-8 diagnostics when multiple malformed segments bracket the first accented code point while multiple non-ASCII whitespace segments remain only before that first code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports reason field index for multiple-malformed-bracketing-first-accented with pre-first-only non-ASCII whitespace segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
+                  "strictViolations.0.reason=InconsistentReason\xE3\x80\x80\xC2\xA0\xE3\x80\x80\xC2"
+                  "Break\x80"
+                  "Gap\xF0\x9F\x98\x80Total\xC2"
+                  "Tail\x80"
+                  "End",
+                  parsedViolations,
+                  malformedAndNonWhitespaceNonAsciiReasonOptions,
+                  &parseError),
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports malformed-UTF-8 diagnostics when multiple malformed segments bracket the first emoji code point and multiple non-ASCII whitespace segments appear only before that first code point");
+  CHECK_MESSAGE(parseError.reason == SkipDiagnosticsParseErrorReason::ReasonNameMalformedUtf8Token,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode keeps malformed-UTF-8 diagnostics when multiple malformed segments bracket the first emoji code point while multiple non-ASCII whitespace segments remain only before that first code point");
+  CHECK_MESSAGE(parseError.fieldIndex == 2,
+                "combined malformed-UTF-8 and non-whitespace non-ASCII mode reports reason field index for multiple-malformed-bracketing-first-emoji with pre-first-only non-ASCII whitespace segments");
+
+  CHECK_MESSAGE(!parseSkipDiagnosticsStrictViolationsKeyValue(
+                  "strictViolations.count=1;"
+                  "strictViolations.0.fieldIndex=3;"
                   "strictViolations.0.reason=InconsistentReason\xC2\xA0\xE3\x80\x80\xC2"
                   "Break\x80"
                   "Gap\xC3\xA9Total\xC2"
